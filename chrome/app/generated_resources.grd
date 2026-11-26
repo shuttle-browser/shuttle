@@ -5412,6 +5412,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <!-- About box strings -->
 
       <!-- Omnibox -->
+      <message name="IDS_WEBUI_OMNIBOX_PLACEHOLDER_TEXT" desc="The text displayed in the WebUI Omnibox when it is empty and unfocused.">
+        Ask <ph name="SEARCH_ENGINE_NAME">$1<ex>Google</ex></ph> or type a URL
+      </message>
       <message name="IDS_OMNIBOX_PLACEHOLDER_TEXT" desc="The text displayed in the Omnibox when it is empty and unfocused.">
         Search <ph name="SEARCH_ENGINE_NAME">$1<ex>Google</ex></ph> or type a URL
       </message>

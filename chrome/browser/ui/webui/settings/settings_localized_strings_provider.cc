@@ -548,6 +548,13 @@ void AddResetStrings(content::WebUIDataSource* html_source, Profile* profile) {
                          chrome::kAutomaticSettingsResetLearnMoreURL);
 }
 
+void AddGeneralStrings(content::WebUIDataSource* html_source) {
+  static constexpr webui::LocalizedString kLocalizedStrings[] = {
+      {"generalPageTitle", IDS_SETTINGS_GENERAL},
+  };
+  html_source->AddLocalizedStrings(kLocalizedStrings);
+}
+
 void AddPerformanceStrings(content::WebUIDataSource* html_source) {
   // TODO(crbug.com/339250758): Clean up unused strings now that multistate mode
   // UI no longer exists.
@@ -2530,6 +2537,7 @@ void AddLocalizedStrings(content::WebUIDataSource* html_source,
   AddCommonStrings(html_source, profile);
   AddDownloadsStrings(html_source);
   AddExtensionsStrings(html_source);
+  AddGeneralStrings(html_source);
   AddPerformanceStrings(html_source);
   AddLanguagesStrings(html_source, profile);
   AddOnStartupStrings(html_source);

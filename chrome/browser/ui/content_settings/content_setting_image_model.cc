@@ -39,7 +39,6 @@
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/content_settings/core/common/features.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/no_state_prefetch/browser/no_state_prefetch_manager.h"
 #include "components/permissions/features.h"
 #include "components/permissions/permission_request_manager.h"
@@ -724,7 +723,6 @@ ContentSettingImageModel::CreateForContentType(ImageType image_type) {
 }
 
 void ContentSettingImageModel::Update(content::WebContents* contents) {
-  promo_params_.reset();
   bool new_visibility = contents ? UpdateAndGetVisibility(contents) : false;
   is_visible_ = new_visibility;
   if (contents && !is_visible_) {
@@ -784,19 +782,6 @@ void ContentSettingImageModel::SetBubbleWasAutoOpened(
     content::WebContents* contents) {
   ContentSettingImageModelStates::Get(contents)->SetBubbleWasAutoOpened(
       image_type(), true);
-}
-
-std::optional<user_education::FeaturePromoParams>
-ContentSettingImageModel::TakePromoParams(content::WebContents* contents) {
-  CHECK(contents, base::NotFatalUntil::M162);
-  if (!promo_params_ ||
-      ContentSettingImageModelStates::Get(contents)->PromoWasShown(
-          image_type())) {
-    return std::nullopt;
-  }
-  ContentSettingImageModelStates::Get(contents)->SetPromoWasShown(image_type(),
-                                                                  true);
-  return std::exchange(promo_params_, std::nullopt);
 }
 
 void ContentSettingImageModel::SetIcon(ContentSettingsType type, bool blocked) {

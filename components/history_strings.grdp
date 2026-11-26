@@ -65,6 +65,21 @@
   <message name="IDS_HISTORY_NO_SEARCH_RESULTS" desc="Text shown when no history search results have been found">
     No search results found
   </message>
+  <message name="IDS_HISTORY_OTHER_SESSIONS_COLLAPSE_SESSION" desc="In the 'Other Sessions' menu on the history page, the label for the command to collapse (hide) the list of windows and tabs in a session.">
+    Collapse list
+  </message>
+  <message name="IDS_HISTORY_OTHER_SESSIONS_EXPAND_SESSION" desc="In the 'Other Sessions' menu on the history page, the label for the command to expand (uncollapse) the list of windows and tabs in a session.">
+    Expand list
+  </message>
+  <message name="IDS_HISTORY_OTHER_SESSIONS_WINDOW_HEADER_SINGULAR" desc="In the 'Other Sessions' section on the history page, the subheader title for a synced window containing 1 tab.">
+    Window <ph name="WINDOW_NUMBER">$1<ex>1</ex></ph> · 1 tab
+  </message>
+  <message name="IDS_HISTORY_OTHER_SESSIONS_WINDOW_HEADER_PLURAL" desc="In the 'Other Sessions' section on the history page, the subheader title for a synced window containing multiple tabs.">
+    Window <ph name="WINDOW_NUMBER">$1<ex>1</ex></ph> · <ph name="NUM_TABS">$2<ex>3</ex></ph> tabs
+  </message>
+  <message name="IDS_HISTORY_PROMO_CLOSE" desc="On the history page, the accessiblility label for the close button for the history promos." translateable="false">
+    Close promo
+  </message>
   <message name="IDS_HISTORY_REMOVE_BOOKMARK" desc="Tooltip shown when hovered over a history entry's bookmark star. When clicked, removes the bookmark.">
     Delete bookmark
   </message>

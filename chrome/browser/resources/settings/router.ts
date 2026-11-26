@@ -28,6 +28,7 @@ export interface SettingsRoutes {
   DOWNLOADS: Route;
   EDIT_DICTIONARY: Route;
   FONTS: Route;
+  GENERAL: Route;
   LANGUAGES: Route;
   ON_STARTUP: Route;
   PERFORMANCE: Route;

@@ -2221,14 +2221,7 @@ void RenderViewContextMenu::AppendSaveToMemoryBanksItem() {
 }
 
 void RenderViewContextMenu::AppendBrowseMemoryBanksItem() {
-  if (base::FeatureList::IsEnabled(context_hub::features::kMemoryBanks) &&
-      base::FeatureList::IsEnabled(
-          browser::context_hub::mojom::kMemoryBanksSearchPalette) &&
-      !menu_model_.GetIndexOfCommandId(IDC_CONTENT_CONTEXT_BROWSE_MEMORY_BANKS)
-           .has_value()) {
-    menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_BROWSE_MEMORY_BANKS,
-                                    IDS_CONTENT_CONTEXT_BROWSE_MEMORY_BANKS);
-  }
+  // Memory banks (context hub) have been removed.
 }
 
 bool RenderViewContextMenu::CanSaveImageToMemoryBanks() const {
@@ -3718,16 +3711,7 @@ void RenderViewContextMenu::ExecProtocolHandler(int event_flags,
 void RenderViewContextMenu::ExecSaveToMemoryBanks() {
 }
 
-void RenderViewContextMenu::ExecBrowseMemoryBanks() {
-#if !BUILDFLAG(IS_ANDROID)
-  if (!GetBrowser() || !source_web_contents_) {
-    return;
-  }
-  MemoryBanksPaletteBubbleController::GetOrCreateForWebContents(
-      source_web_contents_)
-      ->ShowBubble();
-#endif  // !BUILDFLAG(IS_ANDROID)
-}
+void RenderViewContextMenu::ExecBrowseMemoryBanks() {}
 
 void RenderViewContextMenu::ExecInspectElement() {
   base::RecordAction(UserMetricsAction("DevTools_InspectElement"));

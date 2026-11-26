@@ -136,26 +136,6 @@ function addPrivacyChildRoutes(r: Partial<SettingsRoutes>) {
 }
 
 /**
- * Add all of the child routes that originate from the people/home route.
- */
-function addSharedPeopleRoutes(r: Partial<SettingsRoutes>, parent: Route) {
-  if (loadTimeData.getBoolean('replaceSyncPromosWithSignInPromos')) {
-    r.ACCOUNT = parent.createChild('/account');
-    r.GOOGLE_SERVICES = parent.createChild('/googleServices');
-  }
-  // <if expr="not is_chromeos">
-  r.SIGN_OUT = parent.createChild('/signOut');
-  r.SIGN_OUT.isNavigableDialog = true;
-  r.IMPORT_DATA = parent.createChild('/importData');
-  r.IMPORT_DATA.isNavigableDialog = true;
-  r.MANAGE_PROFILE = parent.createChild('/manageProfile');
-  // </if>
-
-  r.SYNC = parent.createChild('/syncSetup');
-  r.SYNC_ADVANCED = r.SYNC.createChild('/syncSetup/advanced');
-}
-
-/**
  * Adds Route objects for each path.
  */
 function createRoutes(): SettingsRoutes {
