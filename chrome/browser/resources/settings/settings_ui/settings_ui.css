@@ -69,15 +69,6 @@ cr-toolbar:not([narrow]) {
   }
 }
 
-settings-search-dropdown {
-  inset-inline-start: anchor(start);
-  position: fixed;
-  position-anchor: --search-field;
-  top: calc(anchor(bottom) + 4px);
-  width: anchor-size(width);
-  /* Stack above #scrollableShadow (z-index: 1 in cr_scrollable_lit.css). */
-  z-index: 2;
-}
 
 #container {
   display: flex;

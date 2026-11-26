@@ -916,12 +916,10 @@ export class OmniboxPopupSearchboxElement extends
     this.updateEditHistoryState_();
 
     this.userInputInProgress_ = true;
-    this.hasUserInput_ = !!newValue.trim();
     const scrollLeft = input.scrollLeft;
     this.getInputElement().setInput({text: newValue, inline: ''});
     this.getInputElement().setSelectionRange(cursorPos, cursorPos);
     this.scrollOffsetIntoView_(cursorPos, scrollLeft);
-    this.updateAimButtonCollapse_();
 
     if (!this.isInputCleared_(newValue)) {
       // Like `OmniboxViewViews::UpdatePopup()`, only prevent inline

@@ -16,7 +16,6 @@ import 'chrome://resources/cr_elements/cr_toolbar/cr_toolbar.js';
 import 'chrome://resources/cr_elements/cr_toolbar/cr_toolbar_search_field.js';
 import 'chrome://resources/cr_elements/icons.html.js';
 import '../icons.html.js';
-import '../search/settings_search_dropdown.js';
 import '../settings_main/settings_main.js';
 import '../settings_menu/settings_menu.js';
 
@@ -89,8 +88,8 @@ export class SettingsUiElement extends SettingsUiElementBase {
   protected accessor lastSearchQuery_: string = '';
   private accessor isSettingsRefresh2026_: boolean =
       loadTimeData.getString('settingsRefresh2026') !== '';
-  protected accessor isSettingsSearch2026Enabled_: boolean =
-      loadTimeData.getBoolean('enableSettingsSearch2026');
+  // Settings search 2026 (search dropdown + backend) is not part of this build.
+  protected accessor isSettingsSearch2026Enabled_: boolean = false;
 
   private activeTimer_: ActiveTimer|null = null;
 

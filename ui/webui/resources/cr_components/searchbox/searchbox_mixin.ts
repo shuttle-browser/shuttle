@@ -1364,6 +1364,7 @@ export interface SearchboxMixinInterface extends
   selectedMatch: AutocompleteMatch|null;
   selectedMatchIndex: number;
   readonly inputKeywordModel: InputKeywordModel|null;
+  readonly inKeywordMode: boolean;
   keywordModeManager: KeywordModeManager;
   showThumbnail: boolean;
 

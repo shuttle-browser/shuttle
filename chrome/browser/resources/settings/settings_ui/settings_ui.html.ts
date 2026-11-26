@@ -18,10 +18,6 @@ export function getHtml(this: SettingsUiElement) {
     ?narrow="${this.narrow_}" @narrow-changed="${this.onToolbarNarrowChanged_}"
     narrow-threshold="980" ?show-menu="${this.getLeftMenuHidden_()}">
 </cr-toolbar>
-${this.isSettingsSearch2026Enabled_ ? html`
-  <settings-search-dropdown .query="${this.lastSearchQuery_}">
-  </settings-search-dropdown>
-` : ''}
 <cr-drawer id="drawer" @close="${this.onMenuClose_}" heading="$i18n{settings}"
     align="$i18n{textdirection}">
   <div slot="body">
