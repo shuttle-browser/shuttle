@@ -70,7 +70,6 @@
 #include "components/omnibox/browser/search_provider.h"
 #include "components/omnibox/browser/searchbox_utils.h"
 #include "components/omnibox/browser/vector_icons.h"  // nogncheck
-#include "components/omnibox/common/composebox_features.h"
 #include "components/omnibox/common/omnibox_feature_configs.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/omnibox/common/omnibox_focus_state.h"

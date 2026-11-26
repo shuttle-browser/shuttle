@@ -32,7 +32,9 @@ import type {CrToggleElement} from '//resources/cr_elements/cr_toggle/cr_toggle.
 import {I18nMixinLit} from '//resources/cr_elements/i18n_mixin_lit.js';
 import {WebUiListenerMixinLit} from '//resources/cr_elements/web_ui_listener_mixin_lit.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
+// <if expr="_google_chrome and not is_chromeos">
 import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
+// </if>
 import {PrefService} from '/shared/settings/prefs2/pref_service.js';
 import {PrefServiceObserverMixinLit} from '/shared/settings/prefs2/pref_service_observer_mixin_lit.js';
 import type {MetricsReporting, PrivacyPageBrowserProxy} from '/shared/settings/privacy_page/privacy_page_browser_proxy.js';
@@ -123,17 +125,16 @@ export class SettingsPersonalizationOptionsElement extends
   }
 
 
+  // <if expr="_google_chrome and not is_chromeos">
   override firstUpdated(changedProperties: PropertyValues<this>) {
     super.firstUpdated(changedProperties);
 
-    // <if expr="_google_chrome and not is_chromeos">
     const setMetricsReporting = (metricsReporting: MetricsReporting) =>
         this.setMetricsReporting_(metricsReporting);
     this.addWebUiListener('metrics-reporting-change', setMetricsReporting);
     this.browserProxy_.getMetricsReporting().then(setMetricsReporting);
-    // </if>
-
   }
+  // </if>
 
   // <if expr="_google_chrome and not is_chromeos">
   protected onMetricsReportingChange_(e: Event) {

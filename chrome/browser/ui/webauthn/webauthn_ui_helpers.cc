@@ -10,7 +10,6 @@
 #include "base/check.h"
 #include "base/strings/strcat.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/ui/passwords/ui_utils.h"
 #include "components/url_formatter/elide_url.h"
 #include "components/vector_icons/vector_icons.h"
 #include "device/fido/public/fido_types.h"
@@ -40,8 +39,6 @@ const gfx::VectorIcon* GetProviderIcon(
       // Keychain") have no provider icon (see crbug.com/578112294).
       return credential.is_apple_passwords ? &kApplePasswordsColorCustomIcon
                                            : nullptr;
-    case device::AuthenticatorType::kEnclave:
-      return &GooglePasswordManagerVectorIcon();
     case device::AuthenticatorType::kWinNative:
       return &kWindowsHelloColorCustomIcon;
     case device::AuthenticatorType::kTouchID:

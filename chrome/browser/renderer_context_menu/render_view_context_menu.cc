@@ -103,7 +103,6 @@
 #include "components/compose/buildflags.h"
 #include "components/custom_handlers/protocol_handler.h"
 #include "components/download/public/common/download_url_parameters.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/google/core/common/google_util.h"
 #include "components/guest_view/browser/guest_view_base.h"
 #include "components/language/core/browser/language_model_manager.h"

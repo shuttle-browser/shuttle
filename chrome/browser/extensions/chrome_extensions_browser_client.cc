@@ -26,7 +26,6 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/download/download_crx_util.h"
 #include "chrome/browser/download/download_prefs.h"
-#include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
 #include "chrome/browser/extensions/activity_log/activity_action_constants.h"
 #include "chrome/browser/extensions/activity_log/activity_actions.h"
 #include "chrome/browser/extensions/activity_log/activity_log.h"

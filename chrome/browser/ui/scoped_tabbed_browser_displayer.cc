@@ -8,7 +8,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
-#include "chrome/browser/ui/waap/window_creation.h"
 
 namespace chrome {
 
@@ -17,9 +16,8 @@ ScopedTabbedBrowserDisplayer::ScopedTabbedBrowserDisplayer(Profile* profile) {
       ProfileBrowserCollection::GetForProfile(profile)->FindTabbedBrowser();
   if (!browser_ && GetBrowserWindowCreationStatusForProfile(*profile) ==
                        BrowserWindowInterface::CreationStatus::kOk) {
-    browser_ = waap::CreateBrowserWindowAndRecordCreationSource(
-        BrowserWindowCreateParams(profile, /*from_user_gesture=*/true),
-        waap::NewWindowCreationSource::kNewEmptyWindow);
+    BrowserWindowCreateParams params(profile, /*from_user_gesture=*/true);
+    browser_ = CreateBrowserWindow(std::move(params));
   }
 }
 

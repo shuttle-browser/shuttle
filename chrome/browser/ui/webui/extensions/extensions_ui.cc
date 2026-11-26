@@ -18,7 +18,6 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/enterprise/isolated_mode/isolated_mode_settings_service_factory.h"
 #include "chrome/browser/extensions/permissions_url_constants.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -497,9 +496,8 @@ content::WebUIDataSource* CreateAndAddExtensionsSource(Profile* profile,
       "safetyHubThreeDotDetails",
       base::FeatureList::IsEnabled(features::kSafetyHubThreeDotDetails));
   source->AddBoolean("enableGlobalScopedShortcuts", IsGlobalShortcutEnabled());
-  source->AddBoolean(
-      "isolatedModeEnabled",
-      enterprise_isolated_mode::IsolatedModeReplacesIncognito(profile));
+  // Isolated mode (enterprise) is not part of this build.
+  source->AddBoolean("isolatedModeEnabled", false);
 
   // MV2 deprecation.
   auto* mv2_handler = ManifestV2Handler::Get(profile);

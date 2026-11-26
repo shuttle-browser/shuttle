@@ -25,8 +25,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_tab_helper.h"
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
 #include "chrome/browser/ui/search/omnibox_utils.h"
-#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
-#include "chrome/browser/ui/side_panel/side_panel_prefs.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_view_views.h"

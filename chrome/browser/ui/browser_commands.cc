@@ -95,7 +95,6 @@
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/browsing_data/content/browsing_data_helper.h"
-#include "components/dom_distiller/core/url_utils.h"
 #include "components/embedder_support/user_agent_utils.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/find_in_page/find_tab_helper.h"
