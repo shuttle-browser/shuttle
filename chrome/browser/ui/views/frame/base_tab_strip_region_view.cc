@@ -581,10 +581,8 @@ void BaseTabStripRegionView::OnChildrenAdded(
     Profile* const profile =
         browser_view_ ? browser_view_->GetProfile() : nullptr;
     if (profile) {
-      if (profile->IsGuestSession()) {
-        base::UmaHistogramCounts100("Tab.Count.Guest",
-                                    tab_strip_model_->count());
-      } else if (profile->IsIncognitoProfile()) {
+      // Guest profiles are not part of this build.
+      if (profile->IsIncognitoProfile()) {
         base::UmaHistogramCounts100("Tab.Count.Incognito",
                                     tab_strip_model_->count());
       } else if (profile->IsEnterpriseIsolatedModeProfile()) {

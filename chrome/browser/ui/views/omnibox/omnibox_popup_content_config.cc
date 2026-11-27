@@ -62,21 +62,4 @@ OmniboxPopupContentConfig OmniboxPopupContentConfig::ForFullInLocationBar() {
   return config;
 }
 
-// static
-OmniboxPopupContentConfig OmniboxPopupContentConfig::ForAim() {
-  OmniboxPopupContentConfig config;
-  config.evict_on_hide = omnibox::ShouldAimEvictOnHide();
-  config.detach_on_hide =
-      base::FeatureList::IsEnabled(omnibox::kOmniboxAimDetachWebContentsOnHide);
-  config.draw_shadow_in_webui = omnibox::ShouldDrawAimShadowInWebUI();
-  config.debounce_resize =
-      base::FeatureList::IsEnabled(omnibox::kOmniboxAimDebounceResize);
-  config.height_workarounds = omnibox::ShouldApplyAimHeightWorkarounds();
-  config.size_webview_to_preferred_height = base::FeatureList::IsEnabled(
-      omnibox::kOmniboxAimSizeWebViewToPreferredHeight);
-  if (omnibox::ShouldDeferAimShowUntilVisualStateReady()) {
-    config.defer_until_visual_state = base::Milliseconds(
-        omnibox::kOmniboxAimDeferShowUntilVisualStateReadyTimeoutMs.Get());
-  }
-  return config;
-}
+// AIM (AI Mode) popups are not part of this build (no ForAim()).

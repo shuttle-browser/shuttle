@@ -368,8 +368,9 @@ std::string_view GetGlicWebContentsContextToken(
 void RecordGlicWebContentsContextMenuResult(Profile* profile,
                                             std::string_view token,
                                             bool executed) {
-  glic::GlicMetricReporter(profile).RecordEnumeration(
-      base::StrCat({"WebContentsContextMenu.", token}),
+  // Shuttle: glic's metric reporter is not part of this build (main's UMA).
+  base::UmaHistogramEnumeration(
+      base::StrCat({"Glic.WebContentsContextMenu.", token}),
       executed ? GlicWebContentsContextMenuResult::kExecuted
                : GlicWebContentsContextMenuResult::kShownAndIgnored);
 }
@@ -388,22 +389,6 @@ ui::ImageModel GetLensContextMenuIcon() {
 #endif
   );
 #endif
-}
-
-// Returns the `ReadingListModel` for `browser_context` if it is loaded and
-// supports `url`, or `nullptr` otherwise.
-ReadingListModel* GetLoadedReadingListModelForUrl(
-    content::BrowserContext* browser_context,
-    const GURL& url) {
-  if (!url.is_valid()) {
-    return nullptr;
-  }
-  ReadingListModel* model =
-      ReadingListModelFactory::GetForBrowserContext(browser_context);
-  if (!model || !model->loaded() || !model->IsUrlSupported(url)) {
-    return nullptr;
-  }
-  return model;
 }
 
 enum class UmaEnumIdLookupType {
@@ -1137,8 +1122,7 @@ void RenderViewContextMenu::InitMenu() {
       AppendLensGeminiSection();
     }
   } else {
-    const bool glic_below_search =
-        base::FeatureList::IsEnabled(features::kGlicContextMenuBelowSearch);
+    const bool glic_below_search = false;
     if (!glic_below_search &&
         content_type_->SupportsGroup(
             ContextMenuContentType::ITEM_GROUP_GLICSHAREIMAGE)) {

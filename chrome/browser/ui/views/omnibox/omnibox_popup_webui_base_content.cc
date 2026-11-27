@@ -187,14 +187,14 @@ OmniboxPopupWebUIBaseContent::ReleaseContentsWrapper() {
   contents_wrapper_->SetHost(nullptr);
   SetWebContents(nullptr);
   tab_selection_listener_.reset();
-  context_menu_.reset();
   file_chooser_deactivation_blocker_.reset();
   debounce_resize_timer_.Stop();
   return std::move(contents_wrapper_);
 }
 
 bool OmniboxPopupWebUIBaseContent::CanReleaseContentsWrapper() {
-  if (!contents_wrapper_ || file_chooser_open_ || context_menu_) {
+  // The omnibox AIM context menu is not part of this build.
+  if (!contents_wrapper_ || file_chooser_open_) {
     return false;
   }
   content::WebContents* web_contents = contents_wrapper_->web_contents();

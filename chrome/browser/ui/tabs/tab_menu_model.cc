@@ -227,10 +227,7 @@ void TabMenuModel::Build(tabs::TabHandle context_tab) {
       AddItem(TabStripModel::CommandToggleFocusGroup,
               l10n_util::GetPluralStringFUTF16(IDS_TAB_CXMENU_FOCUS_TABS,
                                                num_tabs));
-      const user_education::DisplayNewBadge show_badge =
-          UserEducationService::MaybeShowNewBadge(tab_strip_->profile(),
-                                                  features::kNonGroupFocus);
-      SetIsNewFeatureAt(GetItemCount() - 1, show_badge);
+      // User education "New" badges are not part of this build.
     }
 
     if (std::optional<size_t> focus_index =

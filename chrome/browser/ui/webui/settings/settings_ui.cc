@@ -174,8 +174,6 @@
 namespace settings {
 
 
-using optimization_guide::UserVisibleFeatureKey;
-
 // static
 void SettingsUI::RegisterProfilePrefs(
     user_prefs::PrefRegistrySyncable* registry) {

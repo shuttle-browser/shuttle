@@ -98,10 +98,7 @@
 
 #if BUILDFLAG(IS_MAC)
 #include "base/mac/mac_util.h"
-#include "chrome/browser/apps/app_shim/app_shim_manager_mac.h"
 #include "chrome/browser/permissions/system/system_media_capture_permissions_mac.h"
-#include "chrome/browser/web_applications/os_integration/mac/app_shim_registry.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #endif
 
 using base::UserMetricsAction;
@@ -1495,21 +1492,8 @@ ContentSettingNotificationsBubbleModel::ContentSettingNotificationsBubbleModel(
                                       ContentSettingsType::NOTIFICATIONS) {
   base::RecordAction(
       base::UserMetricsAction("ContentSettings.NotificationsDialog.Shown"));
-  if (std::optional<webapps::AppId> app_id =
-          web_app::WebAppTabHelper::GetAppIdForNotificationAttribution(
-              web_contents())) {
-    if (apps::AppShimManager* app_shim_manager = apps::AppShimManager::Get()) {
-      app_shim_manager->SynchronizeNotificationPermissionStatus(*app_id);
-    }
-    // `SynchronizeNotificationPermissionStatus()` is asynchronous, so this
-    // reads the status cached in `AppShimRegistry` prior to that sync. If macOS
-    // permission was already decided outside Chrome, clicking "Allow" will just
-    // cause the app shim to report the updated status without showing a prompt.
-    should_request_system_permission_ =
-        AppShimRegistry::Get()->GetNotificationPermissionStatusForApp(
-            *app_id) ==
-        AppShimRegistry::NotificationPermissionStatus::kNotDetermined;
-  }
+  // Web app shims are not part of this build: no app shim notification
+  // permission sync/request from this bubble.
   set_title(l10n_util::GetStringUTF16(IDS_NOTIFICATIONS_TURNED_OFF_IN_MACOS));
   AddListItem(ContentSettingBubbleModel::ListItem(
       &(features::IsRoundedIconsEnabled()
@@ -1519,9 +1503,7 @@ ContentSettingNotificationsBubbleModel::ContentSettingNotificationsBubbleModel(
       l10n_util::GetStringUTF16(IDS_TURNED_OFF), /*has_link=*/false,
       /*has_blocked_badge=*/false, 0));
   set_manage_text_style(ContentSettingBubbleModel::ManageTextStyle::kNone);
-  set_done_button_text(l10n_util::GetStringUTF16(
-      should_request_system_permission_ ? IDS_PERMISSION_ALLOW
-                                        : IDS_OPEN_SETTINGS_LINK));
+  set_done_button_text(l10n_util::GetStringUTF16(IDS_OPEN_SETTINGS_LINK));
   set_cancel_button_text(l10n_util::GetStringUTF16(IDS_PERMISSION_DONT_ALLOW));
 }
 
@@ -1533,29 +1515,6 @@ ContentSettingNotificationsBubbleModel::
 
 void ContentSettingNotificationsBubbleModel::OnDoneButtonClicked() {
   if (!web_contents()) {
-    return;
-  }
-
-  if (should_request_system_permission_) {
-    base::RecordAction(base::UserMetricsAction(
-        "ContentSettings.NotificationsDialog.AllowClicked"));
-    if (std::optional<webapps::AppId> app_id =
-            web_app::WebAppTabHelper::GetAppIdForNotificationAttribution(
-                web_contents());
-        app_id.has_value()) {
-      if (apps::AppShimManager* app_shim_manager =
-              apps::AppShimManager::Get()) {
-        app_shim_manager->ShowNotificationPermissionRequest(
-            *app_id,
-            base::BindOnce([](mac_notifications::mojom::RequestPermissionResult
-                                  result) {
-              base::UmaHistogramEnumeration(
-                  "Notifications.Permissions.AppShim.OSPermissionRequestResult."
-                  "FromNotificationsBubble",
-                  result);
-            }));
-      }
-    }
     return;
   }
 

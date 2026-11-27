@@ -2680,15 +2680,6 @@ const FeatureEntry::FeatureVariation kGlicWarmingVariations[] = {
     {"with 20s delay", kGlicWarmingDelay20s, nullptr},
     {"with 300s delay", kGlicWarmingDelay300s, nullptr}};
 
-#if BUILDFLAG(ENABLE_PDF)
-const FeatureEntry::FeatureParam kPdfGlicSummarizeLongButtonText[] = {
-    {"use_long_button_text", "true"}};
-
-const FeatureEntry::FeatureVariation kPdfGlicSummarizeVariations[] = {
-    {"with \"Summarize with Gemini\" button text",
-     kPdfGlicSummarizeLongButtonText, nullptr}};
-#endif  // BUILDFLAG(ENABLE_PDF)
-
 const FeatureEntry::FeatureParam kGlicGuestUrlPresetTypeAutopush[] = {
     {"glic-guest-url-preset-type", "0"}};
 const FeatureEntry::FeatureParam kGlicGuestUrlPresetTypeStaging[] = {
@@ -7760,22 +7751,11 @@ const FeatureEntry kFeatureEntries[] = {
      FEATURE_VALUE_TYPE(chrome::android::kGlicBackgroundActuationTabGroupSync)},
 #endif  // BUILDFLAG(IS_ANDROID)
 
-#if !BUILDFLAG(IS_ANDROID)
-    {"glic-pdf-summarize", flag_descriptions::kGlicPdfSummarizeName,
-     flag_descriptions::kGlicPdfSummarizeDescription, kOsDesktop,
-     FEATURE_WITH_PARAMS_VALUE_TYPE(features::kPdfGlicSummarize,
-                                    kPdfGlicSummarizeVariations,
-                                    "GlicPdfSummarize")},
-#endif
-
     {"glic-pre-warming", flag_descriptions::kGlicWarmingName,
      flag_descriptions::kGlicWarmingDescription, kOsDesktop,
      FEATURE_WITH_PARAMS_VALUE_TYPE(features::kGlicWarming,
                                     kGlicWarmingVariations,
                                     "GlicWarming")},
-    {"glic-capture-region", flag_descriptions::kGlicCaptureRegionName,
-     flag_descriptions::kGlicCaptureRegionDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(features::kGlicCaptureRegion)},
     {"glic-share-image", flag_descriptions::kGlicShareImageName,
      flag_descriptions::kGlicShareImageDescription, kOsDesktop | kOsAndroid,
      FEATURE_VALUE_TYPE(features::kGlicShareImage)},

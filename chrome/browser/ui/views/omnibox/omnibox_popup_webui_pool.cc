@@ -154,8 +154,8 @@ void OmniboxPopupWebUIPool::OnBrowserWindowActivated(
 void OmniboxPopupWebUIPool::DropIdleWebUIContents() {
   views::Widget* last_active_browser_widget = last_active_browser_widget_.get();
   for (OmniboxPopupPresenterBase* presenter : presenters_) {
-    if (presenter->GetSharedPopupKind() != OmniboxPopupState::kAim &&
-        last_active_browser_widget &&
+    // AIM popups (always dropped) are not part of this build.
+    if (last_active_browser_widget &&
         GetBrowserWidget(*presenter) == last_active_browser_widget &&
         !HiddenPastActiveWindowTimeout(*presenter)) {
       continue;

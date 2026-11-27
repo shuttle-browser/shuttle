@@ -64,34 +64,29 @@ bool IsNewTabSecurityPrincipal(
          security_principal.GetHost() == chrome::kChromeUINewTabHost;
 }
 
+// Shuttle: the WebUI New Tab Page (chrome://new-tab-page and
+// chrome://new-tab-page-third-party) is not part of this build; only the
+// blank chrome://newtab exists, so these predicates never match.
 bool IsNewTabPageOrigin(const GURL& url) {
-  return url.is_valid() && url.SchemeIs(content::kChromeUIScheme) &&
-         url.host() == chrome::kChromeUINewTabPageHost;
+  return false;
 }
 
 bool IsNewTabPageOrigin(const url::Origin& origin) {
-  // Explicitly guard against opaque origins (even those derived from an NTP
-  // precursor), which security callers rely on.
-  return !origin.opaque() && origin.scheme() == content::kChromeUIScheme &&
-         origin.host() == chrome::kChromeUINewTabPageHost;
+  return false;
 }
 
 bool IsNewTabPageSecurityPrincipal(
     const content::SecurityPrincipal& security_principal) {
-  return security_principal.SchemeIs(content::kChromeUIScheme) &&
-         security_principal.GetHost() == chrome::kChromeUINewTabPageHost;
+  return false;
 }
 
 bool IsThirdPartyNewTabPageOrigin(const GURL& url) {
-  return url.is_valid() && url.SchemeIs(content::kChromeUIScheme) &&
-         url.host() == chrome::kChromeUINewTabPageThirdPartyHost;
+  return false;
 }
 
 bool IsThirdPartyNewTabPageSecurityPrincipal(
     const content::SecurityPrincipal& security_principal) {
-  return security_principal.SchemeIs(content::kChromeUIScheme) &&
-         security_principal.GetHost() ==
-             chrome::kChromeUINewTabPageThirdPartyHost;
+  return false;
 }
 
 bool IsWebUINewTabPageOrigin(const GURL& url) {

@@ -34,7 +34,8 @@ bool IsGuest(const Profile* profile) {
   return user_manager->IsLoggedInAsGuest() ||
          user_manager->IsLoggedInAsManagedGuestSession();
 #else
-  return profile->IsGuestSession();
+  // Guest profiles are not part of this build.
+  return false;
 #endif
 }
 

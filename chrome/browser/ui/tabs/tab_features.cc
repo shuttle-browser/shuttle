@@ -182,7 +182,6 @@
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "chrome/browser/safe_browsing/chrome_safe_browsing_tab_observer_delegate.h"
 #include "chrome/browser/safe_browsing/navigation_observer/safe_browsing_navigation_observer_manager_factory.h"
-#include "chrome/browser/safe_browsing/password_protection/chrome_password_reuse_detection_manager_client.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/safe_browsing/triggers/trigger_creator.h"
 #include "components/safe_browsing/content/browser/interstitials/ui_manager.h"
