@@ -532,6 +532,22 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     restored for DevTools navigation gating. Dry-run the manifests after a merge and check each hit against `main`.
   - **`git fetch --depth=1 origin refs/tags/X:refs/tags/X` also fetches every other tag** without `--no-tags`.
   - **Clang rolled again** (llvmorg-24-init-14453 → init-17044): new sccache-dist toolchain archive before the build.
+  - **Cheap pre-build checks that paid off** (159, before the first full build):
+    - WebUI TS-only check: `autoninja -C out/<dir> $(gn ls out/<dir> '//chrome/browser/resources/*' '//ui/webui/resources/*'
+      '//components/*' | grep ':build_ts$')` (~650 steps, no C++). It found the settings general page / settings search
+      2026 / omnibox popup holes. `build-sccache.sh` appends `chrome` to any targets you pass (full build): run raw
+      `autoninja` from the real path for partial targets.
+    - IDS sweep: `git grep -w` (BSD `\b` in `git grep -E` matches nothing), then keep only users in compiled files
+      (`gn refs out/<dir> //<file>`).
+    - i18n keys: parse `loadTimeData.get*(...)` / `this.i18n(...)` across lines (ternaries span lines), compare with string
+      literals in C++, diff against `main`.
+    - Unguarded includes of pruned headers in merge-touched sources that the Mac build compiles (source list from
+      `out/<dir>/obj/**/*.ninja`, include at `#if` depth 0, header missing): found 13 breaks the build had not reached.
+  - **Merge dropped `<part>` lines on a rename**: dom_distiller → web_distiller lost `web_distiller_resources.grdp` /
+    `web_distiller_strings.grdp` from `components_resources.grd` / `components_strings.grd` (undeclared IDR_/IDS_).
+    After touching a `.grd`, regenerate its `.grd.gritdeps` with the command in its header (no extra header lines).
+  - **Pruned-feature leftovers dominate the build rounds** (waap, isolated mode, actor, glic, guest profiles, AIM,
+    user_education, PiP window manager, reading list, sync sessions): restore `main`'s hunk where one exists, else stub.
 
 ## Gotchas
 
