@@ -548,6 +548,18 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
     After touching a `.grd`, regenerate its `.grd.gritdeps` with the command in its header (no extra header lines).
   - **Pruned-feature leftovers dominate the build rounds** (waap, isolated mode, actor, glic, guest profiles, AIM,
     user_education, PiP window manager, reading list, sync sessions): restore `main`'s hunk where one exists, else stub.
+  - **Conflicts next to pruned lines lose upstream additions**: 159 moved `image_writer_private.webidl` into the main
+    list of `api_sources.gni` next to pruned `gcm`/`glic_private`/`instance_id`; the merge kept the removal, not the
+    addition (link error: undefined `api::image_writer_private::*`). Same in `browser_prefs.cc`: the tail of
+    `RegisterProfilePrefsForMigration` was lost while the `ClearPref` calls stayed, so startup hit `NOTREACHED` clearing an
+    unregistered pref (a green build that only smoke-all catches). Sweep: every `ClearPref(k...)` new since `main` needs a
+    `Register*Pref(k...)` on the same platforms.
+  - **Raw `autoninja` on `out/Sccache` with no sccache server running starts one without the dist config** (no
+    `SCCACHE_CONF`): compiles run locally and the next `build-sccache.sh` refuses ("no build servers"). Stop that server
+    (`sccache --stop-server`, after checking no build uses it) and rerun the script, or start the script first.
+  - **Dev builds keep DCHECKs** (non-official default): 159 hits `compositor_animations.cc:589`
+    `!any_compositor_properties_present` in the renderer (error code 6) while scrolling some pages; Blink untouched by the
+    fork, compiled out in official release builds. Not a merge regression.
 
 ## Gotchas
 
