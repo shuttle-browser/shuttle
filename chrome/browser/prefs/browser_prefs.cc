@@ -1627,6 +1627,31 @@ void RegisterProfilePrefsForMigration(
   registry->RegisterIntegerPref(kDeprecatedBrowserColorVariantDoNotUse, 0);
   registry->RegisterBooleanPref(kDeprecatedGrayscaleThemeEnabledDoNotUse,
                                 false);
+  // Deprecated 10/2026.
+  registry->RegisterBooleanPref(kTabsFromOtherDevicesAutoPinnedMigration,
+                                false);
+
+  // Deprecated 10/2026.
+  registry->RegisterIntegerPref(kHistorySearchSettingState, 0);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // Deprecated 10/2026.
+  registry->RegisterBooleanPref(kLabsMediaplayerEnabled, false);
+  registry->RegisterBooleanPref(kAppReinstallRecommendationEnabled, false);
+  registry->RegisterBooleanPref(kPinUnlockFeatureNotificationShown, false);
+  registry->RegisterBooleanPref(kFingerprintUnlockFeatureNotificationShown,
+                                false);
+  registry->RegisterBooleanPref(kShowArcSettingsOnSessionStart, false);
+  // Deprecated 11/2026.
+  registry->RegisterBooleanPref(kSuggestedContentEnabled, true);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+  // Deprecated 11/2026.
+  registry->RegisterBooleanPref(
+      kBundledSettingsCheckedMigrateUserToEnhancedBundle, false);
+
+  // Deprecated 11/2026.
+  registry->RegisterStringPref(kGlicPromotionSourceCohort, std::string());
 }
 
 }  // namespace
