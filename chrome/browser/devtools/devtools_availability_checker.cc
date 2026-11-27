@@ -426,21 +426,7 @@ bool HasDevToolsPolicyCheck(Profile* profile) {
   }
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (auto* web_app_provider =
-          web_app::AreWebAppsEnabled(profile)
-              ? web_app::WebAppProvider::GetForWebApps(profile)
-              : nullptr) {
-    // `WebAppRegistrar::AppSet` only supports range-based `for` loops; its
-    // iterator does not satisfy `std::input_iterator` for `std::ranges`.
-    for (const web_app::WebApp& web_app :
-         web_app_provider->registrar_unsafe().GetAppsIncludingStubs()) {
-      if (web_app.IsKioskInstalledApp() || web_app.IsIwaPolicyInstalledApp()) {
-        return true;
-      }
-    }
-  }
-#endif
+  // Web apps are not part of this build.
 
   return false;
 }

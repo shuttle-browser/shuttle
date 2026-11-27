@@ -363,13 +363,11 @@ LanguageSettingsPrivateEnableLanguageFunction::Run() {
               language_code)) {
     std::unique_ptr<language::LanguagePrefs> language_prefs =
         CreateLanguagePrefsForBrowserContext(browser_context());
-    std::vector<std::string> languages;
-    language_prefs->GetAcceptLanguagesList(&languages);
-    const std::string code(parsed_tag->tag_string());
-    if (!std::ranges::contains(languages, code)) {
-      std::vector<std::string> user_selected_languages;
-      language_prefs->GetUserSelectedLanguagesList(&user_selected_languages);
-      user_selected_languages.push_back(code);
+    if (!std::ranges::contains(language_prefs->GetAcceptLanguagesList(),
+                               *parsed_tag)) {
+      std::vector<base::i18n::LanguageTag> user_selected_languages =
+          language_prefs->GetUserSelectedLanguagesList();
+      user_selected_languages.push_back(*parsed_tag);
       language_prefs->SetUserSelectedLanguagesList(user_selected_languages);
     }
   }
@@ -395,10 +393,9 @@ LanguageSettingsPrivateDisableLanguageFunction::Run() {
               language_code)) {
     std::unique_ptr<language::LanguagePrefs> language_prefs =
         CreateLanguagePrefsForBrowserContext(browser_context());
-    std::vector<std::string> user_selected_languages;
-    language_prefs->GetUserSelectedLanguagesList(&user_selected_languages);
-    if (std::erase(user_selected_languages,
-                   std::string(parsed_tag->tag_string())) > 0) {
+    std::vector<base::i18n::LanguageTag> user_selected_languages =
+        language_prefs->GetUserSelectedLanguagesList();
+    if (std::erase(user_selected_languages, *parsed_tag) > 0) {
       language_prefs->SetUserSelectedLanguagesList(user_selected_languages);
     }
   }
@@ -482,10 +479,11 @@ LanguageSettingsPrivateMoveLanguageFunction::Run() {
 
   std::unique_ptr<language::LanguagePrefs> language_prefs =
       CreateLanguagePrefsForBrowserContext(browser_context());
-  std::vector<std::string> languages;
-  language_prefs->GetUserSelectedLanguagesList(&languages);
+  std::vector<base::i18n::LanguageTag> languages =
+      language_prefs->GetUserSelectedLanguagesList();
 
-  auto pos = std::ranges::find(languages, language_code);
+  auto pos = std::ranges::find(languages, language_code,
+                               &base::i18n::LanguageTag::tag_string);
   if (pos == languages.end() ||
       !std::ranges::contains(supported_language_codes, language_code)) {
     return RespondNow(NoArguments());
@@ -493,8 +491,8 @@ LanguageSettingsPrivateMoveLanguageFunction::Run() {
 
   // Returns true if `code` counts as a visible step when moving: it must be a
   // supported language that isn't hidden due to being policy-forced.
-  auto is_step = [&](const std::string& code) {
-    return std::ranges::contains(supported_language_codes, code) &&
+  auto is_step = [&](const base::i18n::LanguageTag& code) {
+    return std::ranges::contains(supported_language_codes, code.tag_string()) &&
            !language_prefs->IsForcedLanguage(code);
   };
 

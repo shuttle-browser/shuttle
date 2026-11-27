@@ -1056,13 +1056,6 @@ void TabsCreateFunction::OnBrowserWindowCreated(
     return;
   }
 
-#if !BUILDFLAG(IS_ANDROID)
-  if (auto* manager = InitialWebUIWindowMetricsManager::From(browser)) {
-    manager->SetWindowCreationInfo(waap::NewWindowCreationSource::kExtension,
-                                   creation_time);
-  }
-#endif
-
   base::WeakPtr<BrowserWindowInterface> weak_browser = browser->GetWeakPtr();
   browser->GetWindow()->Show();
   if (!weak_browser) {
@@ -1750,11 +1743,6 @@ bool TabsMoveFunction::MoveTab(int tab_id,
     return false;
   }
 
-  if (PictureInPictureWindowManager::IsChildWebContents(contents)) {
-    *error = tabs_constants::kNotAllowedForPictureInPictureError;
-    return false;
-  }
-
   // Don't let the extension move the tab if the user is dragging tabs.
   if (!ExtensionTabUtil::IsTabStripEditable(*source_window->profile())) {
     *error = ExtensionTabUtil::kTabStripNotEditableError;
@@ -2113,11 +2101,6 @@ ExtensionFunction::ResponseAction TabsGroupFunction::Run() {
 
     if (DevToolsWindow::IsDevToolsWindow(web_contents)) {
       return RespondNow(Error(tabs_constants::kNotAllowedForDevToolsError));
-    }
-
-    if (PictureInPictureWindowManager::IsChildWebContents(web_contents)) {
-      return RespondNow(
-          Error(tabs_constants::kNotAllowedForPictureInPictureError));
     }
   }
 

@@ -33,8 +33,6 @@
 #include "components/content_settings/browser/page_specific_content_settings.h"
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/mojom/view_type.mojom.h"
-#else
-#include "chrome/browser/ui/waap/window_creation.h"
 #endif
 
 // This file contains code shared between Android and non-Android platforms.
@@ -122,8 +120,7 @@ void ChromeExtensionHostDelegate::CreateTab(
   return;
 #else
   // Other platforms create windows synchronously.
-  browser = waap::CreateBrowserWindowAndRecordCreationSource(
-      std::move(params), waap::NewWindowCreationSource::kExtension);
+  browser = CreateBrowserWindow(std::move(params));
   CHECK(browser);
   NavigateBrowser(/*browser_created=*/true, std::move(web_contents), target_url,
                   extension_id, disposition, window_features, user_gesture,

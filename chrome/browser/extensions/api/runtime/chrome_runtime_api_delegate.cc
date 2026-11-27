@@ -64,10 +64,6 @@
 #include "chrome/browser/devtools/devtools_window.h"
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/waap/window_creation.h"
-#endif
-
 namespace {
 
 using extensions::Extension;
@@ -454,8 +450,7 @@ void ChromeRuntimeAPIDelegate::OpenOptionsPage(
 #else
     // Other platforms create windows synchronously. Fallthrough and open
     // the options page afterwards.
-    browser = waap::CreateBrowserWindowAndRecordCreationSource(
-        std::move(params), waap::NewWindowCreationSource::kExtension);
+    browser = CreateBrowserWindow(std::move(params));
     CHECK(browser);
 #endif
   }

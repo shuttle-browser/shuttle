@@ -119,9 +119,7 @@ ChromeSafeBrowsingBlockingPageFactory::CreateControllerClient(
       BaseBlockingPage::GetReportingInfo(unsafe_resources,
                                          blocked_page_shown_timestamp);
   reporting_info.profile_mode_suffix =
-      profile->IsGuestSession()
-          ? "guest"
-          : (profile->IsOffTheRecord() ? "incognito" : "regular");
+      profile->IsOffTheRecord() ? "incognito" : "regular";
 
   std::unique_ptr<ContentMetricsHelper> metrics_helper =
       std::make_unique<ContentMetricsHelper>(

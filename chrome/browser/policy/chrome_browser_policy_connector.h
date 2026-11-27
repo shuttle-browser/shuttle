@@ -27,6 +27,8 @@ class PrefService;
 namespace policy {
 class ConfigurationPolicyProvider;
 class LocalTestPolicyProvider;
+enum class ManagementAuthorityTrustworthiness;
+class ManagementService;
 
 // Extends BrowserPolicyConnector with the setup shared among the desktop
 // implementations and Android.
@@ -131,6 +133,8 @@ class ChromeBrowserPolicyConnector : public BrowserPolicyConnector {
   raw_ptr<ConfigurationPolicyProvider> local_test_provider_for_testing_ =
       nullptr;
   std::unique_ptr<LocalTestPolicyProvider> local_test_provider_;
+
+  base::WeakPtrFactory<ChromeBrowserPolicyConnector> weak_factory_{this};
 };
 
 }  // namespace policy

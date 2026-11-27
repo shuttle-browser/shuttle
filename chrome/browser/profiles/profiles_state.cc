@@ -83,7 +83,8 @@ base::FilePath GetLastUsedProfileBaseName(const PrefService& local_state) {
   const base::FilePath initial_profile =
       base::FilePath::FromASCII(chrome::kInitialProfile);
   base::FilePath base_name = local_state.GetFilePath(prefs::kProfileLastUsed);
-  if (base_name.empty() || base_name.value() == chrome::kSystemProfileDir) {
+  // The system profile is not part of this build.
+  if (base_name.empty()) {
     return initial_profile;
   }
 

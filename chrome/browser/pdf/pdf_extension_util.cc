@@ -380,7 +380,6 @@ base::DictValue GetStrings(PdfViewerContext context) {
 
 base::DictValue GetAdditionalData(content::WebContents* web_contents) {
   content::BrowserContext* context = web_contents->GetBrowserContext();
-  Profile* profile = Profile::FromBrowserContext(context);
   // NOTE: This function should not include any data used for $i18n{}
   // replacements. The i18n string resources should be added using GetStrings()
   // above instead.
@@ -390,10 +389,8 @@ base::DictValue GetAdditionalData(content::WebContents* web_contents) {
                chrome_pdf::features::kPdfGetSaveDataInBlocks));
   dict.Set("pdfGlicSummarizeEnabled",
            ShouldShowGlicSummarizeButton(web_contents));
-  dict.Set("pdfGlicSummarizeUseLongButtonText",
-           glic::GetGlicProviderSpec(profile)
-               .GetPdfSummarizeFeatureParams()
-               .use_long_button_text);
+  // Glic is not part of this build.
+  dict.Set("pdfGlicSummarizeUseLongButtonText", false);
   dict.Set(
       "pdfSearchifySaveEnabled",
       base::FeatureList::IsEnabled(chrome_pdf::features::kPdfSearchifySave));

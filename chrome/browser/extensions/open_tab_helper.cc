@@ -37,7 +37,6 @@
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/unload_controller.h"
-#include "chrome/browser/ui/waap/window_creation.h"
 #endif
 
 namespace extensions {
@@ -56,9 +55,7 @@ BrowserWindowInterface* CreateAndShowBrowser(Profile* profile,
   BrowserWindowCreateParams params(BrowserWindowInterface::TYPE_NORMAL,
                                    *profile, user_gesture);
 
-  BrowserWindowInterface* browser =
-      waap::CreateBrowserWindowAndRecordCreationSource(
-          std::move(params), waap::NewWindowCreationSource::kExtension);
+  BrowserWindowInterface* browser = CreateBrowserWindow(std::move(params));
   if (!browser) {
     return nullptr;
   }

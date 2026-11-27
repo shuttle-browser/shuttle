@@ -387,7 +387,7 @@ ExtensionFunction::ResponseAction SetPreferenceFunction::Run() {
   PrefTransformerInterface* transformer =
       PrefMapping::GetInstance()->FindTransformerForBrowserPref(browser_pref);
   CHECK(transformer);
-  if (!transformer->IsExtensionModifiable(profile)) {
+  if (!transformer->IsExtensionModifiable(browser_context())) {
     return RespondNow(Error(kNotControllableErrorMessage, pref_key));
   }
   std::string error;

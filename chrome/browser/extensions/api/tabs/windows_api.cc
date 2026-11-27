@@ -591,8 +591,7 @@ ExtensionFunction::ResponseAction WindowsCreateFunction::Run() {
 
 #if !BUILDFLAG(IS_ANDROID)
   BrowserWindowInterface* new_window =
-      waap::CreateBrowserWindowAndRecordCreationSource(
-          std::move(create_params), waap::NewWindowCreationSource::kExtension);
+      CreateBrowserWindow(std::move(create_params));
   ExtensionFunction::ResponseValue response =
       OnBrowserWindowCreated(new_window);
   return RespondNow(std::move(response));

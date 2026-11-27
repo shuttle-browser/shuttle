@@ -5262,9 +5262,7 @@ ChromeContentBrowserClient::MaybeCreateSafeBrowsingURLLoaderThrottle(
       std::move(referring_app_info),
       v5_get_hash_protocol_manager ? v5_get_hash_protocol_manager->GetWeakPtr()
                                    : nullptr,
-      profile->IsGuestSession()
-          ? "Guest"
-          : (profile->IsOffTheRecord() ? "Incognito" : "Regular"));
+      profile->IsOffTheRecord() ? "Incognito" : "Regular");
 }
 #endif
 
