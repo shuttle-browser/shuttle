@@ -1,0 +1,4 @@
+# Public extension manifest "key" (pins the test extension's ID; the probes derive chrome-extension://<id> from it).
+# No private key exists in the repo. Forks 67/68; same entry as in .claude/gatekeeper.json.
+b14c4455d5289a4d966d3adab6ddf05364af245f:tools/shuttle/test-data/popup-extension/manifest.json:generic-api-key:9
+tools/shuttle/test-data/popup-extension/manifest.json:generic-api-key:9

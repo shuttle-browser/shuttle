@@ -1,5 +1,6 @@
 {
   "allow": [
+    { "path": "tools/shuttle/test-data/popup-extension/manifest.json", "rule": "generic-api-key", "reason": "fork 67/68 test fixture: the extension manifest \"key\" is a public key that pins the test extension's ID (the probes derive chrome-extension://<id> from it); no private key exists in the repo, not a secret" },
     { "path": "components/certificate_transparency/data/log_list.json", "rule": "generic-api-key", "reason": "upstream Chromium data: public Certificate Transparency log keys, not secrets; gatekeeper covers our own additions (tools/shuttle/, fork commits)" },
     { "path": "third_party/blink/web_tests/external/wpt/fedcm/support/delegation-issuance.py", "rule": "generic-api-key", "reason": "upstream Chromium WPT fixture (156): RFC 4122 example UUID, not a secret; gatekeeper covers our own additions (tools/shuttle/, fork commits)" },
     { "path": "net/device_bound_sessions/single_sign_on_key_manager_unittest.cc", "rule": "generic-api-key", "reason": "upstream Chromium unit test (157): placeholder key digest strings, not secrets; gatekeeper covers our own additions (tools/shuttle/, fork commits)" },
