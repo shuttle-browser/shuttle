@@ -560,6 +560,15 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   - **Dev builds keep DCHECKs** (non-official default): 159 hits `compositor_animations.cc:589`
     `!any_compositor_properties_present` in the renderer (error code 6) while scrolling some pages; Blink untouched by the
     fork, compiled out in official release builds. Not a merge regression.
+    **TODO at the next full dev rebuild (e.g. the 160 merge; Toby, 2026-11-28, deferred because it rebuilds
+    everything):** add `dcheck_is_configurable = true` to the dev args (not release). DCHECKs stay compiled in but are
+    non-fatal by default (`DcheckIsFatal` feature, disabled by default; `--enable-features=DcheckIsFatal` restores the
+    crash): a failure logs `DCHECK failed: ...` plus a dump without crash, so upstream DCHECKs like this one no longer
+    kill tabs during hand tests. Keep DCHECKs on rather than `dcheck_always_on = false`: they caught fork bugs before
+    (e.g. the `lock_impl_posix.cc` use-after-free in Gotchas). In the same change add `DCHECK failed` to smoke-all's
+    `log-fatals` pattern (`scripts/smoke-all.sh`, `G=`), or fork DCHECK failures would pass silently. If this DCHECK
+    blocks testing before then: patching that one line in `compositor_animations.cc` rebuilds one object, not everything
+    (numbered fork commit).
 
 ## Gotchas
 
