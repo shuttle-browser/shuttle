@@ -9,39 +9,39 @@
 #include <string>
 #include <string_view>
 
-class LocationBar;
-class Profile;
+class OmniboxController;
 class TemplateURLService;
 
 namespace omnibox {
 
 // Returns true if the default search engine placeholder should be the
 // "Ask <search engine> or type a URL" variant rather than "Search <search
-// engine> or type a URL", i.e. when the AIM popup is enabled for `profile` and
-// Google is the default search engine.
+// engine> or type a URL", i.e. when the AIM popup is enabled and Google is the
+// default search engine.
 bool ShouldUseAskPlaceholderText(
-    Profile* profile,
+    bool is_aim_popup_enabled,
     const TemplateURLService* template_url_service);
 
-// Given a `location_bar`, computes the appropriate placeholder text
-// for it into `out_placeholder_text. If a special text should be used for
+// Computes the appropriate placeholder text for the omnibox of `controller`
+// into `out_placeholder_text`. If a special text should be used for
 // accessibility value for placeholder, sets it into `out_a11y_placeholder`;
 // otherwise sets it to nullopt.
 void ComputePlaceholderText(
-    LocationBar* location_bar,
+    OmniboxController& controller,
     std::u16string& out_placeholder_text,
     std::optional<std::u16string>& out_a11y_placeholder);
 
 // Returns true if the placeholder text should be shown.
 // Does not consider if there is regular text or if computed placeholder text
 // is empty.
-bool ShouldShowPlaceholderText(LocationBar* location_bar);
+bool ShouldShowPlaceholderText(const OmniboxController& controller);
 
-bool ShouldUseDimPlaceholderColor(LocationBar* location_bar);
+bool ShouldUseDimPlaceholderColor(OmniboxController& controller);
 
 // Returns true if the Contextual Tasks placeholder text should be installed
 // instead of the DSE placeholder text.
-bool ShouldInstallContextualTasksPlaceholderText(LocationBar* location_bar);
+bool ShouldInstallContextualTasksPlaceholderText(
+    const OmniboxController& controller);
 
 }  // namespace omnibox
 

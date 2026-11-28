@@ -1131,6 +1131,7 @@ should be able to be added at any place in this file.
   <variant name=".GenerativeThemes" summary="Generative Themes"/>
   <variant name=".GenerativeTheming" summary="Generative Theming"/>
   <variant name=".GlicWhatsNewLuminous" summary="Gemini in Chrome: Luminous"/>
+  <variant name=".GlicWhatsNewQuizzes" summary="Gemini in Chrome: Quizzes"/>
   <variant name=".GoogleLens" summary="Google Lens"/>
   <variant name=".Googlepayreauth" summary="Google Pay Re-auth"/>
   <variant name=".HeadlessLiveCaption" summary="Headless Live Caption"/>
@@ -13913,6 +13914,18 @@ should be able to be added at any place in this file.
   </description>
 </action>
 
+<action name="Glic.Fre.NativeFreTriggered">
+  <owner>alexiswu@google.com</owner>
+  <owner>ritikagup@google.com</owner>
+  <description>
+    Logged each time a Glic panel open is routed to the Android native FRE for a
+    profile that has not consented. Logged once per panel open, not on re-show
+    after a tab switch or peek. Android only. Subtract from
+    Glic.Onboarding.OptInImpression (logged for native and web FRE) to estimate
+    web FRE impressions.
+  </description>
+</action>
+
 <action name="Glic.Fre.NoThanks">
   <owner>iwells@google.com</owner>
   <owner>erikchen@chromium.org</owner>
@@ -22054,6 +22067,14 @@ should be able to be added at any place in this file.
   <description>
     User pressed 'Bookmarks' in the app menu from a NTP page. Logged in addition
     to the general metric.
+  </description>
+</action>
+
+<action name="MobileMenuAskGoogleAboutThisPage">
+  <owner>ender@google.com</owner>
+  <owner>chrome-omnibox-team@google.com</owner>
+  <description>
+    User pressed 'Ask Google about this page' in the app menu.
   </description>
 </action>
 

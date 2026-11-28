@@ -23,7 +23,6 @@
 
 class OmniboxController;
 class OmniboxPopupHost;
-class OmniboxPopupPresenterBase;
 class OmniboxResultView;
 class OmniboxSuggestionButtonRowView;
 class OmniboxPopupViewBrowserView;
@@ -42,8 +41,6 @@ class OmniboxPopupView {
  public:
   explicit OmniboxPopupView(OmniboxController* controller);
   virtual ~OmniboxPopupView();
-
-  virtual OmniboxPopupPresenterBase* presenter();
 
   // Returns the OmniboxPopupHost that shows the popup's WebUI, or null if the
   // popup has none.
@@ -118,6 +115,11 @@ class OmniboxPopupView {
   // Blurs the omnibox, collapsing the dropdown and keeping the popup open only
   // for a draft, like clicking into the page, but leaves nothing focused.
   virtual void Blur() {}
+
+  // Drops the selection saved when the omnibox was blurred, so that a newer
+  // selection made directly by the user (e.g. a click or drag in the native
+  // view, or a click into the WebUI input) wins on the next focus.
+  virtual void ClearSavedSelectionForFocusChange() {}
 
   // Called when the WebUI omnibox reports a manual blur.
   virtual void OnManualBlur() {}

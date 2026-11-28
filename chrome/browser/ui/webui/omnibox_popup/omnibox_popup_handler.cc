@@ -4,6 +4,10 @@
 
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_handler.h"
 
+#include <optional>
+#include <string>
+#include <utility>
+
 #include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/escape.h"
@@ -28,21 +32,39 @@
 #include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_web_contents_helper.h"
 #include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_user_profile.h"
+#include "components/omnibox/browser/omnibox_client.h"
 #include "components/omnibox/browser/omnibox_logging_utils.h"
 #include "components/omnibox/browser/omnibox_popup_selection.h"
+#include "components/omnibox/browser/omnibox_text_util.h"
 #include "components/omnibox/browser/suggest_template_info_mojo_utils.h"
 #include "components/search/search.h"
 #include "components/search_engines/template_url.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/child_process_security_policy.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/render_process_host.h"
+#include "content/public/browser/web_contents.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
+#include "ui/base/ime/input_method.h"
 #include "ui/base/ime/text_input_type.h"
 #include "ui/base/models/menu_model.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/color/color_provider.h"
 #include "ui/gfx/color_utils.h"
 #include "ui/views/widget/widget.h"
+#include "url/gurl.h"
+
+namespace {
+
+// Returns whether the page's input should expect URLs, like the Views omnibox.
+bool PrefersUrlInput(const ui::InputMethod* input_method) {
+  return OmniboxViewViews::GetPreferredTextInputType(input_method) ==
+         ui::TEXT_INPUT_TYPE_URL;
+}
+
+}  // namespace
 
 OmniboxPopupHandler::OmniboxPopupHandler(
     mojo::PendingReceiver<omnibox_popup::mojom::PageHandler> receiver,
@@ -299,14 +321,21 @@ void OmniboxPopupHandler::SetInputState(
         current_match.GetVectorIcon(is_bookmarked, associated_keyword_turl));
     state->current_match = std::move(mojom_match);
   }
-  // The input language is the same for all widgets.
+  // The input language is the same for all widgets, but Windows only tells the
+  // focused window's input method when it changes, and that's the popup's
+  // while the user types in it.
   views::Widget* widget = web_contents_
                               ? views::Widget::GetTopLevelWidgetForNativeView(
                                     web_contents_->GetNativeView())
                               : nullptr;
-  state->prefers_url_input = OmniboxViewViews::GetPreferredTextInputType(
-                                 widget ? widget->GetInputMethod() : nullptr) ==
-                             ui::TEXT_INPUT_TYPE_URL;
+  ui::InputMethod* input_method = widget ? widget->GetInputMethod() : nullptr;
+  if (input_method &&
+      !input_method_observation_.IsObservingSource(input_method)) {
+    input_method_observation_.Reset();
+    input_method_observation_.Observe(input_method);
+  }
+  state->prefers_url_input = PrefersUrlInput(input_method);
+  state->drag_url = GetDragUrl(permanent_display_text);
   // Extract active tab ID if in a Chrome browser window context.
   if (controller_ && controller_->client()->IsChromeOmniboxClient()) {
     auto* chrome_client =
@@ -348,6 +377,16 @@ void OmniboxPopupHandler::OnTemplateURLServiceChanged() {
 
 void OmniboxPopupHandler::OnTemplateURLServiceShuttingDown() {
   template_url_service_observation_.Reset();
+}
+
+void OmniboxPopupHandler::OnInputMethodDestroyed(
+    const ui::InputMethod* input_method) {
+  input_method_observation_.Reset();
+}
+
+void OmniboxPopupHandler::OnInputLocaleChanged() {
+  page_->SetPrefersUrlInput(
+      PrefersUrlInput(input_method_observation_.GetSource()));
 }
 
 std::string GetDefaultSearchProviderIcon(
@@ -401,12 +440,10 @@ void OmniboxPopupHandler::NotifyDefaultSearchProviderChanged() {
   auto placeholder_type = omnibox_popup::mojom::PlaceholderType::kNone;
   std::string search_engine_name;
   if (default_provider) {
-    // Use the user profile, since the popup can be in TopChromeWebUIProfile,
-    // which is shared by the windows of all profiles.
-    Profile* profile =
-        web_contents_ ? webui::GetUserProfile(web_contents_) : nullptr;
+    // Shuttle: the AI mode popup is removed.
     placeholder_type =
-        omnibox::ShouldUseAskPlaceholderText(profile, template_url_service)
+        omnibox::ShouldUseAskPlaceholderText(
+            /*is_aim_popup_enabled=*/false, template_url_service)
             ? omnibox_popup::mojom::PlaceholderType::kAskOrTypeUrl
             : omnibox_popup::mojom::PlaceholderType::kSearchOrTypeUrl;
     search_engine_name = base::UTF16ToUTF8(default_provider->short_name());
@@ -537,6 +574,11 @@ void OmniboxPopupHandler::AdvanceFocus(bool reverse) {
   }
 }
 
+void OmniboxPopupHandler::RequestAimHint(RequestAimHintCallback callback) {
+  // Shuttle: the AIM hint is removed in this fork.
+  std::move(callback).Run(std::string());
+}
+
 searchbox::mojom::UrlEmphasisPtr OmniboxPopupHandler::ComputeUrlEmphasis(
     const std::string& text) const {
   const auto* edit_model = controller_ ? controller_->edit_model() : nullptr;
@@ -546,4 +588,35 @@ searchbox::mojom::UrlEmphasisPtr OmniboxPopupHandler::ComputeUrlEmphasis(
       base::UTF8ToUTF16(text), text_is_url,
       /*include_security_style=*/!is_user_input,
       controller_ ? controller_->client() : nullptr);
+}
+
+GURL OmniboxPopupHandler::GetDragUrl(
+    const std::string& permanent_display_text) const {
+  if (!controller_ || !web_contents_ || permanent_display_text.empty()) {
+    return GURL();
+  }
+
+  // The URL that `OmniboxViewViews::OnWriteDragData()` writes for a selection
+  // of all of the unedited permanent text, whichever text the omnibox shows
+  // right now. This doesn't call `OmniboxEditModel::AdjustTextForCopy()` for
+  // it, since that requests the `AutocompleteClassifier`, which creates it if
+  // it doesn't exist yet, and this runs for every input state.
+  OmniboxClient* const client = controller_->client();
+  const GURL url = omnibox::GetUrlForCopyOfUnmodifiedText(
+      client->GetNavigationEntryURL(),
+      client->GetContextualTasksInnerFrameURL());
+  if (!url.is_valid()) {
+    return GURL();
+  }
+
+  // The page writes the URL to the drag. In a drag, the browser replaces a URL
+  // that the page's process may not request, e.g. a view-source: URL, with
+  // `content::kBlockedURL` (see `RenderWidgetHostImpl::StartDragging()`).
+  // Leave such a URL out, so that the page drags its text instead.
+  if (!content::ChildProcessSecurityPolicy::GetInstance()->CanRequestURL(
+          web_contents_->GetPrimaryMainFrame()->GetProcess()->GetDeprecatedID(),
+          url)) {
+    return GURL();
+  }
+  return url;
 }

@@ -84,6 +84,44 @@ mojom::IconType GetTypeIcon(const omnibox::SuggestTemplateInfo& proto) {
   return static_cast<mojom::IconType>(proto.type_icon());
 }
 
+std::optional<mojom::ActionIconType> GetActionIcon(
+    const omnibox::SuggestTemplateInfo& proto) {
+  if (!proto.has_action_icon()) {
+    return std::nullopt;
+  }
+  // Map the values explicitly instead of casting, so a proto value can't end up
+  // as a mojom value with a different meaning.
+  switch (proto.action_icon()) {
+    case omnibox::SuggestTemplateInfo::ACTION_ICON_TYPE_UNSPECIFIED:
+      return std::nullopt;
+    case omnibox::SuggestTemplateInfo::QUERY_BUILDING:
+      return mojom::ActionIconType::kQueryBuilding;
+    case omnibox::SuggestTemplateInfo::NAVIGATION_ARROW:
+      return mojom::ActionIconType::kNavigationArrow;
+    case omnibox::SuggestTemplateInfo::BLUE_DOT:
+      return mojom::ActionIconType::kBlueDot;
+  }
+  return std::nullopt;
+}
+
+std::optional<mojom::BadgeType> GetTypeIconBadge(
+    const omnibox::SuggestTemplateInfo& proto) {
+  using ProtoTypeIconBadge = omnibox::SuggestTemplateInfo::TypeIconBadge;
+  if (!proto.has_type_icon_badge() ||
+      !proto.type_icon_badge().has_badge_type()) {
+    return std::nullopt;
+  }
+  // Map the values explicitly instead of casting, so a proto value can't end up
+  // as a mojom value with a different meaning.
+  switch (proto.type_icon_badge().badge_type()) {
+    case ProtoTypeIconBadge::BADGE_TYPE_UNSPECIFIED:
+      return std::nullopt;
+    case ProtoTypeIconBadge::DOT:
+      return mojom::BadgeType::kDot;
+  }
+  return std::nullopt;
+}
+
 mojom::SuggestStyle GetStyle(const omnibox::SuggestTemplateInfo& proto) {
   static_assert(static_cast<int32_t>(
                     omnibox::SuggestTemplateInfo::StandardSuggestStyle_MAX) ==
@@ -115,6 +153,8 @@ mojom::SuggestTemplateInfoPtr CreateSuggestTemplateInfoFromProto(
   suggest_template->image = GetImage(proto);
   suggest_template->style = GetStyle(proto);
   suggest_template->type_icon = GetTypeIcon(proto);
+  suggest_template->action_icon = GetActionIcon(proto);
+  suggest_template->type_icon_badge = GetTypeIconBadge(proto);
   return suggest_template;
 }
 

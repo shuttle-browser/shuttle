@@ -9,11 +9,16 @@ import type {OmniboxPopupSearchboxElement} from './omnibox_popup_searchbox.js';
 export function getHtml(this: OmniboxPopupSearchboxElement) {
   return html`
 <div id="inputWrapper" @focusout="${this.onInputWrapperFocusout}"
-    @keydown="${this.onInputWrapperKeydown}">
+    @keydown="${this.onInputWrapperKeydown}"
+    @keyup="${this.onInputWrapperKeyup_}"
+    ?unbounded="${this.unboundedSupported_}"
+    @beforetoggle="${this.onInputWrapperBeforetoggle_}">
   <cr-searchbox-input id="input" exportparts="searchbox-input, mirror"
       url-emphasis-enabled ?dropdown-is-visible="${this.dropdownIsVisible}"
       ?multi-line-enabled="${this.multiLineEnabled}"
+      ?clip-selection-listbox="${this.unboundedSupported_}"
       placeholder-text="${this.computeInputPlaceholderText_()}"
+      ?aim-hint="${this.shouldShowAimHint_()}"
       searchbox-aria-description="${this.searchboxAriaDescription}"
       searchbox-icon="${this.searchboxIcon_}"
       .selectedMatch="${this.computeSelectedMatchForInput_()}"

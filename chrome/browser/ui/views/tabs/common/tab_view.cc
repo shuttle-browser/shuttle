@@ -259,29 +259,22 @@ class TabStyleViewDelegateImpl : public TabStyleViewDelegate {
   }
 
   BrowserFrameView* GetBrowserFrameView() const override {
-    const auto* controller = tab_view_->collection_node()
-                                 ? tab_view_->collection_node()->GetController()
-                                 : nullptr;
+    const auto* controller = GetController();
     return controller ? controller->GetBrowserFrameView() : nullptr;
   }
 
   BrowserWindowInterface* GetBrowserWindowInterface() const override {
-    tabs::TabInterface* tab_interface =
-        const_cast<tabs::TabInterface*>(tab_view_->GetTabInterface());
-    return tab_interface ? tab_interface->GetBrowserWindowInterface() : nullptr;
+    const auto* controller = GetController();
+    return controller ? controller->GetBrowserWindowInterface() : nullptr;
   }
 
   int GetTabCount() const override {
-    const auto* controller = tab_view_->collection_node()
-                                 ? tab_view_->collection_node()->GetController()
-                                 : nullptr;
+    const auto* controller = GetController();
     return controller ? controller->GetTabCount() : 0;
   }
 
   bool IsGlassFrame() const override {
-    const auto* controller = tab_view_->collection_node()
-                                 ? tab_view_->collection_node()->GetController()
-                                 : nullptr;
+    const auto* controller = GetController();
     return controller ? controller->IsGlassFrame() : false;
   }
 
@@ -292,13 +285,19 @@ class TabStyleViewDelegateImpl : public TabStyleViewDelegate {
   }
 
   int GetStrokeThickness() const override {
-    const auto* controller = tab_view_->collection_node()
-                                 ? tab_view_->collection_node()->GetController()
-                                 : nullptr;
+    const auto* controller = GetController();
     return controller ? controller->GetStrokeThickness() : 0;
   }
 
  private:
+  const TabStripCollectionController* GetController() const {
+    if (tab_view_->collection_node()) {
+      return tab_view_->collection_node()->GetController();
+    }
+    const TabStripView* tab_strip_view = GetTabStripView(tab_view_.get());
+    return tab_strip_view ? tab_strip_view->GetController() : nullptr;
+  }
+
   const raw_ptr<const TabView> tab_view_;
 };
 
@@ -1072,7 +1071,7 @@ void TabView::ResetCollectionNode() {
                                            HoverCardUpdateType::kTabRemoved);
   }
 
-  // Reset the active/selected/hovered states so the tab animates out without a
+  // Reset the active/selected states so the tab animates out without an active
   // background.
   active_ = false;
   selected_ = false;

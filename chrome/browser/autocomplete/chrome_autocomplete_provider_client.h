@@ -117,6 +117,8 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   bool IsSharingHubAvailable() const override;
   bool IsLensEnabled() const override;
   bool AreLensEntrypointsVisible() const override;
+  bool CanOpenCoBrowsePanelWithoutLens() const override;
+  bool CanFulfillContextualSuggestionsWithoutLens() const override;
   std::optional<bool> IsPagePaywalled() const override;
   bool IsGeminiStarterPackEnabled() const override;
   base::WeakPtr<AutocompleteProviderClient> GetWeakPtr() override;

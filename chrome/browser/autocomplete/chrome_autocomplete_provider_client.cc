@@ -94,6 +94,8 @@
 
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/jni_android.h"
+#include "chrome/browser/contextual_tasks/android/contextual_tasks_bridge.h"
+#include "chrome/browser/contextual_tasks/android/contextual_tasks_omnibox_query_helper.h"
 #include "chrome/browser/lens/jni_headers/LensSupportStatusHelper_jni.h"
 #else  // BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
@@ -507,6 +509,30 @@ bool ChromeAutocompleteProviderClient::IsLensEnabled() const {
 
 bool ChromeAutocompleteProviderClient::AreLensEntrypointsVisible() const {
   return false;
+}
+
+bool ChromeAutocompleteProviderClient::CanOpenCoBrowsePanelWithoutLens() const {
+#if BUILDFLAG(IS_ANDROID)
+  // On Desktop Android the "Ask Google about this page" action opens the
+  // Contextual Tasks side panel, so it does not depend on Lens.
+  return web_contents_getter_ &&
+         contextual_tasks::kContextualTasksEntryPointsOmnibox.Get() &&
+         contextual_tasks::ContextualTasksBridge::
+             ShouldShowAskGoogleEntryPoints(web_contents_getter_.Run());
+#else
+  return false;
+#endif  // BUILDFLAG(IS_ANDROID)
+}
+
+bool ChromeAutocompleteProviderClient::
+    CanFulfillContextualSuggestionsWithoutLens() const {
+#if BUILDFLAG(IS_ANDROID)
+  return web_contents_getter_ &&
+         contextual_tasks::ContextualTasksOmniboxQueryHelper::IsEligible(
+             web_contents_getter_.Run());
+#else
+  return false;
+#endif  // BUILDFLAG(IS_ANDROID)
 }
 
 std::optional<bool> ChromeAutocompleteProviderClient::IsPagePaywalled() const {

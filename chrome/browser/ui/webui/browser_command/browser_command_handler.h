@@ -6,6 +6,9 @@
 #define CHROME_BROWSER_UI_WEBUI_BROWSER_COMMAND_BROWSER_COMMAND_HANDLER_H_
 
 #include <memory>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"

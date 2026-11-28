@@ -70,7 +70,6 @@ class PageInfoBubbleView : public PageInfoBubbleViewBase,
   gfx::Size CalculatePreferredSize(
       const views::SizeBounds& available_size) const override;
   void OnWidgetDestroying(views::Widget* widget) override;
-  void WebContentsDestroyed() override;
   void ChildPreferredSizeChanged(views::View* child) override;
 
   void AnnouncePageOpened(std::u16string announcement);
@@ -85,8 +84,6 @@ class PageInfoBubbleView : public PageInfoBubbleViewBase,
   raw_ptr<PageSwitcherView> page_container_ = nullptr;
 
   PageInfoClosingCallback closing_callback_;
-
-  base::WeakPtrFactory<PageInfoBubbleView> weak_factory_{this};
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_PAGE_INFO_PAGE_INFO_BUBBLE_VIEW_H_

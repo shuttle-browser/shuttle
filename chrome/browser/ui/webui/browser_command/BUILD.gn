@@ -10,6 +10,10 @@ source_set("browser_command") {
     "browser_command_handler.h",
   ]
 
+  public_deps = [
+    "//ui/webui/resources/js/browser_command:mojo_bindings",
+  ]
+
   deps = [
     "//base",
     "//chrome/app:command_ids",
@@ -36,7 +40,6 @@ source_set("browser_command") {
     "//net",
     "//ui/base",
     "//ui/base/interaction",
-    "//ui/webui/resources/js/browser_command:mojo_bindings",
     "//url",
   ]
 }

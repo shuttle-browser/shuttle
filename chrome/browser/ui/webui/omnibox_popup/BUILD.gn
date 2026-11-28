@@ -53,5 +53,4 @@ if (!is_android) {
       "//chrome/browser/ui/webui/searchbox",
     ]
   }
-
 }

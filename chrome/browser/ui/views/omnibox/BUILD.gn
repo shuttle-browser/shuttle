@@ -199,6 +199,7 @@ if (is_mac) {
       "//ui/views",
     ]
   }
+
 }
 
 if (!is_chromeos_device) {

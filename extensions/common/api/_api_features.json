@@ -215,8 +215,7 @@
     "internal": true,
     "channel": "stable",
     "extension_types": ["platform_app", "extension"],
-    "contexts": "all",
-    "matches": ["<all_urls>"]
+    "contexts": ["privileged_extension"]
   },
   "fileSystem": {
     "dependencies": ["permission:fileSystem"],
@@ -349,6 +348,7 @@
       "chrome://history/*",
       "chrome://omnibox-popup.top-chrome/*",
       "chrome://oobe/*",
+      "chrome://organizer-panel.top-chrome/*",
       "chrome://os-settings/*",
       "chrome://personalization/*",
       "chrome://read-later.top-chrome/*",

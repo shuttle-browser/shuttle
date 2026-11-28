@@ -7,6 +7,7 @@ module omnibox_popup.mojom;
 import "components/omnibox/browser/searchbox.mojom";
 import "ui/gfx/geometry/mojom/geometry.mojom";
 import "ui/gfx/range/mojom/range.mojom";
+import "url/mojom/url.mojom";
 
 // How the WebUI omnibox should update its autocomplete matches for a new
 // `OmniboxInputState`.
@@ -62,6 +63,12 @@ struct OmniboxInputState {
   // Whether the input expects URLs rather than search queries. See
   // `OmniboxViewViews::GetPreferredTextInputType()`.
   bool prefers_url_input;
+  // The URL to drag, in place of the text, when all of the unedited permanent
+  // text is dragged out of the Omnibox, whether it shows
+  // `permanent_display_text` or `full_url`. Both of those are formatted for
+  // display, e.g. they omit "http://", so they can differ from the URL. Empty
+  // if there is no such URL, or the page may not drag it.
+  url.mojom.Url drag_url;
 };
 
 // Browser-side handler for the Omnibox Popup.
@@ -149,6 +156,12 @@ interface PageHandler {
 
   // Advances keyboard focus out of the WebUI popup into the browser window.
   AdvanceFocus(bool reverse);
+
+  // Returns the AIM hint (e.g. "Press tab then enter to ask AI Mode") for the
+  // empty input's placeholder and records an impression of it, or returns ""
+  // if it shouldn't be shown. The page calls this at most once per focus
+  // session.
+  RequestAimHint() => (string hint);
 };
 
 // The WebUI page for the Omnibox Popup.
@@ -162,6 +175,10 @@ interface Page {
   // Called by the browser to update the input state (e.g. input text
   // and selection range) of the WebUI Omnibox.
   SetInputState(OmniboxInputState state);
+
+  // Called by the browser when the input language changes, with whether the
+  // input should now expect URLs. See `OmniboxInputState.prefers_url_input`.
+  SetPrefersUrlInput(bool prefers_url_input);
 
   // Called by the browser when focus changes within the active tab. `query_zps`
   // indicates whether to issue a Zero-Suggest autocomplete query upon focus.
