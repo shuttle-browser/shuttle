@@ -108,6 +108,26 @@ const ca = (await a.send('Storage.getCookies')).result?.cookies ?? [];
 const cb = (await b.send('Storage.getCookies')).result?.cookies ?? [];
 check(ca.some((c) => c.name === 'smoke' && c.value === 'a'), 'Storage cookies: set/get in agent storage');
 check(!cb.some((c) => c.name === 'smoke'), 'Storage cookies: other agent does not see them');
+const recWindow = await a.send('Page.startScreenRecording', { captureArea: 'browserWindow' }, attachA.result?.sessionId);
+check(recWindow.error?.message?.includes('Shuttle'), 'startScreenRecording browserWindow rejected by the filter', recWindow.error?.message);
+const nonFlat = await a.send('Target.attachToTarget', { targetId: ta.targetId, flatten: false });
+const recWrapped = await a.send('Target.sendMessageToTarget', { sessionId: nonFlat.result?.sessionId, message: JSON.stringify({ id: 1, method: 'Page.startScreenRecording', params: { captureArea: 'browserWindow' } }) });
+check(recWrapped.error?.message?.includes('Shuttle'), 'startScreenRecording browserWindow via sendMessageToTarget rejected', recWrapped.error?.message ?? JSON.stringify(recWrapped.result));
+await a.send('Target.detachFromTarget', { sessionId: nonFlat.result?.sessionId });
+// Deeper than base::JSONReader's 200 (CDP's parser takes 300): the filter must refuse, not forward.
+const deep = JSON.parse('['.repeat(210) + '0' + ']'.repeat(210));
+// The filter can't read the id of a message it can't parse: its error has id null.
+a.ws.send(JSON.stringify({ id: 99001, method: 'Page.startScreenRecording', params: { captureArea: 'browserWindow', padding: deep }, sessionId: attachA.result?.sessionId }));
+let recDeep;
+for (let i = 0; i < 50 && !recDeep; i++) {
+  recDeep = a.events.find((m) => m.id === null || m.id === 99001);
+  if (!recDeep) await new Promise((r) => setTimeout(r, 100));
+}
+check(recDeep?.id === null && recDeep.error?.message?.includes('Shuttle'), 'startScreenRecording with over-deep params refused by the filter', JSON.stringify(recDeep)?.slice(0, 200));
+const recDeepWrapped = await a.send('Target.sendMessageToTarget', { sessionId: nonFlat.result?.sessionId, message: JSON.stringify({ id: 2, method: 'Page.startScreenRecording', params: { captureArea: 'browserWindow', padding: deep } }) });
+check(recDeepWrapped.error?.message?.includes('Shuttle'), 'over-deep wrapped command refused', recDeepWrapped.error?.message);
+const expose = await a.send('Target.exposeDevToolsProtocol', { targetId: ta.targetId });
+check(expose.error?.message?.includes('Shuttle'), 'exposeDevToolsProtocol rejected', expose.error?.message);
 const pageCookies = (await a.send('Network.getCookies', { urls: ['https://example.com/'] }, attachA.result?.sessionId)).result?.cookies ?? [];
 check(pageCookies.some((c) => c.name === 'smoke'), 'Storage cookies: the tab sees them');
 
@@ -116,6 +136,8 @@ const p = await cdp(ta.cdpUrl);
 const pTargets = (await p.send('Target.getTargets')).result?.targetInfos ?? [];
 check(!ids(pTargets).includes(tb.targetId), 'page endpoint: foreign tabs hidden', `${pTargets.length} targets`);
 check(!!(await p.send('Target.attachToTarget', { targetId: tb.targetId, flatten: true })).error, 'page endpoint: foreign attach rejected');
+const pRec = await p.send('Page.startScreenRecording', { captureArea: 'browserWindow' });
+check(pRec.error?.message?.includes('Shuttle'), 'page endpoint: startScreenRecording browserWindow rejected', pRec.error?.message);
 p.close();
 
 // Optional: Playwright.

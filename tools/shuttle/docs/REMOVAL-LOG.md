@@ -1290,3 +1290,19 @@ both title cases; a new message, so no translations yet). Sessions opened from t
   Re-review: F1 closed; F2 (P3) `shared:impl` lacked the `//chrome/browser/shuttle` dep (also for the existing menu
   model include): added. Skipping `Button::NotifyClick` on the agent path also skips its ElementTracker activation
   (no new-tab tutorial consumer; noted only).
+
+## Fork commit 65 (2026-11-28): agent sessions can't record the browser window (159)
+
+Nothing removed. Chromium 159 adds `Page.startScreenRecording` `captureArea: "browserWindow"`: it records the tab's
+top-level window (tab strip, omnibox and whichever tab is shown, possibly another agent's or the user's), on Aura
+(`DesktopMediaID::RegisterNativeWindow`) and Mac (`devtools_desktop_media_id_mac.mm`). The page handler's trust check
+doesn't stop it (session clients are trusted; flattened child sessions inherit it). `SessionCdpFilter` now answers any
+`captureArea` other than `target` with an error, on session endpoints (flattened child sessions included) and leased
+page endpoints, and inside non-flattened `Target.sendMessageToTarget` envelopes (they reach the agent host without
+passing the filter again; nested envelopes checked to depth 3, deeper refused). Messages the filter can't parse are
+refused instead of forwarded (outer: error with id null; wrapped: Shuttle error): `base::JSONReader` stops at depth 200,
+the CDP parser accepts 300 and ignores unknown params, so padding made commands pass unchecked (predates 159). `Target.exposeDevToolsProtocol` is
+refused on filtered connections: it handed the page a binding to a fresh browser-level connection outside the filter
+(all targets; predates 159). Recording the own target is unchanged, browser-wide CDP stays unrestricted. Found by
+SH-Review in the 159 merge review (F1, re-reviews F1/F2/F3, P2). `smoke-session-cdp.mjs` expects the filter's error
+for all six routes, so a platform where upstream refuses anyway can't hide a missing guard.
