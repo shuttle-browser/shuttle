@@ -166,7 +166,6 @@
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/skbitmap_operations.h"
-#include "ui/gfx/switches.h"
 #include "ui/snapshot/snapshot.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -203,7 +202,7 @@ constexpr gfx::Rect kInvalidScreenRect(std::numeric_limits<int>::max(),
 
 #if BUILDFLAG(IS_LINUX)
 // Shuttle: how long a surface snapshot waits for its ForceRedraw before it
-// copies the newest surface anyway (headless only). Normal acks take tens of
+// copies the newest surface anyway (all of Linux). Normal acks take tens of
 // ms; the first frame of a fresh background tab can take ~2.5 s.
 constexpr base::TimeDelta kSurfaceSnapshotRedrawTimeout = base::Seconds(3);
 #endif
@@ -2388,17 +2387,14 @@ void RenderWidgetHostImpl::GetSnapshotFromBrowser(
     } else {
       RequestForceRedraw(snapshot_id);
 #if BUILDFLAG(IS_LINUX)
-      // Shuttle: in headless mode on Linux, don't wait forever for the forced
-      // frame (ForceRedrawTimedOut). Elsewhere a slow renderer still gets the
-      // full wait, so a capture never returns an older frame there.
-      if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-              switches::kHeadless)) {
-        base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
-            FROM_HERE,
-            base::BindOnce(&RenderWidgetHostImpl::ForceRedrawTimedOut,
-                           weak_factory_.GetWeakPtr(), snapshot_id),
-            kSurfaceSnapshotRedrawTimeout);
-      }
+      // Shuttle: on Linux (headless, X11, Wayland), don't wait forever for the
+      // forced frame of a background tab (ForceRedrawTimedOut). The Mac keeps
+      // the full wait, so a capture there never returns an older frame.
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+          FROM_HERE,
+          base::BindOnce(&RenderWidgetHostImpl::ForceRedrawTimedOut,
+                         weak_factory_.GetWeakPtr(), snapshot_id),
+          kSurfaceSnapshotRedrawTimeout);
 #endif
     }
     return;
