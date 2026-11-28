@@ -110,10 +110,34 @@ check(ca.some((c) => c.name === 'smoke' && c.value === 'a'), 'Storage cookies: s
 check(!cb.some((c) => c.name === 'smoke'), 'Storage cookies: other agent does not see them');
 const recWindow = await a.send('Page.startScreenRecording', { captureArea: 'browserWindow' }, attachA.result?.sessionId);
 check(recWindow.error?.message?.includes('Shuttle'), 'startScreenRecording browserWindow rejected by the filter', recWindow.error?.message);
+// Own-tab recording still passes the filter (default and explicit target); stopped right away.
+for (const params of [{}, { captureArea: 'target' }]) {
+  const rec = await a.send('Page.startScreenRecording', params, attachA.result?.sessionId);
+  check(!rec.error?.message?.includes('Shuttle'), `startScreenRecording ${params.captureArea ?? 'default'} passes the filter`, rec.error?.message ?? 'started');
+  if (!rec.error) await a.send('Page.stopScreenRecording', {}, attachA.result?.sessionId);
+}
 const nonFlat = await a.send('Target.attachToTarget', { targetId: ta.targetId, flatten: false });
+check(!!nonFlat.result?.sessionId, 'non-flattened attach to own tab', nonFlat.error?.message);
+const wrap = (message, layers) => {
+  let m = message;
+  for (let i = 0; i < layers; i++) m = { id: 100 + i, method: 'Target.sendMessageToTarget', params: { sessionId: 'nested', message: JSON.stringify(m) } };
+  return m;
+};
+const benign = { id: 3, method: 'Runtime.evaluate', params: { expression: '6*7', returnByValue: true } };
+const okWrapped = await a.send('Target.sendMessageToTarget', { sessionId: nonFlat.result?.sessionId, message: JSON.stringify(benign) });
+let inner;
+for (let i = 0; i < 30 && !inner; i++) {
+  inner = a.events.find((m) => m.method === 'Target.receivedMessageFromTarget' && m.params?.message?.includes('"id":3'));
+  if (!inner) await new Promise((r) => setTimeout(r, 100));
+}
+check(!okWrapped.error && JSON.parse(inner?.params?.message ?? '{}').result?.result?.value === 42, 'benign wrapped command answered by the tab', okWrapped.error?.message ?? inner?.params?.message?.slice(0, 120));
+// Envelope nesting: 3 sendMessageToTarget layers in total are inspected and passed on, 4 are refused.
+const nest3 = await a.send('Target.sendMessageToTarget', { sessionId: nonFlat.result?.sessionId, message: JSON.stringify(wrap(benign, 2)) });
+check(!nest3.error?.message?.includes('Shuttle'), 'nested envelopes under the cap pass the filter', nest3.error?.message ?? 'forwarded');
+const nest4 = await a.send('Target.sendMessageToTarget', { sessionId: nonFlat.result?.sessionId, message: JSON.stringify(wrap(benign, 3)) });
+check(nest4.error?.message?.includes('Shuttle'), 'nested envelopes over the cap refused', nest4.error?.message);
 const recWrapped = await a.send('Target.sendMessageToTarget', { sessionId: nonFlat.result?.sessionId, message: JSON.stringify({ id: 1, method: 'Page.startScreenRecording', params: { captureArea: 'browserWindow' } }) });
 check(recWrapped.error?.message?.includes('Shuttle'), 'startScreenRecording browserWindow via sendMessageToTarget rejected', recWrapped.error?.message ?? JSON.stringify(recWrapped.result));
-await a.send('Target.detachFromTarget', { sessionId: nonFlat.result?.sessionId });
 // Deeper than base::JSONReader's 200 (CDP's parser takes 300): the filter must refuse, not forward.
 const deep = JSON.parse('['.repeat(210) + '0' + ']'.repeat(210));
 // The filter can't read the id of a message it can't parse: its error has id null.
@@ -126,6 +150,7 @@ for (let i = 0; i < 50 && !recDeep; i++) {
 check(recDeep?.id === null && recDeep.error?.message?.includes('Shuttle'), 'startScreenRecording with over-deep params refused by the filter', JSON.stringify(recDeep)?.slice(0, 200));
 const recDeepWrapped = await a.send('Target.sendMessageToTarget', { sessionId: nonFlat.result?.sessionId, message: JSON.stringify({ id: 2, method: 'Page.startScreenRecording', params: { captureArea: 'browserWindow', padding: deep } }) });
 check(recDeepWrapped.error?.message?.includes('Shuttle'), 'over-deep wrapped command refused', recDeepWrapped.error?.message);
+await a.send('Target.detachFromTarget', { sessionId: nonFlat.result?.sessionId });
 const expose = await a.send('Target.exposeDevToolsProtocol', { targetId: ta.targetId });
 check(expose.error?.message?.includes('Shuttle'), 'exposeDevToolsProtocol rejected', expose.error?.message);
 const pageCookies = (await a.send('Network.getCookies', { urls: ['https://example.com/'] }, attachA.result?.sessionId)).result?.cookies ?? [];
