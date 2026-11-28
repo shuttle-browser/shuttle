@@ -1306,3 +1306,12 @@ refused on filtered connections: it handed the page a binding to a fresh browser
 (all targets; predates 159). Recording the own target is unchanged, browser-wide CDP stays unrestricted. Found by
 SH-Review in the 159 merge review (F1, re-reviews F1/F2/F3, P2). `smoke-session-cdp.mjs` expects the filter's error
 for all six routes, so a platform where upstream refuses anyway can't hide a missing guard.
+
+## Fork commit 66 (2026-11-28): screenshot fallback on all of Linux (X11, Wayland)
+
+Nothing removed. Fork 61's 3 s ForceRedraw fallback was gated to `--headless` (SH-Review P2, 2026-11-10: a renderer
+slower than 3 s to paint can get the previous frame). The first X11 run of `smoke-page-tools` (159, WSLg, SH-MagWin)
+hung on a full-page capture of a session tab; the raw repro without agent-browser hangs on X11 too (`164 62 64 66 66
+3421 HANG 52` ms), so headed Linux had the same hang (not new in 159: no build had the fallback on X11). Toby
+(2026-11-28): fallback on all of Linux, accepting a rare previous frame over a 20-30 s client timeout. `#if
+BUILDFLAG(IS_LINUX)` only; the Mac keeps the upstream wait. `ui/gfx/switches.h` include dropped (only kHeadless used it).
