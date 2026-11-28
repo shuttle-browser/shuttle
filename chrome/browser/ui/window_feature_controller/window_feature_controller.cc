@@ -7,7 +7,10 @@
 #include "base/check.h"
 #include "base/check_deref.h"
 #include "build/build_config.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/fullscreen/browser_window_fullscreen_controller.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 
 DEFINE_USER_DATA(WindowFeatureController);
 
@@ -128,6 +131,24 @@ bool WindowFeatureController::FloatingBrowserSupportsWindowFeature(
 bool WindowFeatureController::SupportsWindowFeatureImpl(
     WindowFeature feature,
     bool check_can_support) const {
+  // Agent app windows and trusted popups must keep their identity visible.
+  if (feature == WindowFeature::kFeatureLocationBar &&
+      (browser_type_ == BrowserWindowInterface::Type::TYPE_POPUP ||
+       browser_type_ == BrowserWindowInterface::Type::TYPE_APP ||
+       browser_type_ == BrowserWindowInterface::Type::TYPE_APP_POPUP)) {
+    for (auto* browser : GetAllBrowserWindowInterfaces()) {
+      if (From(browser) != this) {
+        continue;
+      }
+      auto* service = shuttle::ShuttleService::Get(browser->GetProfile());
+      auto* tab_strip = browser->GetTabStripModel();
+      if (service && tab_strip &&
+          service->IdentityOfTab(tab_strip->GetActiveWebContents())) {
+        return check_can_support || !IsFullscreen();
+      }
+      break;
+    }
+  }
   switch (browser_type_) {
     case BrowserWindowInterface::Type::TYPE_NORMAL:
       return NormalBrowserSupportsWindowFeature(feature, check_can_support);

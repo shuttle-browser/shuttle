@@ -6812,6 +6812,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
           New Tab
         </message>
       </if>
+      <message name="IDS_SHUTTLE_AGENT_CHIP_ACCESSIBLE_NAME" desc="Accessible name of the read-only chip in a popup or app window's location bar that shows which agent's storage the page uses. $1 is the agent's name.">
+        Agent: <ph name="AGENT_NAME">$1<ex>Research</ex></ph>
+      </message>
 
 
 

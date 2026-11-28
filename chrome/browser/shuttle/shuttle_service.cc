@@ -31,6 +31,8 @@
 #include "chrome/browser/shuttle/session_manager.h"
 #include "chrome/browser/shuttle/shuttle_service_factory.h"
 #include "chrome/browser/shuttle/switches.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 
 namespace shuttle {
@@ -431,6 +433,16 @@ std::string ShuttleService::AgentOfTab(
     content::WebContents* contents) const {
   // A window with no active tab (closing) passes null.
   return contents ? sessions_->AgentOf(contents) : std::string();
+}
+
+std::optional<ProfileRegistry::Entry> ShuttleService::IdentityOfTab(
+    content::WebContents* contents) const {
+  if (!contents) {
+    return std::nullopt;
+  }
+  const auto& config =
+      contents->GetPrimaryMainFrame()->GetStoragePartition()->GetConfig();
+  return profiles_->Get(ProfileRegistry::IdForConfig(config));
 }
 
 std::string ShuttleService::AgentOfGroup(

@@ -1315,3 +1315,54 @@ hung on a full-page capture of a session tab; the raw repro without agent-browse
 3421 HANG 52` ms), so headed Linux had the same hang (not new in 159: no build had the fallback on X11). Toby
 (2026-11-28): fallback on all of Linux, accepting a rare previous frame over a 20-30 s client timeout. `#if
 BUILDFLAG(IS_LINUX)` only; the Mac keeps the upstream wait. `ui/gfx/switches.h` include dropped (only kHeadless used it).
+
+## Fork commit 67 (2026-11-28): agent tabs moved into popup windows keep their storage
+
+Jeremiah Church's PR #42 (author; written on 158, applied on 159).
+
+`SessionManager` records the containing browser in `TabLocation`. Moving a leased tab into a popup or app window
+no longer triggers `TakeBackTab` just because that window has no visible tab group. The original WebContents,
+agent session and storage partition survive the move. Popup and app windows do not receive invisible tab groups.
+Explicit ungrouping in a normal tabbed window still takes the tab back into ordinary profile storage.
+
+Regression probe: `scripts/check-popup-cookies.mjs` uses its own browser, profile, debugging port, neutral loopback
+pages and the small `test-data/popup-extension` fixture. It checks cookie isolation, target/session preservation,
+a child popup's first request, explicit ungrouping and session cleanup. It requires no accounts or sign-in.
+
+## Fork commit 68 (2026-11-28): agent identity in popup and app windows
+
+Jeremiah Church's PR #43 (author; written on 158, applied on 159). Toby (2026-11-28): the location bar in agent app
+windows is wanted (only when the active tab is in agent storage).
+
+`ShuttleService::IdentityOfTab` reads the actual storage partition and resolves its name and color through the
+existing `ProfileRegistry`. `LocationBarView` draws a read-only label in popup chrome. `WindowFeatureController`
+keeps the location row visible for agent app windows. `WindowMetadataController` appends the agent name to the
+native window title. `SessionManager::RefreshGroups` refreshes open windows when an agent is renamed or recolored.
+
+The label follows the cookie partition even when a popup has no session lease. Ordinary profile windows keep their
+current appearance. This change adds no credential-manager settings, extension grants or navigation hooks.
+The Linux/X11 `check-popup-agent-label.mjs` probe checks native chrome on neutral local pages.
+- Applied on 159 (SH-Lead): conflicts in `LocationBarView` (159 removed the `tab_features.h` include; the chip refresh
+  sits after 159's new early return in `Update`). BUILD deps for the new includes (gn check).
+- SH-Review (2026-11-28), fixed here; F1 belongs to fork 67's logic, folded into this commit because both forks
+  touch the same `session_manager.cc` lines and ship together:
+  - F1 (P2): a tab moved popup → normal window stayed ungrouped (fork 67 ended `TakeBackIfUngrouped` for popups and
+    nothing regrouped it). `SessionManager` now observes popup/app tab strips holding leased tabs and regroups a
+    leased tab that leaves one for another window (`kInsertedIntoOtherTabStrip`); normal-window moves keep their
+    ungroup/take-back semantics. `check-popup-cookies.mjs` checks the round trip.
+  - F2 (P2): `check-popup-agent-label.mjs` reused `<dir>/profile` and a released port; it now uses a fresh
+    `mkdtemp` profile, `--remote-debugging-port=0` and `DevToolsActivePort`, and deletes only that profile.
+  - F3 (P2): a user-set window title stays exactly as set (the agent suffix only decorates page titles).
+  - F4 (P3): the agent suffix no longer bypasses the platform title rules (Mac: no " - Shuttle").
+  - Also: the chip's accessible name is localized (`IDS_SHUTTLE_AGENT_CHIP_ACCESSIBLE_NAME`, outside the title-case
+    blocks), and `RefreshGroups` skips browsers without a window yet.
+  - Toby (2026-11-28, hand test on Mac): the chip sits at the right edge of the location bar (outermost trailing
+    decoration, at most 160 px, never collapsed), so the origin and security indicator keep the leading edge.
+  - Noted, not changed: `SupportsWindowFeatureImpl` finds its browser by scanning all windows (only for popup/app
+    windows and the location bar); popup leases, like all leases, don't survive a browser restart.
+
+## Fork commit 69 (2026-11-28): chrome://agents toolbar spacing
+
+Nothing removed. Toby (2026-11-28): on smaller windows "New agent" touched the sort select (the centered search and
+sort fill the toolbar up to the buttons). `#create` gets 12 px and the compact `#createCompact` 8 px leading margin;
+measured headless at 540-1100 px widths: the gap is 12 px (8 px with the compact icon) at every width.

@@ -169,6 +169,12 @@ cr-toolbar[narrow][showing-search_] #sort {
   padding: 12px var(--cr-section-padding);
 }
 
+/* Keeps New agent clear of the sort select when the centered search and sort
+   fill the toolbar up to the buttons (mid-width windows). */
+#create {
+  margin-inline-start: 12px;
+}
+
 #help {
   margin-inline-start: 8px;
 }
@@ -177,6 +183,7 @@ cr-toolbar[narrow][showing-search_] #sort {
    so the toolbar fits on one line. */
 #createCompact {
   display: none;
+  margin-inline-start: 8px;
 }
 
 @media (max-width: 560px) {

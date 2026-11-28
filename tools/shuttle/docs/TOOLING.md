@@ -572,6 +572,17 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 
 ## Gotchas
 
+- **New `generated_resources.grd` strings go outside the title-case blocks.** Messages between
+  `<if expr="not use_titlecase">` and its `use_titlecase` twin exist only on one side (Mac uses title case): a string
+  added next to `IDS_NEW_TAB_IN_ANOTHER_AGENT` compiled on Linux and failed on Mac with an undeclared `IDS_`. Any grd
+  change regenerates `generated_resources.h`, so expect a large incremental rebuild (~1,100 steps on the Mac, fork 68).
+- **Fork code that includes `chrome/browser/shuttle/` from upstream UI targets needs the BUILD dep** (fork 64 and 68:
+  `//chrome/browser/shuttle` in the UI target's `deps`). The build passes through transitive deps; only
+  `gn check out/<dir> '//chrome/browser/shuttle/*' '<touched targets>/*'` shows it. The `shuttle_service.h` →
+  `profile_registry.h` error (`:shuttle` vs `:impl`) predates 159 and is known.
+- **Test extensions with a manifest `key`** (to pin the extension ID): the key is a public key, but gitleaks flags it
+  as `generic-api-key`. It is allowlisted per file in `.claude/gatekeeper.json` and `.gitleaksignore` (popup-extension,
+  forks 67/68); a new fixture needs its own entries.
 - **WebUI icons: the fork's `cr:` iconset is pruned** (`ui/webui/resources/cr_elements/icons.html.ts`): no
   `cr:help-outline`, `cr:expand-more/less`; an unknown icon renders as nothing, no error. List the ids with
   `grep -o 'id="[a-z0-9-]*"' ui/webui/resources/cr_elements/icons.html.ts`. For Settings-style rows use the CSS icon
@@ -871,6 +882,11 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   (64 per page, `nextCursor` "64", "128"; 156 tools): follow the cursor, or tools look missing.
 - **zsh in the Bash tool:** `$VAR` holding several words does **not** split (`scripts/x.sh $FILES` passes one
   argument). Pass arguments literally or use `${=VAR}`.
+- **Popup cookie regression:** `node scripts/check-popup-cookies.mjs <binary> <evidence-dir>` launches its own
+  temporary profile and debugging port. It loads `test-data/popup-extension` and serves only neutral loopback pages.
+  It checks extension-created app popups, child popups, session ownership and explicit ungrouping in a normal window.
+  It runs headless by default. For native window checks use a dedicated X11 display, with both `DISPLAY` and
+  `SHUTTLE_POPUP_TEST_DISPLAY` set to that display. Never point it at an existing profile or browser.
 - **Probes share a profile:** each uses its own agent id prefix (`smoke-`, `smoke-sc-`, `smoke-agents-`,
   `smoke-focus-`, `smoke-net`) and deletes its agents/sessions/tabs at exit, even on failure; only smoke-mcp
   `--phase1` leaves `smoke-persist` for `--phase2`.
@@ -1051,3 +1067,12 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 - **Window footage on macOS without input:** get the window id via `CGWindowListCopyWindowInfo` (owner "Shuttle", layer 0),
   then `screencapture -x -o -l<id> shot.png` or `screencapture -v -V <seconds> -l<id> clip.mov`; drive the page with MCP
   page tools / CDP (never keystrokes).
+
+### Popup identity probe
+
+On Linux, `DISPLAY=<dedicated-display> SHUTTLE_POPUP_TEST_DISPLAY=<dedicated-display>` with
+`node scripts/check-popup-agent-label.mjs <binary> patched <evidence-dir>` checks native popup titles and captures
+browser chrome through `scripts/lib/popup-window.py` (Python 3 and libX11). It launches its own browser and profile,
+uses `test-data/popup-extension`, and serves only neutral loopback pages. Checks cover ordinary and agent popups,
+app popups, redirects, nested popups, narrow windows, live name/color edits and page titles. The `baseline` mode
+records the appearance before the label change; cookie-preservation assertions still fail before the cookie fix.
