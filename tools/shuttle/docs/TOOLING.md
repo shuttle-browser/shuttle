@@ -572,6 +572,17 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
 
 ## Gotchas
 
+- **New `generated_resources.grd` strings go outside the title-case blocks.** Messages between
+  `<if expr="not use_titlecase">` and its `use_titlecase` twin exist only on one side (Mac uses title case): a string
+  added next to `IDS_NEW_TAB_IN_ANOTHER_AGENT` compiled on Linux and failed on Mac with an undeclared `IDS_`. Any grd
+  change regenerates `generated_resources.h`, so expect a large incremental rebuild (~1,100 steps on the Mac, fork 68).
+- **Fork code that includes `chrome/browser/shuttle/` from upstream UI targets needs the BUILD dep** (fork 64 and 68:
+  `//chrome/browser/shuttle` in the UI target's `deps`). The build passes through transitive deps; only
+  `gn check out/<dir> '//chrome/browser/shuttle/*' '<touched targets>/*'` shows it. The `shuttle_service.h` →
+  `profile_registry.h` error (`:shuttle` vs `:impl`) predates 159 and is known.
+- **Test extensions with a manifest `key`** (to pin the extension ID): the key is a public key, but gitleaks flags it
+  as `generic-api-key`. It is allowlisted per file in `.claude/gatekeeper.json` and `.gitleaksignore` (popup-extension,
+  forks 67/68); a new fixture needs its own entries.
 - **WebUI icons: the fork's `cr:` iconset is pruned** (`ui/webui/resources/cr_elements/icons.html.ts`): no
   `cr:help-outline`, `cr:expand-more/less`; an unknown icon renders as nothing, no error. List the ids with
   `grep -o 'id="[a-z0-9-]*"' ui/webui/resources/cr_elements/icons.html.ts`. For Settings-style rows use the CSS icon
