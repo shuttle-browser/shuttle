@@ -6,10 +6,6 @@
  * @fileoverview This file provides a singleton class that exposes the Mojo
  * handler interface used for bidirectional communication between the
  * <cr-searchbox> or the <cr-searchbox-dropdown> and the browser.
- *
- * Testing helpers are located here to prevent duplication across various
- * WebUI test suites (e.g., New Tab Page, Omnibox Popup, Lens) that share
- * these Mojo-based searchbox types.
  */
 
 import type {Action, AutocompleteMatch, AutocompleteResult, InputKeywordModel, MatchKeywordModel, PageHandlerInterface} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
@@ -63,6 +59,8 @@ export function createSuggestTemplateInfo(
     image: null,
     style: SuggestStyle.kUnspecified,
     typeIcon: IconType.kIconTypeUnspecified,
+    actionIcon: null,
+    typeIconBadge: null,
   };
 
   return Object.assign(base, modifiers);

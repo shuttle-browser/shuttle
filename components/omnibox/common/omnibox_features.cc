@@ -532,6 +532,11 @@ BASE_FEATURE(kUrlBarWithoutLigatures, ENABLED);
 // the omnibox instead (b/514550853).
 BASE_FEATURE(kUrlBarNoHandwritingBoundsAbove, ENABLED);
 
+// When enabled, the UrlBar switches IME input type between URL entry
+// (TYPE_TEXT_VARIATION_URI) for conventional requests and natural text
+// composition for AI Mode requests, restarting input on transitions.
+BASE_FEATURE(kOmniboxUrlBarAimNaturalTextIme, DISABLED);
+
 // If enabled, Java-cached ZPS will be served.
 // The cached ZPS made sense on sub-4GB Android Go devices
 BASE_FEATURE(kServeJavaCachedZeroSuggest, ENABLED);
@@ -579,6 +584,7 @@ static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
       &kRichAutocompletion,
       &kUrlBarWithoutLigatures,
       &kUrlBarNoHandwritingBoundsAbove,
+      &kOmniboxUrlBarAimNaturalTextIme,
       &kPostDelayedTaskFocusTab,
       &kOmniboxMobileParityUpdateV2,
       &kOmniboxXGeoFailClosedOnPreciseLeak,

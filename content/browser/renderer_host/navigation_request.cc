@@ -113,6 +113,7 @@
 #include "content/browser/service_worker/service_worker_context_core.h"
 #include "content/browser/service_worker/service_worker_context_wrapper.h"
 #include "content/browser/service_worker/service_worker_main_resource_handle.h"
+#include "content/browser/service_worker/service_worker_security_utils.h"
 #include "content/browser/site_info.h"
 #include "content/browser/site_instance_impl.h"
 #include "content/browser/storage_partition_impl.h"
@@ -247,6 +248,7 @@
 #include "ui/compositor/compositor_lock.h"
 #include "url/origin.h"
 #include "url/url_constants.h"
+#include "url/url_util.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "content/browser/renderer_host/navigation_transitions/navigation_entry_screenshot_cache.h"
@@ -924,6 +926,27 @@ ukm::SourceId GetPageUkmSourceId(FrameTreeNode* frame_tree_node) {
 bool IsMhtmlMimeType(const std::string& mime_type) {
   return base::EqualsCaseInsensitiveASCII(mime_type, "multipart/related") ||
          base::EqualsCaseInsensitiveASCII(mime_type, "message/rfc822");
+}
+
+// Returns whether an MHTML archive may be loaded from `url`. This matches the
+// schemes allowed by blink::MHTMLArchive::CanLoadArchive(): the schemes in
+// url::GetLocalSchemes() (file: plus embedder-registered ones, such as
+// externalfile: on ChromeOS), http(s), and content: on Android.
+// TODO(crbug.com/587464221): Share this with
+// blink::MHTMLArchive::CanLoadArchive().
+bool CanLoadMhtmlArchiveFromURL(const GURL& url) {
+  if (std::ranges::contains(url::GetLocalSchemes(), url.scheme())) {
+    return true;
+  }
+  if (url.SchemeIsHTTPOrHTTPS()) {
+    return true;
+  }
+#if BUILDFLAG(IS_ANDROID)
+  if (url.SchemeIs(url::kContentScheme)) {
+    return true;
+  }
+#endif  // BUILDFLAG(IS_ANDROID)
+  return false;
 }
 
 std::optional<base::SafeRef<RenderFrameHostImpl>>
@@ -1901,6 +1924,28 @@ NavigationRequest::NavigationRequest(
       is_opener_navigation_ =
           (initiator_rfh->frame_tree_node()->opener() == frame_tree_node_);
     }
+  }
+
+  // Disclose the full URL in COEP reports only if it was requested by a
+  // document same-origin with the parent, which therefore already knows it.
+  // Only a new renderer-initiated navigation gets its URL from the initiator.
+  // Others (history, reload, restore...) get it from session history.
+  //
+  // Best effort: this may miss some navigations whose URL did come from a
+  // same-origin initiator. That's fine, they only get a less detailed report.
+  // What must not happen is disclosing a URL the parent didn't know.
+  RenderFrameHostImpl* parent = GetParentFrameOrOuterDocument();
+  RenderFrameHostImpl* initiator = GetInitiatorDocumentRenderFrameHost();
+  if (!browser_initiated &&
+      common_params_->navigation_type ==
+          blink::mojom::NavigationType::DIFFERENT_DOCUMENT &&
+      !common_params_->is_history_navigation_in_new_child_frame && parent &&
+      initiator &&
+      initiator->GetLastCommittedOrigin().IsSameOriginWith(
+          parent->GetLastCommittedOrigin())) {
+    coep_report_url_ = original_url_;
+  } else {
+    coep_report_url_ = original_url_.DeprecatedGetOriginAsURL();
   }
 
   ComputeDownloadPolicy();
@@ -3197,7 +3242,7 @@ void NavigationRequest::BeginNavigationImpl() {
       // [spec]: https://html.spec.whatwg.org/C/#process-a-navigate-response
       // 4. if [...] the result of checking a navigation response's adherence to
       // its embedder policy [...], then set failure to true.
-      if (!CheckResponseAdherenceToCoep(common_params_->url)) {
+      if (!CheckResponseAdherenceToCoep()) {
         OnRequestFailedInternal(network::URLLoaderCompletionStatus(
                                     network::mojom::BlockedByResponseReason::
                                         kCoepFrameResourceNeedsCoepHeader),
@@ -3757,6 +3802,21 @@ NavigationRequest::CreatePolicyContainerForBlink() {
 
   return policy_container_builder_->CreatePolicyContainerForBlink();
 }
+
+base::WeakPtr<ServiceWorkerClient>
+NavigationRequest::GetCommittedServiceWorkerClient() const {
+  if (DidEncounterError() || !service_worker_handle_) {
+    return nullptr;
+  }
+  base::WeakPtr<ServiceWorkerClient> service_worker_client =
+      service_worker_handle_->service_worker_client();
+  if (!service_worker_client ||
+      !service_worker_client->is_response_committed()) {
+    return nullptr;
+  }
+  return service_worker_client;
+}
+
 scoped_refptr<PolicyContainerHost> NavigationRequest::GetPolicyContainerHost() {
   CHECK_GE(state_, READY_TO_COMMIT);
   // It is invalid calling this method after `TakePolicyContainerHost()`.
@@ -5307,7 +5367,9 @@ void NavigationRequest::OnResponseStarted(
   RecordAddressSpaceFeature();
 
   const bool is_mhtml_archive = IsMhtmlMimeType(response_head_->mime_type);
-  if (is_mhtml_archive) {
+  const bool can_load_mhtml_archive =
+      is_mhtml_archive && CanLoadMhtmlArchiveFromURL(GetURL());
+  if (can_load_mhtml_archive) {
     is_mhtml_or_subframe_ = true;
   }
 
@@ -5491,6 +5553,24 @@ void NavigationRequest::OnResponseStarted(
     return;
   }
 
+  // MHTML archives may only be rendered from the schemes that Blink can load
+  // them from. Subframes of an MHTML document are loaded from the archive and
+  // get special treatment in the browser (e.g., they stay in the main frame's
+  // SiteInstance), so the browser must not treat a document from any other
+  // scheme as MHTML. download_utils::MustDownload() usually turns such
+  // responses into downloads, and then we've already returned above because
+  // `response_should_be_rendered_` is false. But it doesn't cover all of them
+  // (e.g., responses without HttpResponseHeaders), so check this here too.
+  if (is_mhtml_archive && !can_load_mhtml_archive) {
+    OnRequestFailedInternal(
+        network::URLLoaderCompletionStatus(net::ERR_BLOCKED_BY_RESPONSE),
+        false /* skip_throttles */, std::nullopt /* error_page_content */,
+        false /* collapse_frame */);
+    // DO NOT ADD CODE after this. The previous call to
+    // OnRequestFailedInternal has destroyed the NavigationRequest.
+    return;
+  }
+
   const std::optional<network::mojom::BlockedByResponseReason>
       coep_requires_blocking = EnforceCOEP();
   if (coep_requires_blocking) {
@@ -5532,7 +5612,7 @@ void NavigationRequest::OnResponseStarted(
   // [spec]: https://html.spec.whatwg.org/C/#process-a-navigate-response
   // 4. if [...] the result of checking a navigation response's adherence to its
   // embedder policy [...], then set failure to true.
-  if (!CheckResponseAdherenceToCoep(url)) {
+  if (!CheckResponseAdherenceToCoep()) {
     OnRequestFailedInternal(network::URLLoaderCompletionStatus(
                                 network::mojom::BlockedByResponseReason::
                                     kCoepFrameResourceNeedsCoepHeader),
@@ -7160,6 +7240,12 @@ void NavigationRequest::InheritServiceWorkerControllerFromParentIfNeeded() {
   base::WeakPtr<ServiceWorkerClient> parent_service_worker_client =
       parent->GetLastCommittedServiceWorkerClient();
   if (!parent_service_worker_client) {
+    return;
+  }
+  if (!service_worker_security_utils::
+          AreOriginsCompatibleForServiceWorkerClient(
+              parent->GetLastCommittedOrigin(),
+              parent_service_worker_client->key().origin())) {
     return;
   }
 
@@ -9845,11 +9931,11 @@ void NavigationRequest::DidCommitNavigation(
     frame_tree_node()->SetCollapsed(false);
   }
 
-  if (service_worker_handle_ &&
-      service_worker_handle_->service_worker_client()) {
+  if (base::WeakPtr<ServiceWorkerClient> service_worker_client =
+          GetCommittedServiceWorkerClient()) {
     // Notify the service worker navigation handle that the navigation finished
     // committing.
-    service_worker_handle_->service_worker_client()->OnEndNavigationCommit();
+    service_worker_client->OnEndNavigationCommit();
   }
 
   // TODO(crbug.com/40249865): consider using NavigationOrDocumentHandle
@@ -11525,7 +11611,7 @@ NavigationRequest::ComputeIntegrityPolicies() {
 //
 // Return whether the child's |coep| is compatible with its parent's COEP. It
 // also sends COEP reports if needed.
-bool NavigationRequest::CheckResponseAdherenceToCoep(const GURL& url) {
+bool NavigationRequest::CheckResponseAdherenceToCoep() {
   const auto& coep =
       policy_container_builder_->FinalPolicies().cross_origin_embedder_policy;
 
@@ -11549,7 +11635,7 @@ bool NavigationRequest::CheckResponseAdherenceToCoep(const GURL& url) {
   if (CoepBlockIframe(parent_coep.report_only_value, coep.value,
                       is_credentialless())) {
     if (parent_coep_reporter) {
-      parent_coep_reporter->QueueNavigationReport(redirect_chain_[0],
+      parent_coep_reporter->QueueNavigationReport(coep_report_url_,
                                                   /*report_only=*/true);
     }
   }
@@ -11565,7 +11651,7 @@ bool NavigationRequest::CheckResponseAdherenceToCoep(const GURL& url) {
   // response, "navigation", parentPolicy's reporting endpoint, "enforce", and
   // target's container document's relevant settings object.
   if (parent_coep_reporter) {
-    parent_coep_reporter->QueueNavigationReport(redirect_chain_[0],
+    parent_coep_reporter->QueueNavigationReport(coep_report_url_,
                                                 /*report_only=*/false);
   }
 
@@ -11594,7 +11680,7 @@ NavigationRequest::EnforceCOEP() {
     return std::nullopt;
   }
   return network::CrossOriginResourcePolicy::IsNavigationBlocked(
-      url, redirect_chain_[0], parent_frame->GetLastCommittedOrigin(),
+      url, coep_report_url_, parent_frame->GetLastCommittedOrigin(),
       *response_head_, request_destination(),
       parent_frame->cross_origin_embedder_policy(),
       parent_frame->coep_reporter());

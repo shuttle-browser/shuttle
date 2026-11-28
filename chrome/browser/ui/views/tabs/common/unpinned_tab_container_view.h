@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "base/callback_list.h"
+#include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
 #include "chrome/browser/ui/animation/browser_animation_types.h"
 #include "chrome/browser/ui/views/frame/browser_root_view.h"
@@ -91,6 +92,14 @@ class UnpinnedTabContainerView
   // ignoring any active tab closing mode override.
   int GetUnconstrainedPreferredWidth() const;
 
+  // Runs `callback` when horizontal paint is scheduled in the leading overlap.
+  base::CallbackListSubscription RegisterLeadingEdgePaintScheduledCallback(
+      base::RepeatingClosure callback);
+
+ protected:
+  // views::View:
+  void OnDidSchedulePaint(const gfx::Rect& rect) override;
+
  private:
   friend class UnpinnedTabContainerViewHorizontalLayout;
 
@@ -124,6 +133,7 @@ class UnpinnedTabContainerView
 
   base::CallbackListSubscription node_destroyed_subscription_;
   base::CallbackListSubscription focus_animation_subscription_;
+  base::RepeatingClosureList leading_edge_paint_scheduled_callbacks_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_TABS_COMMON_UNPINNED_TAB_CONTAINER_VIEW_H_

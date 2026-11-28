@@ -135,6 +135,7 @@ void BrowserCommandHandler::CanExecuteCommand(
       can_execute = false;
       break;
     case Command::kOpenGlic:
+    case Command::kOpenGlicForQuizzes:
     case Command::kOpenGlicSettings:
       can_execute = false;
       break;
@@ -227,6 +228,7 @@ void BrowserCommandHandler::HandleCommandWithDisposition(
       // Not executable; see CanExecuteCommand().
       break;
     case Command::kOpenGlic:
+    case Command::kOpenGlicForQuizzes:
     case Command::kOpenGlicSettings:
       // Glic was removed.
       break;

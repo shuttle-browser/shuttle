@@ -18,6 +18,7 @@
 class HorizontalTabStripOverflowIndicatorView;
 class PrefService;
 class TabCollectionNode;
+class TabStripCollectionController;
 class PinnedTabContainerView;
 class UnpinnedTabContainerView;
 class TabScrollButtonContainer;
@@ -45,6 +46,8 @@ class TabStripView final : public views::View,
   TabStripView(const TabStripView&) = delete;
   TabStripView& operator=(const TabStripView&) = delete;
   ~TabStripView() override;
+
+  const TabStripCollectionController* GetController() const;
 
   views::Separator* GetTabsSeparator() const { return tabs_separator_; }
 
@@ -171,6 +174,7 @@ class TabStripView final : public views::View,
   void OnScrollButtonsVisibilityChanged();
   bool ShouldHideSeparators() const;
   void UpdateSeparatorVisibility();
+  void SchedulePaintPinnedTrailingSeparator();
 
   PrefService* GetPrefs() const;
 
@@ -214,6 +218,8 @@ class TabStripView final : public views::View,
       unpinned_tab_scrollable_state_recorder_;
 
   base::CallbackListSubscription node_destroyed_subscription_;
+  base::CallbackListSubscription
+      unpinned_leading_edge_paint_scheduled_subscription_;
   std::vector<base::CallbackListSubscription> callback_subscriptions_;
 
   base::ScopedObservation<views::Widget, views::WidgetObserver>

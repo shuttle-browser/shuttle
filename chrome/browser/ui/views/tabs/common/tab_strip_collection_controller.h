@@ -25,6 +25,7 @@
 class BrowserAnimationController;
 class BrowserFrameView;
 class BrowserView;
+class BrowserWindowInterface;
 class ExpandOnHoverLock;
 class HorizontalTabClosingHelper;
 class RootTabCollectionNode;
@@ -110,6 +111,7 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
   }
 
   BrowserView* GetBrowserView() const { return browser_view_; }
+  BrowserWindowInterface* GetBrowserWindowInterface() const;
   BrowserFrameView* GetBrowserFrameView() const;
   BrowserAnimationController* GetBrowserAnimationController() const;
   bool IsGlassFrame() const { return is_glass_frame_; }
@@ -151,8 +153,9 @@ class TabStripCollectionController : public TabContextMenuController::Delegate {
 
   // Updates the browser theme when focus mode is active for a tab group.
   // Only updates themes for permanent tab groups; non-group focus mode does not
-  // theme the browser. Triggered when tab group focus changes or when the color
-  // of the currently focused tab group changes.
+  // theme the browser. Triggered when tab group focus changes, when the color
+  // of the currently focused tab group changes, or when the focused ephemeral
+  // group is promoted to a permanent one.
   void UpdateFocusModeTheme(std::optional<tab_groups::TabGroupId> group_id);
 
 #if BUILDFLAG(IS_CHROMEOS)

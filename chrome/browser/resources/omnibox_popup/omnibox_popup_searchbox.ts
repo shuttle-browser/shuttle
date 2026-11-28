@@ -13,7 +13,7 @@ import {kDefaultSelection} from '//resources/cr_components/searchbox/searchbox_m
 import type {SearchboxMixinInterface} from '//resources/cr_components/searchbox/searchbox_mixin.js';
 import {ControlKeyState, SearchboxMixin} from '//resources/cr_components/searchbox/searchbox_mixin.js';
 import {selectionsEqual} from '//resources/cr_components/searchbox/searchbox_selection_mixin.js';
-import {afterNextPaint, markOnce, sanitizeTextForPaste} from '//resources/cr_components/searchbox/utils.js';
+import {afterNextPaint, markOnce, sanitizeTextForPaste, stripJavascriptSchemas} from '//resources/cr_components/searchbox/utils.js';
 import {I18nMixinLit} from '//resources/cr_elements/i18n_mixin_lit.js';
 import {WebUiListenerMixinLit} from '//resources/cr_elements/web_ui_listener_mixin_lit.js';
 import {EventTracker} from '//resources/js/event_tracker.js';
@@ -63,6 +63,87 @@ function isNtpUrl(url: string): boolean {
  * Matches Blink's native drag threshold.
  */
 const DRAG_THRESHOLD_PX = 3;
+
+/**
+ * The URL that the browser passes to a page in place of a dragged URL that the
+ * page may not request, e.g. a "javascript:" URL. See `content::kBlockedURL`.
+ */
+const BLOCKED_URL = 'about:blank#blocked';
+
+/**
+ * Sequences of whitespace as `base::IsUnicodeWhitespace()` defines it. Unlike
+ * `\s`, that includes U+0085 and excludes U+FEFF.
+ */
+const WHITESPACE_SEQUENCES =
+    /[\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]+/g;
+
+/**
+ * Like `base::CollapseWhitespace(text, true)`, removes leading and trailing
+ * whitespace and whitespace sequences that contain a line break, and reduces
+ * every other whitespace sequence to a single space.
+ */
+function collapseWhitespace(text: string): string {
+  return text.replace(WHITESPACE_SEQUENCES, (sequence, offset: number) => {
+    const isAtEdge = offset === 0 || offset + sequence.length === text.length;
+    return isAtEdge || /[\n\r]/.test(sequence) ? '' : ' ';
+  });
+}
+
+/**
+ * Returns the text that a drop of `dataTransfer`, dragged from outside the
+ * input, sets in the input, or null if the drag has neither a URL nor text
+ * (e.g. files). Like `OmniboxViewViews::PerformDrop()`, that's the first URL
+ * of the drag, or else its text with its whitespace collapsed, in both cases
+ * without any "javascript:" scheme, so that it can't be run from the omnibox.
+ */
+function getTextToDrop(dataTransfer: DataTransfer|null): string|null {
+  if (!dataTransfer) {
+    return null;
+  }
+  // The first URL of 'text/uri-list'. For a URL that the browser blocked, use
+  // the text of the drag, which for a link is its URL.
+  const url = dataTransfer.getData('URL');
+  if (url && url !== BLOCKED_URL) {
+    return stripJavascriptSchemas(url);
+  }
+  // The whitespace is collapsed first, since removing a line break can form a
+  // "javascript:" scheme.
+  const text = dataTransfer.getData('text/plain');
+  return text ? stripJavascriptSchemas(collapseWhitespace(text)) : null;
+}
+
+/**
+ * Returns the URL that `text` stands for if it's an HTTP(S) URL on the host of
+ * `pageUrl`, the HTTP(S) URL of the page, and an empty string otherwise. The
+ * URL has the scheme of the page if `text` has none.
+ *
+ * This stands in for the browser's `AutocompleteClassifier`, which
+ * `omnibox::AdjustTextForCopy()` gets such a URL from: the page has to write
+ * the data of a drag during `dragstart`, so it can't ask the browser then.
+ * Parsing the text of a URL gives the same URL as classifying it. Unlike the
+ * classifier, this also takes a host without a dot for a URL if the user
+ * hasn't typed that host before. And it leaves out a URL with a username or a
+ * password, as text with another scheme parses as one, e.g.
+ * "mailto:user@example.com".
+ */
+function getUrlOnHostOfPage(text: string, pageUrl: string): string {
+  const page = URL.parse(pageUrl);
+  if (!page || !['http:', 'https:'].includes(page.protocol)) {
+    return '';
+  }
+  text = text.trim();
+  const url = URL.parse(
+      /^https?:\/\//i.test(text) ? text : `${page.protocol}//${text}`);
+  if (!url || url.hostname !== page.hostname || url.username || url.password) {
+    return '';
+  }
+  return url.href;
+}
+
+interface UnboundedElement extends HTMLElement {
+  showUnboundedElement(): Promise<void>;
+  hideUnboundedElement(): Promise<void>;
+}
 
 export interface OmniboxPopupSearchboxElement {
   $: {
@@ -125,6 +206,11 @@ export class OmniboxPopupSearchboxElement extends
        * (b/504669677).
        */
       aimButtonFocused_: {type: Boolean},
+      /**
+       * The AIM hint, e.g. "Press tab then enter to ask AI Mode". Empty unless
+       * the browser returned it for the current focus session.
+       */
+      aimHintText_: {type: String},
       searchboxVoiceSearchEnabled_: {
         type: Boolean,
         reflect: true,
@@ -192,6 +278,10 @@ export class OmniboxPopupSearchboxElement extends
       textInputType_: {
         type: String,
       },
+      unboundedSupported_: {
+        type: Boolean,
+        reflect: true,
+      },
     };
   }
 
@@ -219,6 +309,9 @@ export class OmniboxPopupSearchboxElement extends
       loadTimeData.getString('searchboxDefaultIcon');
   private accessor dsePlaceholderText_: string = '';
   private accessor aimButtonFocused_: boolean = false;
+  private accessor aimHintText_: string = '';
+  // The current focus session's request for `aimHintText_`, if any.
+  private aimHintRequest_: Promise<{hint: string}>|null = null;
   protected accessor searchboxVoiceSearchEnabled_: boolean =
       loadTimeData.getBoolean('searchboxVoiceSearch');
   protected accessor searchboxLensSearchEnabled_: boolean =
@@ -228,12 +321,27 @@ export class OmniboxPopupSearchboxElement extends
       loadTimeData.getBoolean('searchboxMultiline');
   protected accessor webuiShadowEnabled_: boolean =
       loadTimeData.getBoolean('omniboxFullWebUIShadowEnabled');
+  protected accessor unboundedSupported_: boolean =
+      loadTimeData.getBoolean('useUnbounded') &&
+      'showUnboundedElement' in HTMLElement.prototype;
   private eventTracker_ = new EventTracker();
   private searchboxPageHandler_: SearchboxPageHandlerInterface;
   private searchboxCallbackRouter_: SearchboxPageCallbackRouter;
   private popupCallbackRouter_: PopupPageCallbackRouter;
   private popupPageHandler_: PopupPageHandlerInterface;
   private listenerIds_: number[] = [];
+  // TODO(b/585608450): Drop this once the Unbounded Element API lets the page
+  // handle Escape before dismissing.
+  // Set when the platform requested an interactive dismissal of the unbounded
+  // window and it was canceled (see `onInputWrapperBeforetoggle_()`): for a
+  // pointer press outside of the unbounded window, which still reaches the
+  // page, or for an Escape key press, whose keydown the unbounded window
+  // consumes, so that it needs to be replayed on keyup.
+  private pendingInteractiveDismissal_: boolean = false;
+  // Whether the trusted keydown of the current Escape key press reached the
+  // searchbox. The keydown is only replayed if it didn't, so that Escape is
+  // never handled twice.
+  private escapeKeydownReceived_: boolean = false;
   private popupListenerIds_: number[] = [];
   // Sequence number of the current content state received from C++.
   private currentSequenceNum_: number = 0;
@@ -248,6 +356,11 @@ export class OmniboxPopupSearchboxElement extends
   private lastSelectedMatch_: AutocompleteMatch|null = null;
   private accessor fullUrl_: string = '';
   private accessor permanentDisplayText_: string = '';
+  // The URL to drag when all of the unedited permanent text is dragged out of
+  // the input, or empty if there is none. Unlike `fullUrl_`, which is formatted
+  // for display, e.g. without "http://", this is the URL of the page itself.
+  // Other dragged text can stand for a URL on its host. See `getUrlToDrag_()`.
+  private dragUrl_: string = '';
   // Set by the browser, like the Views omnibox's text input type.
   protected accessor textInputType_: 'url'|'search' = 'search';
   // True during an active IME (Input Method Editor) text composition session.
@@ -356,6 +469,10 @@ export class OmniboxPopupSearchboxElement extends
     this.popupListenerIds_ = [
       this.popupCallbackRouter_.setInputState.addListener(
           this.onSetInputState_.bind(this)),
+      this.popupCallbackRouter_.setPrefersUrlInput.addListener(
+          (prefersUrlInput: boolean) => {
+            this.textInputType_ = prefersUrlInput ? 'url' : 'search';
+          }),
       this.popupCallbackRouter_.setFocus.addListener(
           this.onSetFocus_.bind(this)),
       this.popupCallbackRouter_.focusSearchWithDefaultSearchEngineKeywordMode
@@ -395,6 +512,9 @@ export class OmniboxPopupSearchboxElement extends
     });
 
     this.eventTracker_.add(document, 'mousemove', this.onMouseMove_.bind(this));
+    this.eventTracker_.add(
+        document, 'pointerdown', this.onDocumentPointerdown_.bind(this),
+        /*capture=*/ true);
     this.eventTracker_.add(document, 'mouseup', this.onMouseUp_.bind(this));
     this.eventTracker_.add(document, 'dragstart', this.onDragStart_.bind(this));
     this.eventTracker_.add(document, 'dragend', this.onDragEnd_.bind(this));
@@ -447,6 +567,8 @@ export class OmniboxPopupSearchboxElement extends
   override updated(changedProperties: PropertyValues<this>) {
     super.updated(changedProperties);
 
+    this.maybeRequestAimHint_();
+
     if (changedProperties.has('selection') ||
         changedProperties.has('selectedMatchIndex')) {
       // Guard against transient out-of-bounds indices when autocomplete
@@ -483,6 +605,10 @@ export class OmniboxPopupSearchboxElement extends
             });
       }
     }
+
+    if (changedProperties.has('dropdownIsVisible')) {
+      this.updateUnboundedWindow_();
+    }
   }
 
   override shouldAppendDotComOnCtrlEnter(): boolean {
@@ -491,6 +617,10 @@ export class OmniboxPopupSearchboxElement extends
 
   override shouldPreserveSelectionOnMatchDeletion(): boolean {
     return true;
+  }
+
+  override shouldTabWaitForResults(): boolean {
+    return this.virtualFocusEnabled;
   }
 
   override isBackgroundTabNavigation(e: KeyboardEvent|MouseEvent): boolean {
@@ -741,6 +871,35 @@ export class OmniboxPopupSearchboxElement extends
         e.composedPath().includes(input) && (wasUnfocused || !input.value);
   }
 
+  private onDocumentPointerdown_(e: PointerEvent) {
+    // A pointer press outside of the unbounded window requests an interactive
+    // dismissal too. Clear the flag once the press reaches the page, so that a
+    // later Escape keyup isn't replayed as a keydown.
+    this.pendingInteractiveDismissal_ = false;
+
+    if (!this.unboundedSupported_) {
+      return;
+    }
+    // TODO(crbug.com/585623146): Remove once presses in the unbounded window's
+    // shadow pass through to the browser.
+    // While #inputWrapper is unbounded, Blink hit-tests the whole unbounded
+    // window, so a mouse or touch press in its shadow (outside of
+    // #inputWrapper) targets the document instead of passing through to the
+    // browser. Close the dropdown like a press outside of the window would.
+    if (!this.dropdownIsVisible ||
+        !this.$.inputWrapper.matches(':unbounded') ||
+        e.composedPath().includes(this.$.inputWrapper)) {
+      return;
+    }
+    // Keep focus in the input: canceling `pointerdown` makes Blink skip the
+    // focus change (and the compatibility `mousedown`). Otherwise Blink clears
+    // focus with a null `relatedTarget`, which `onInputWrapperFocusout()`
+    // leaves to C++ as focus moving to native UI, so the omnibox would look
+    // focused but not be.
+    e.preventDefault();
+    this.clearAutocompleteMatches();
+  }
+
   private onMouseMove_(e: MouseEvent) {
     // Only track drag distance while the primary (left) mouse button is held.
     if ((this.selectAllOnMouseRelease_ || this.queryZpsOnMouseRelease_) &&
@@ -850,13 +1009,39 @@ export class OmniboxPopupSearchboxElement extends
       text: input.value,
       selection: {start: Math.min(start, end), end: Math.max(start, end)},
     };
-    // Like the native omnibox, allow both copying and moving the text.
     if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'copyMove';
+      const url = this.getUrlToDrag_();
+      if (url) {
+        e.dataTransfer.setData('text/plain', url);
+        e.dataTransfer.setData('text/uri-list', url);
+      }
+      // Like the native omnibox, allow both copying and moving the text, and
+      // also linking to a URL.
+      e.dataTransfer.effectAllowed = url ? 'all' : 'copyMove';
     }
     // Like `OmniboxViewViews::OnMouseDragged()`, close the dropdown, since the
     // user may want to drop the text on something that it covers.
     this.clearAutocompleteMatches();
+  }
+
+  /**
+   * Returns the URL to drag in place of the selected text, or an empty string
+   * to drag the text itself. Like `OmniboxViewViews::OnWriteDragData()`, if all
+   * of the unedited text is selected, that's the URL of the page rather than
+   * the text shown for it, which may be elided. For any other selection that
+   * starts at the start of the text, it's the URL that the selected text
+   * stands for, if that URL is on the host of the page.
+   */
+  private getUrlToDrag_(): string {
+    if (this.isPermanentTextAllSelected_()) {
+      return this.dragUrl_;
+    }
+    const input = this.getInputElement().inputElement;
+    if (input.selectionStart !== 0) {
+      return '';
+    }
+    return getUrlOnHostOfPage(
+        input.value.substring(0, input.selectionEnd ?? 0), this.dragUrl_);
   }
 
   private onDragEnd_() {
@@ -868,12 +1053,17 @@ export class OmniboxPopupSearchboxElement extends
    * `views::Textfield::DropDraggedText()`: moves the text to where it's
    * dropped, or copies it there if the copy modifier is held, as a single
    * undoable edit, and puts the caret after the dropped text rather than
-   * selecting it. Blink handles other drops.
+   * selecting it. Drops of anything else are handled by
+   * `onDropFromOutside_()`.
    */
   private onInputDrop_(e: DragEvent) {
     const drag = this.textDrag_;
+    if (!drag) {
+      this.onDropFromOutside_(e);
+      return;
+    }
     const input = this.getInputElement().inputElement;
-    if (!drag || input.value !== drag.text) {
+    if (input.value !== drag.text) {
       return;
     }
     const caretPosition = document.caretPositionFromPoint(
@@ -887,8 +1077,7 @@ export class OmniboxPopupSearchboxElement extends
     const {start, end} = drag.selection;
     const draggedText = drag.text.substring(start, end);
     let position = caretPosition.offset;
-    // Like Blink, which handles drops of other text, use the platform's copy
-    // modifier.
+    // Like Blink, use the platform's copy modifier.
     const isCopy = isMac ? e.altKey : e.ctrlKey;
     if (!isCopy) {
       // Account for the removal of the dragged text before the drop position.
@@ -932,12 +1121,64 @@ export class OmniboxPopupSearchboxElement extends
     }
   }
 
+  /**
+   * Handles a drop of a URL or text dragged from outside the input, e.g. a
+   * link of the page, like `OmniboxViewViews::PerformDrop()`: rather than
+   * inserting it where it's dropped, replaces all of the input's text with it
+   * (see `getTextToDrop()`) as user input, selects it and focuses the input.
+   * Leaves a drop of anything else to Blink, which inserts no text for it.
+   */
+  private onDropFromOutside_(e: DragEvent) {
+    const text = getTextToDrop(e.dataTransfer);
+    if (text === null) {
+      return;
+    }
+    e.preventDefault();
+
+    // Like `OmniboxEditModel::SetUserText()`, leave keyword mode.
+    this.keywordModeManager.exit();
+
+    // Record the drop as a single edit, which undo reverts to the text and
+    // selection from before it.
+    const input = this.getInputElement().inputElement;
+    this.syncTextfieldModelWithInput_(input.value);
+    this.textfieldModel_.selectRange(
+        {start: input.selectionStart ?? 0, end: input.selectionEnd ?? 0});
+    this.textfieldModel_.replaceAllText(text);
+    const selection = {start: 0, end: text.length};
+    this.textfieldModel_.selectRange(selection);
+    this.lastInputText_ = text;
+    this.lastInputSelection_ = selection;
+    this.updateEditHistoryState_();
+
+    this.userInputInProgress_ = true;
+    this.getInputElement().setInput({text, inline: ''});
+    this.$.input.focus();
+    this.getInputElement().select();
+
+    if (!this.isInputCleared_(text)) {
+      // The query also sets the text in the browser. So, unlike
+      // `OmniboxViewViews::PerformDrop()`, which only starts autocomplete if
+      // the omnibox has focus, this also queries if the input wasn't focused.
+      // All of the text is selected, which inline autocompletion would
+      // replace with a selection of the autocompleted text.
+      this.queryAutocomplete(
+          text, /*preventInlineAutocomplete=*/ true, /*isOnFocus=*/ false);
+    } else {
+      this.clearAutocompleteMatches();
+      this.popupPageHandler_.onInputCleared(this.currentSequenceNum_);
+    }
+  }
+
   override async onInputWrapperKeydown(e: KeyboardEvent) {
     // Some keys below are handled without calling
     // `super.onInputWrapperKeydown()`, so update the state every key press
     // affects first.
     this.updateStateForKeydown(e);
 
+    if (e.key === 'Escape' && e.isTrusted) {
+      this.escapeKeydownReceived_ = true;
+    }
     this.selectAllOnMouseRelease_ = false;
     this.unelideOnMouseRelease_ = false;
     this.queryZpsOnMouseRelease_ = false;
@@ -1195,6 +1436,20 @@ export class OmniboxPopupSearchboxElement extends
   }
 
   /**
+   * Returns whether the input shows the unedited permanent text, either elided
+   * (`permanentDisplayText_`) or not (`fullUrl_`), and all of it is selected.
+   * Like `OmniboxEditModel::AdjustTextForCopy()`, this compares the text, since
+   * an unedited input can also show other text, e.g. of a selected match.
+   */
+  private isPermanentTextAllSelected_(): boolean {
+    const input = this.getInputElement().inputElement;
+    return !this.userInputInProgress_ && !!input.value &&
+        (input.value === this.permanentDisplayText_ ||
+         input.value === this.fullUrl_) &&
+        input.selectionStart === 0 && input.selectionEnd === input.value.length;
+  }
+
+  /**
    * Unelides the URL, keeping the caret (or selection) on the same characters
    * by shifting it past the prefix (e.g. "https://www.") that was elided. Does
    * nothing if all the text is selected. Compare
@@ -1392,9 +1647,16 @@ export class OmniboxPopupSearchboxElement extends
     this.unelidedUrlEmphasis_ = state.unelidedUrlEmphasis;
     this.$.input.urlEmphasis = text === state.text ? state.urlEmphasis : null;
     this.currentSequenceNum_ = state.sequenceNumber;
+    if (state.tabId !== this.tabId_) {
+      // Like in Views, another tab's omnibox is another focus session.
+      // `updated()` requests the hint for it.
+      this.resetAimHint_();
+      this.requestUpdate();
+    }
     this.tabId_ = state.tabId;
     this.fullUrl_ = state.fullUrl;
     this.permanentDisplayText_ = state.permanentDisplayText;
+    this.dragUrl_ = state.dragUrl;
     this.textInputType_ = state.prefersUrlInput ? 'url' : 'search';
     this.isComposing_ = false;
     const keywordChanged =
@@ -1439,6 +1701,7 @@ export class OmniboxPopupSearchboxElement extends
     } else {
       this.deferredFocusAction_ = null;
       this.$.input.blur();
+      this.resetAimHint_();
     }
     if (state.showFullUrl) {
       this.maybeShowFullUrl_();
@@ -1611,6 +1874,7 @@ export class OmniboxPopupSearchboxElement extends
     // `focusout`, so reset its focus state, or a reshown popup would show the
     // placeholder.
     this.aimButtonFocused_ = false;
+    this.resetAimHint_();
     this.clearAutocompleteMatches();
     await this.updateComplete;
   }
@@ -1623,6 +1887,9 @@ export class OmniboxPopupSearchboxElement extends
     this.selectAllOnMouseRelease_ = false;
     this.queryZpsOnMouseRelease_ = false;
     this.clickQueriedZps_ = false;
+    // Ctrl may be released while the omnibox doesn't have focus, so forget
+    // it was pressed.
+    this.controlKeyState = ControlKeyState.UP;
     this.getInputElement().setSelectionRange(0, 0);
     this.getInputElement().blur();
     // Show the start of the text, so that the #mirror elides its end. Blink
@@ -1639,6 +1906,7 @@ export class OmniboxPopupSearchboxElement extends
     // select_all_on_mouse_release_ (in omnibox_view_views) to be set to the
     // correct value.
     this.clearAutocompleteMatches();
+    this.resetAimHint_();
   }
 
   /**
@@ -1790,6 +2058,7 @@ export class OmniboxPopupSearchboxElement extends
 
   protected onInputFocusin_() {
     this.searchboxPageHandler_.onFocusChanged(true);
+    this.maybeRequestAimHint_();
   }
 
   protected onComposeButtonFocusin_() {
@@ -1801,7 +2070,45 @@ export class OmniboxPopupSearchboxElement extends
   }
 
   protected computeInputPlaceholderText_(): string {
-    return this.aimButtonFocused_ ? this.dsePlaceholderText_ : '';
+    if (this.aimButtonFocused_) {
+      return this.dsePlaceholderText_;
+    }
+    return this.shouldShowAimHint_() ? this.aimHintText_ : '';
+  }
+
+  protected shouldShowAimHint_(): boolean {
+    return !!this.aimHintText_ && this.canShowAimHint_();
+  }
+
+  // Shuttle: the AIM button is removed, so the AIM hint never shows.
+  private canShowAimHint_(): boolean {
+    return false;
+  }
+
+  // Asks the browser for the AIM hint once the focused, empty input can show
+  // it. Asking counts as an impression, so ask only once per focus session.
+  private maybeRequestAimHint_() {
+    // Unlike for `isInputEmpty()`, whitespace counts as text: it hides the
+    // placeholder.
+    if (this.aimHintRequest_ || !this.canShowAimHint_() ||
+        this.shadowRoot?.activeElement !== this.$.input ||
+        this.$.input.getInputValue()) {
+      return;
+    }
+    const request = this.popupPageHandler_.requestAimHint();
+    this.aimHintRequest_ = request;
+    request.then(({hint}) => {
+      // Ignore the reply if the focus session ended in the meantime.
+      if (this.aimHintRequest_ === request) {
+        this.aimHintText_ = hint;
+      }
+    });
+  }
+
+  // Ends the hint's focus session, so that the next one asks the browser again.
+  private resetAimHint_() {
+    this.aimHintRequest_ = null;
+    this.aimHintText_ = '';
   }
 
   private computeDsePlaceholderText_(
@@ -1818,13 +2125,17 @@ export class OmniboxPopupSearchboxElement extends
   }
 
   /**
-   * Executes deferred focus (`FOCUS` / `FOCUS_AND_SELECT`) when the tab
-   * transitions from hidden to visible (`document.visibilityState ===
-   * 'visible'`).
+   * Re-applies the unbounded window state and executes deferred focus (`FOCUS`
+   * / `FOCUS_AND_SELECT`) once the tab transitions from hidden to visible
+   * (`document.visibilityState === 'visible'`).
    */
   private onVisibilityChange_() {
-    if (document.visibilityState === 'visible' &&
-        this.deferredFocusAction_ !== null) {
+    if (document.visibilityState !== 'visible') {
+      return;
+    }
+    // Re-apply the dropdown state that was skipped while hidden.
+    this.updateUnboundedWindow_();
+    if (this.deferredFocusAction_ !== null) {
       const action = this.deferredFocusAction_;
       this.deferredFocusAction_ = null;
       this.$.input.focus();
@@ -1832,6 +2143,86 @@ export class OmniboxPopupSearchboxElement extends
         this.getInputElement().select();
       }
     }
+  }
+
+  // Pops #inputWrapper out of the WebView while the dropdown is visible.
+  private updateUnboundedWindow_() {
+    if (!this.unboundedSupported_) {
+      return;
+    }
+    const wrapper = this.$.inputWrapper as UnboundedElement;
+    if (this.dropdownIsVisible === wrapper.matches(':unbounded')) {
+      return;
+    }
+    // showUnboundedElement() rejects while the document is hidden (its
+    // lifecycle is throttled). Don't call it; visibilitychange re-applies.
+    if (this.dropdownIsVisible && document.visibilityState !== 'visible') {
+      return;
+    }
+    (this.dropdownIsVisible ? wrapper.showUnboundedElement() :
+                              wrapper.hideUnboundedElement())
+        .catch(err => {
+          // AbortError: the dropdown toggled again before this finished.
+          if (!(err instanceof DOMException && err.name === 'AbortError')) {
+            console.warn(err);
+          }
+        });
+  }
+
+  // Copied from `WebuiBrowserSearchboxElement` in
+  // chrome/browser/resources/webui_browser/webui_browser_searchbox.ts.
+  protected onInputWrapperBeforetoggle_(e: ToggleEvent) {
+    if (e.newState !== 'closed') {
+      return;
+    }
+    if (!e.cancelable) {
+      this.pendingInteractiveDismissal_ = false;
+      // The window closes regardless: `hideUnboundedElement()`, called once
+      // the dropdown is already hidden, or the platform (e.g. on window
+      // deactivation). `#inputWrapper` goes back into the WebView, which would
+      // clip the dropdown, so clear matches and hide it if still open.
+      if (this.dropdownIsVisible) {
+        this.clearAutocompleteMatches();
+      }
+      return;
+    }
+    // An interactive dismissal (Escape, or a pointer press outside of the
+    // window). The searchbox owns the dropdown's visibility, so cancel it:
+    // an outside press still reaches the page and closes the dropdown through
+    // focusout if focus leaves the searchbox, and a consumed Escape keydown is
+    // replayed on keyup, so that Escape first reverts to the default match.
+    e.preventDefault();
+    this.pendingInteractiveDismissal_ = true;
+  }
+
+  protected onInputWrapperKeyup_(e: KeyboardEvent) {
+    if (e.key !== 'Escape') {
+      return;
+    }
+    const keydownReceived = this.escapeKeydownReceived_;
+    this.escapeKeydownReceived_ = false;
+    if (!this.pendingInteractiveDismissal_) {
+      return;
+    }
+    this.pendingInteractiveDismissal_ = false;
+    // Don't replay during IME composition: the replayed keydown would bypass
+    // the composition check in `handleKeyNavigation()`.
+    if (keydownReceived || this.isComposing_ || !this.unboundedSupported_ ||
+        !this.$.inputWrapper.matches(':unbounded')) {
+      return;
+    }
+    // Replay the Escape keydown that the unbounded window consumed.
+    this.$.input.inputElement.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'Escape',
+      code: 'Escape',
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      shiftKey: e.shiftKey,
+      ctrlKey: e.ctrlKey,
+      altKey: e.altKey,
+      metaKey: e.metaKey,
+    }));
   }
 
   /**
@@ -1979,9 +2370,13 @@ export class OmniboxPopupSearchboxElement extends
     } else if (this.hasReceivedInitialInputState_) {
       this.onSearchboxInputTextUpdated(e);
     }
+    // `updated()` doesn't run if e.g. only whitespace was deleted.
+    this.maybeRequestAimHint_();
   }
 
   override onInputWrapperFocusout(e: FocusEvent) {
+    this.pendingInteractiveDismissal_ = false;
+    this.escapeKeydownReceived_ = false;
     // When focus leaves the WebUI DOM (e.g. to native window or during ESC key
     // handling on Linux), `relatedTarget` is null. Focus loss to external
     // targets is managed by C++ (OmniboxPopupFullPresenter) via
@@ -2090,7 +2485,7 @@ export class OmniboxPopupSearchboxElement extends
   /**
    * Returns true if any popup element or match row is currently selected,
    * bridging the legacy DOM focus model and the Virtual Focus model (gated by
-   * `realboxVirtualFocusNavigation`). When legacy focus is eventually
+   * `virtualFocusEnabled`). When legacy focus is eventually
    * deprecated and removed along with `selectedMatchIndex`, this can be
    * simplified to just `!selectionsEqual(this.selection, kDefaultSelection)`.
    */
@@ -2125,10 +2520,9 @@ export class OmniboxPopupSearchboxElement extends
       // On an open page where no suggestion match is highlighted, submit the
       // verbatim input text (or reload the permanent URL).
       e.preventDefault();
-      if (!this.inKeywordMode && e.ctrlKey && !e.shiftKey && !e.altKey &&
-          !e.metaKey &&
-          this.controlKeyState !== ControlKeyState.DOWN_AND_CONSUMED) {
-        this.openCtrlEnterMatch(-1);
+      if (!this.inKeywordMode && e.ctrlKey &&
+          this.controlKeyState === ControlKeyState.DOWN) {
+        this.openCtrlEnterMatch(-1, e);
       } else {
         this.pageHandler().openAutocompleteMatch(
             /*resultSequenceId=*/ this.result?.sequenceId ?? 0,

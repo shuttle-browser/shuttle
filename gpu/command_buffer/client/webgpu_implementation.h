@@ -9,12 +9,13 @@
 #include <dawn/wire/WireClient.h>
 
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
+#include "base/synchronization/lock.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/thread_annotations.h"
 #include "gpu/command_buffer/client/dawn_client_memory_transfer_service.h"
 #include "gpu/command_buffer/client/dawn_client_serializer.h"
 #include "gpu/command_buffer/client/dawn_wire_client.h"
@@ -40,8 +41,7 @@ class DawnWireServices : public APIChannel {
   DawnWireServices(WebGPUImplementation* webgpu_implementation,
                    WebGPUCmdHelper* helper,
                    MappedMemoryManager* mapped_memory,
-                   std::unique_ptr<TransferBuffer> transfer_buffer,
-                   bool support_locking = false);
+                   std::unique_ptr<TransferBuffer> transfer_buffer);
 
   base::WeakPtr<DawnWireServices> AsWeakPtr();
 
@@ -65,9 +65,9 @@ class DawnWireServices : public APIChannel {
 
  private:
   // Lock to access internal Dawn wire related state.
-  mutable std::optional<base::Lock> lock_ = std::nullopt;
+  mutable base::Lock lock_;
 
-  bool disconnected_ = false;
+  bool disconnected_ GUARDED_BY(lock_) = false;
   DawnClientMemoryTransferService memory_transfer_service_;
   DawnClientSerializer serializer_;
   DawnWireClient wire_client_;
@@ -79,10 +79,12 @@ class DawnWireServices : public APIChannel {
 class WEBGPU_EXPORT WebGPUImplementation final : public WebGPUInterface,
                                                  public ImplementationBase {
  public:
-  explicit WebGPUImplementation(WebGPUCmdHelper* helper,
-                                TransferBufferInterface* transfer_buffer,
-                                GpuControl* gpu_control,
-                                bool support_locking = false);
+  explicit WebGPUImplementation(
+      WebGPUCmdHelper* helper,
+      TransferBufferInterface* transfer_buffer,
+      GpuControl* gpu_control,
+      scoped_refptr<base::SequencedTaskRunner> main_task_runner =
+          base::SequencedTaskRunner::GetCurrentDefault());
 
   WebGPUImplementation(const WebGPUImplementation&) = delete;
   WebGPUImplementation& operator=(const WebGPUImplementation&) = delete;
@@ -161,14 +163,12 @@ class WEBGPU_EXPORT WebGPUImplementation final : public WebGPUInterface,
  private:
   const char* GetLogPrefix() const { return "webgpu"; }
   void CheckGLError() {}
-  void LoseContext();
 
   raw_ptr<WebGPUCmdHelper> helper_;
 
-  // If set, this is the task runner that any ProcessEvent calls should be
-  // proxied to. Otherwise, the default behaviour does not call ProcessEvent's
-  // at all since the callbacks are expected to be AllowSpontaneous in that
-  // case.
+  // Client-thread task runner used to run Dawn wire callbacks (`ProcessEvents`
+  // and `Disconnect`) in a fresh call stack so they cannot re-entrantly enter
+  // or destroy `this` during `GpuControlClient` notifications.
   scoped_refptr<base::SequencedTaskRunner> main_task_runner_;
 
 #if BUILDFLAG(USE_DAWN)

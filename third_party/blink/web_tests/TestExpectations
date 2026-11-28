@@ -2314,6 +2314,7 @@ crbug.com/480103606 [ Android ] external/wpt/visual-viewport/viewport-unscaled-s
 crbug.com/480103606 [ Android ] external/wpt/visual-viewport/viewport-unscaled-scroll.html [ Failure ]
 
 # ====== Test expectations added to unblock wpt-importer ======
+crbug.com/590522646 external/wpt/fetch/fetch-later/iframe.https.window.html [ Failure Pass ]
 crbug.com/437034328 external/wpt/html/semantics/embedded-content/the-img-element/animated-webp-update.tentative.html [ Failure ]
 crbug.com/431542979 virtual/speech-with-unified-autoplay/external/wpt/speech-api/idlharness.window.html [ Failure ]
 crbug.com/406036293 [ Mac ] external/wpt/css/css-overflow/keyboard-scroll.html [ Failure Pass ]
@@ -4392,6 +4393,7 @@ crbug.com/328483408 external/wpt/css/css-break/table/table-fragmentation-003d-pr
 crbug.com/1058792 external/wpt/css/css-break/transform-007.html [ Failure ]
 crbug.com/1224888 external/wpt/css/css-break/transform-009.html [ Failure ]
 crbug.com/636055 external/wpt/css/css-multicol/multicol-span-all-margin-nested-002.xht [ Failure ]
+crbug.com/964183 external/wpt/css/css-multicol/multicol-width-005.html [ Failure ]
 crbug.com/1191124 external/wpt/css/css-multicol/spanner-fragmentation-012.html [ Failure ]
 crbug.com/1224888 external/wpt/css/css-multicol/spanner-in-opacity.html [ Failure ]
 crbug.com/1078927 external/wpt/css/css-multicol/table/balance-table-with-border-spacing.html [ Failure ]
@@ -8740,3 +8742,26 @@ crbug.com/574451292 crbug.com/575210275 external/wpt/largest-contentful-paint/vi
 
 # Gardener 2026-11-09
 crbug.com/583314298 external/wpt/css/css-pseudo/marker-text-combine-upright-002.html [ Failure Pass ]
+
+# Gardener 2026-11-11
+crbug.com/581870108 virtual/composite-clip-path-animation/external/wpt/css/css-masking/clip-path/animations/clip-path-animation-set-currenttime-negative.html [ Failure Pass ]
+crbug.com/570220095 [ Mac ] external/wpt/css/css-contain/content-visibility/content-visibility-with-top-layer-005.html [ Failure Pass ]
+crbug.com/570216210 [ Mac ] external/wpt/css/css-overflow/scrollbar-gutter-propagation-007.html [ Failure Pass ]
+crbug.com/570225823 [ Mac ] external/wpt/css/css-overflow/scrollbar-gutter-rtl-001.html [ Failure Pass ]
+crbug.com/580335041 [ Mac ] external/wpt/resize-observer/scrollbars.html [ Failure Pass ]
+
+# Gardener 2026-11-12
+# The iframe src (helloWorld.html) does not exist; the pixel snapshot races the
+# commit of the net::ERR_FILE_NOT_FOUND error page. Fix pending in crrev.com/c/8677279.
+crbug.com/566257733 tables/mozilla/bugs/bug137388-1.html [ Failure Pass ]
+crbug.com/566257733 tables/mozilla/bugs/bug137388-2.html [ Failure Pass ]
+
+# Gardener 2026-11-20
+crbug.com/566841082 [ Mac ] external/wpt/css/css-overflow/scrollbar-gutter-propagation-001.html [ Failure Pass ]
+crbug.com/569420237 [ Mac ] external/wpt/css/css-overflow/scrollbar-gutter-propagation-002.html [ Failure Pass ]
+crbug.com/566469808 [ Mac ] external/wpt/css/css-overflow/scrollbar-gutter-propagation-003.html [ Failure Pass ]
+# Gardener 2026-11-23
+crbug.com/584920130 [ Win11-arm64 ] external/wpt/dom/events/scrolling/scrollend-event-fired-after-snap.html [ Failure Pass ]
+
+# Flaky on Mac-26 CI builders
+crbug.com/585965057 [ Mac ] http/tests/inspector-protocol/emulation/prerender-emulation-overrides-cleared.js [ Failure Pass ]

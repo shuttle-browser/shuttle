@@ -414,6 +414,7 @@ static_library("browser") {
     "//third_party/re2",
     "//ui/base",
     "//ui/gfx",
+    "//ui/webui:buildflags",
   ]
 
   if (is_android) {
@@ -431,6 +432,11 @@ static_library("browser") {
     ]
   } else {
     deps += [ "//components/keep_alive_registry" ]
+  }
+
+  # The suggest inventory fallback serves the NTP action chips, which only
+  # exist in the WebUI NTP.
+  if (enable_webui_ntp) {
     sources += [
       "suggest_inventory_fallback_prompts.h",
       "suggest_inventory_fallback_utils.cc",

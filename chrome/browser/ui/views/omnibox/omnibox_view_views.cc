@@ -389,7 +389,7 @@ void OmniboxViewViews::SetUserTextForTab(content::WebContents* web_contents,
 void OmniboxViewViews::InstallPlaceholderText() {
   std::u16string placeholder_text;
   std::optional<std::u16string> maybe_a11y_placeholder_text;
-  omnibox::ComputePlaceholderText(location_bar_view_, placeholder_text,
+  omnibox::ComputePlaceholderText(*controller(), placeholder_text,
                                   maybe_a11y_placeholder_text);
   SetPlaceholderText(placeholder_text);
   const std::u16string a11y_text =
@@ -2031,7 +2031,7 @@ bool OmniboxViewViews::ShouldShowPlaceholderText() const {
     return false;
   }
 
-  return omnibox::ShouldShowPlaceholderText(location_bar_view_);
+  return omnibox::ShouldShowPlaceholderText(*controller());
 }
 
 void OmniboxViewViews::UpdateAccessibleValue() {
@@ -2534,10 +2534,9 @@ void OmniboxViewViews::PerformDrop(
 }
 
 void OmniboxViewViews::UpdatePlaceholderTextColor() {
-  SetPlaceholderTextColorId(
-      omnibox::ShouldUseDimPlaceholderColor(location_bar_view_)
-          ? kColorOmniboxForegroundDisabled
-          : kColorOmniboxText);
+  SetPlaceholderTextColorId(omnibox::ShouldUseDimPlaceholderColor(*controller())
+                                ? kColorOmniboxForegroundDisabled
+                                : kColorOmniboxText);
 }
 
 BEGIN_METADATA(OmniboxViewViews)

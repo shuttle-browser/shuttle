@@ -65,6 +65,12 @@
   margin-bottom: var(--alignment-inset-bottom);
 }
 
+:host([unbounded-supported_]:not([dropdown-is-visible])) {
+  --cr-searchbox-width: 100%;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 :host(:not([dropdown-is-visible]):not([has-input-selection_]):not([is-logically-focused_])) #inputWrapper:hover:not(:focus-within) {
   cursor: text;
   background-color: var(--color-omnibox-results-background-hovered);
@@ -78,6 +84,13 @@
    * 1px outside and 1px inside the location bar boundary. */
   box-shadow: 0 0 0 1px var(--cr-focus-outline-color),
       inset 0 0 0 1px var(--cr-focus-outline-color);
+}
+
+/* In the location bar the WebView has the location bar's bounds, so an outset
+ * ring would be clipped. Draw the 2px ring inside instead. */
+:host([unbounded-supported_]:not([dropdown-is-visible])) #inputWrapper:focus-within,
+:host([unbounded-supported_][is-logically-focused_]:not([dropdown-is-visible])) #inputWrapper {
+  box-shadow: inset 0 0 0 2px var(--cr-focus-outline-color);
 }
 
 /* The compose button takes the focus ring's place while it has focus. With
@@ -97,6 +110,11 @@
   :host([is-logically-focused_]:not([dropdown-is-visible])) #inputWrapper {
     outline: var(--cr-focus-outline-hcm);
     outline-offset: -1px;
+  }
+
+  :host([unbounded-supported_]:not([dropdown-is-visible])) #inputWrapper:focus-within,
+  :host([unbounded-supported_][is-logically-focused_]:not([dropdown-is-visible])) #inputWrapper {
+    outline-offset: -2px;
   }
 
   :host(:not([dropdown-is-visible]))
@@ -167,6 +185,20 @@
   width: 100%;
 }
 
+/* The user agent stylesheet sets visibility: hidden on
+ * [unbounded]:not(:unbounded). Keep #inputWrapper visible in the location bar
+ * while it is not popped out. */
+#inputWrapper[unbounded] {
+  visibility: visible;
+}
+
+:host([dropdown-is-visible]) #inputWrapper[unbounded] {
+  --cr-searchbox-shadow: var(--omnibox-webui-shadow);
+  inset-inline-start: calc(-1 * var(--alignment-inset-horizontal));
+  top: calc(-1 * var(--alignment-inset-top));
+  width: calc(100% + 2 * var(--alignment-inset-horizontal));
+}
+
 cr-searchbox-input::part(searchbox-input),
 cr-searchbox-input::part(mirror) {
   align-self: center;
@@ -180,10 +212,21 @@ cr-searchbox-input::part(mirror) {
 
 /* Like the Views omnibox, the default search engine placeholder (shown while
  * the AIM button has focus) uses the regular text color to draw attention to
- * the omnibox, while the keyword placeholder stays dim to differentiate it
- * from user input. */
-cr-searchbox-input:not([in-keyword-mode]) {
+ * the omnibox, while the keyword placeholder and the AIM hint stay dim to
+ * differentiate them from user input. */
+cr-searchbox-input:not([in-keyword-mode]):not([aim-hint]) {
   --color-searchbox-placeholder: var(--color-omnibox-text);
+}
+
+/* The AIM hint uses the Views omnibox's color for dim placeholders. */
+cr-searchbox-input[aim-hint] {
+  --color-searchbox-placeholder: var(--color-omnibox-foreground-disabled);
+}
+
+/* cr-searchbox-input hides its placeholder on focus, but the AIM hint is for
+ * the focused input. */
+cr-searchbox-input[aim-hint]::part(searchbox-input):focus::placeholder {
+  visibility: visible;
 }
 
 /* Pad the input and #mirror alike, rather than adding a margin outside the

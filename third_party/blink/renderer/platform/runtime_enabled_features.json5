@@ -2817,7 +2817,7 @@
       // See https://crbug.com/40943926 and
       // https://html.spec.whatwg.org/multipage/dnd.html#security-risks-in-the-drag-and-drop-model
       name: "DragThresholdRequiresMouseMovement",
-      status: "stable",
+      status: "test"
     },
     {
       // See: crrev.com/c/7874048
@@ -3424,6 +3424,11 @@
       base_feature: "none",
       // No status, as the web platform runtime enabled feature is controlled by
       // a Chromium level feature (kFontDataServiceForCSSLocalFonts).
+    },
+    {
+      // Kill switch for https://crbug.com/589815780.
+      name: "FontFaceCapabilitiesRangeValidation",
+      status: "stable",
     },
     {
       // Kill switch for https://crbug.com/579721442.
@@ -4622,13 +4627,6 @@
       status: "stable",
     },
     {
-      // Clamp a column-count:auto multicol container's max-content inline
-      // size to column-width per css-sizing-4. Kill switch for
-      // crbug.com/41459384.
-      name: "MulticolColumnWidthMaxContentClamp",
-      status: "stable",
-    },
-    {
       // Support Nastaliq script. crbug.com/569667449
       name: "NastaliqScript",
       status: "stable",
@@ -5807,6 +5805,13 @@
       status: "stable",
     },
     {
+      // Prevents PositionLeadingFloats from positioning floats inside ruby
+      // columns, and verifies leading float item indices match in
+      // LineBreaker::HandleFloat. https://crbug.com/589800513
+      name: "RubySkipLeadingFloats",
+      status: "stable",
+    },
+    {
       // Allows a soft wrap after a preserved space (e.g. `white-space:
       // pre-wrap`) that is followed by a <ruby>, by ignoring the bidi
       // controls of ruby columns when checking break opportunities.
@@ -6096,6 +6101,12 @@
     {
       // Killswitch M141.
       name: "SelectionHandleWithBottomClipped",
+      status: "stable",
+    },
+    {
+      // Skip pseudo-element inline leaves in AbstractLineBox::PositionForPoint.
+      // See https://crbug.com/589812279
+      name: "SelectionLineSkipPseudoElement",
       status: "stable",
     },
     {
@@ -7891,7 +7902,12 @@
     },
     {
       name: "WebSpeechTimestamps",
-      status: "experimental",
+      status: {
+        "Win": "stable",
+        "Mac": "stable",
+        "Linux": "stable",
+        "default": "",
+      },
     },
     {
       name: "WebSpeechUnspokenPunctuation",

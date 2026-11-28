@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {createAutocompleteMatch, createFormattedString, createSuggestTemplateInfo as createSuggestTemplateInfoBase} from '//resources/cr_components/searchbox/searchbox_browser_proxy.js';
+import {createAutocompleteMatch, createFormattedString, createSuggestTemplateInfo as createSuggestTemplateInfoBase} from '//resources/cr_components/search/autocomplete_match_utils.js';
 import type {SearchboxIconElement} from '//resources/cr_components/searchbox/searchbox_icon.js';
-import type {AutocompleteMatch} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import {KeywordType} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import type {Action, AutocompleteMatch, AutocompleteResult, MatchKeywordModel} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import {ColorType} from '//resources/mojo/components/omnibox/browser/suggest_template_info.mojom-webui.js';
 import type {FormattedString, FormattedStringFragment, SuggestTemplateInfo} from '//resources/mojo/components/omnibox/browser/suggest_template_info.mojom-webui.js';
 import type {InputState} from '//resources/mojo/components/omnibox/composebox/composebox_query.mojom-webui.js';
@@ -134,7 +135,7 @@ export interface SuggestTemplateInfoModifiers extends
 }
 
 /**
- * Like createSuggestTemplateInfo() in searchbox_browser_proxy.ts, but plain
+ * Like createSuggestTemplateInfo() in autocomplete_match_utils.ts, but plain
  * string text becomes an unstyled FormattedString.
  */
 export function createSuggestTemplateInfo(
@@ -150,6 +151,60 @@ export function createSuggestTemplateInfo(
 
 function toFormattedString(text: string|FormattedString): FormattedString {
   return typeof text === 'string' ? createFormattedString(text) : text;
+}
+
+export function createAutocompleteResult(
+    overrides: Partial<AutocompleteResult> = {}): AutocompleteResult {
+  return {
+    queryId: 0,
+    input: '',
+    matches: [],
+    suggestionGroupsMap: {},
+    smartComposeInlineHint: null,
+    showAimActivityLink: false,
+    sequenceId: 0,
+    ...overrides,
+  };
+}
+
+export function createSearchMatch(overrides: Partial<AutocompleteMatch> = {}):
+    AutocompleteMatch {
+  return createAutocompleteMatch({
+    isSearchType: true,
+    destinationUrl: 'https://www.google.com/search?q=hello+world',
+    fillIntoEdit: 'hello world',
+    type: 'search-what-you-typed',
+    suggestTemplate: createSuggestTemplateInfo({
+      primaryText: 'hello world',
+      secondaryText: createFormattedString(
+          'Google search', [createFormattedStringFragment({
+            color: ColorType.kSuggestHintText,
+          })]),
+    }),
+    ...overrides,
+  });
+}
+
+export function createMatchKeywordModel(
+    overrides: Partial<MatchKeywordModel> = {}): MatchKeywordModel {
+  return {
+    type: KeywordType.kChip,
+    chipHint: '',
+    chipA11y: '',
+    placeholder: '',
+    keyword: '',
+    ...overrides,
+  };
+}
+
+export function createAction(overrides: Partial<Action> = {}): Action {
+  return {
+    hint: '',
+    suggestionContents: '',
+    iconPath: '',
+    a11yLabel: '',
+    ...overrides,
+  };
 }
 
 export function createFormattedStringFragment(

@@ -116,9 +116,6 @@ class ToolbarView : public views::AccessiblePaneView,
   ExtensionsToolbarDesktop* extensions_container_for_testing() const {
     return extensions_container_;
   }
-  ToolbarButton* contextual_tasks_button() const {
-    return contextual_tasks_button_;
-  }
   ToolbarButton* forward_button() const { return forward_; }
   // Returns the Views extensions (puzzle piece) button, or null if the toolbar
   // doesn't host the Views extensions container (e.g. when
@@ -172,11 +169,6 @@ class ToolbarView : public views::AccessiblePaneView,
   void SetToolbarVisibility(bool visible);
 
  private:
-  FRIEND_TEST_ALL_PREFIXES(ToolbarViewCircularContextualTasksBrowserTest,
-                           CircularButtonRetainsInteriorMarginsAndPosition);
-  FRIEND_TEST_ALL_PREFIXES(ToolbarViewCircularContextualTasksBrowserTest,
-                           LeftSidePanelUsesOriginalLeftButton);
-
   // Forwards view overrides to this class.
   class ContainerView;
 
@@ -192,23 +184,6 @@ class ToolbarView : public views::AccessiblePaneView,
 
   // Logic that must be done on initialization and then on layout.
   void LayoutCommon();
-
-  // Returns whether the app menu control should apply Fitts' law edge padding
-  // to extend to the window border when maximized or fullscreen.
-  bool ShouldAppMenuApplyFittsLaw(bool is_maximized_or_fullscreen) const;
-
-  // Positions `contextual_tasks_button_` in the toolbar hierarchy based on
-  // whether it should dock at the edges or sit as a circular button to the
-  // left of profile (and glic button if visible).
-  void PositionContextualTasksButton();
-
-  // Returns true if the contextual tasks button is visible and positioned at
-  // the leading edge of the toolbar.
-  bool IsLeadingContextualTasksButtonVisible() const;
-
-  // Returns true if the contextual tasks button is visible and positioned at
-  // the trailing edge of the toolbar.
-  bool IsTrailingContextualTasksButtonVisible() const;
 
   // AppMenuIconController::Delegate:
   void UpdateTypeAndSeverity(
@@ -263,7 +238,6 @@ class ToolbarView : public views::AccessiblePaneView,
   // Controls. Most of these can be null, e.g. in popup windows. Only
   // |location_bar_| is guaranteed to exist. These pointers are owned by the
   // view hierarchy.
-  raw_ptr<ToolbarButton> contextual_tasks_button_ = nullptr;
   raw_ptr<ToolbarButton> back_ = nullptr;
   raw_ptr<ToolbarButton> forward_ = nullptr;
   raw_ptr<ReloadButton> reload_ = nullptr;
@@ -322,10 +296,6 @@ class ToolbarView : public views::AccessiblePaneView,
   // due to small toolbar view width. Visibility controlled by
   // `toolbar_controller_`.
   raw_ptr<OverflowButton> overflow_button_ = nullptr;
-
-  // Subscription for when contextual tasks button position should update.
-  base::CallbackListSubscription
-      contextual_tasks_button_position_subscription_;
 };
 
 extern const ui::ClassProperty<bool>* const kActionItemUnderlineIndicatorKey;

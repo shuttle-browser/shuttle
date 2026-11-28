@@ -1694,7 +1694,7 @@ int MenuController::OnDragUpdated(SubmenuView* source,
   // Accessibility events fired as a result of the selection changing may have
   // closed the menu and deleted `this`. Guard against that.
   if (destroy_pending_) {
-    return drop_operation;
+    return ui::DragDropTypes::DRAG_NONE;
   }
   SetDropMenuItem(menu_item, drop_position);
   last_drop_operation_ = drop_operation;
@@ -1713,6 +1713,7 @@ void MenuController::OnDragExited(SubmenuView* source) {
 views::View::DropCallback MenuController::GetDropCallback(
     SubmenuView* source,
     const ui::DropTargetEvent& event) {
+  ScopedDeletionGuard guard(AsWeakPtr());
   MenuItemView* drop_target =
       static_cast<MenuItemView*>(drop_target_tracker_.view());
   CHECK(drop_target, base::NotFatalUntil::M163);
@@ -1775,7 +1776,9 @@ void MenuController::OnDragDropWillStart() {
 
 void MenuController::OnDragDropCompleted(bool should_close) {
   ScopedDeletionGuard guard(AsWeakPtr());
-  CHECK(drag_in_progress_, base::NotFatalUntil::M163);
+  // TODO(crbug.com/585718788): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(drag_in_progress_);
   drag_in_progress_ = false;
   // During a drag, mouse events are processed directly by the widget, and not
   // sent to the MenuController. At drag completion, reset pressed state and

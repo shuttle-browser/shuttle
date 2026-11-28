@@ -16,6 +16,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "chrome/app/vector_icons/vector_icons.h"
@@ -351,7 +352,6 @@ void LocationBarView::Init() {
           /*omnibox_view=*/omnibox_view_,
           /*controller=*/omnibox_controller_.get(), /*location_bar=*/this,
           std::move(presenter));
-      popup_view->set_presenter(omnibox_popup_presenter_);
       omnibox_popup_view_ = std::move(popup_view);
     } else if (omnibox::IsWebUIOmniboxInBrowserViewEnabled()) {
       omnibox_popup_view_ =
@@ -374,9 +374,6 @@ void LocationBarView::Init() {
           std::move(popup_host),
           base::BindRepeating(&LocationBarView::OnFullWebUiOmniboxReady,
                               weak_factory_.GetWeakPtr()));
-      if (omnibox_popup_presenter_) {
-        popup_view->set_presenter(omnibox_popup_presenter_);
-      }
       omnibox_popup_view_ = std::move(popup_view);
     }
 
@@ -384,6 +381,17 @@ void LocationBarView::Init() {
       // NOTE: In classic mode, `OmniboxViewViews` provides the accessible name.
       GetViewAccessibility().SetName(
           l10n_util::GetStringUTF16(IDS_ACCNAME_LOCATION));
+
+      // `browser_` may not have a window yet, so find its `BrowserView` through
+      // this view's widget.
+      if (auto* browser_view = BrowserView::GetBrowserViewForNativeWindow(
+              GetWidget()->GetNativeWindow())) {
+        tab_dragging_status_subscription_ =
+            browser_view->browser_widget()->RegisterTabDraggingStatusChanged(
+                base::BindRepeating(
+                    &LocationBarView::OnTabDraggingStatusChanged,
+                    base::Unretained(this)));
+      }
     }
   }
 
@@ -1264,6 +1272,52 @@ void LocationBarView::SetPermissionPromptShowing(bool showing) {
   }
 }
 
+void LocationBarView::OnTabDraggingStatusChanged(bool is_dragging) {
+  // The Views omnibox is blurred and refocused by `TabDragController`, which
+  // clears and restores this window's Views focus. The Full WebUI omnibox
+  // holds focus in its popup widget instead, so mirror that here.
+  if (is_dragging) {
+    tab_drag_focused_web_contents_ = nullptr;
+    content::WebContents* web_contents = GetWebContents();
+    if (!web_contents || !GetOmniboxController()->edit_model()->has_focus()) {
+      return;
+    }
+    tab_drag_focused_web_contents_ = web_contents->GetWeakPtr();
+    // Blur the omnibox, as `TabDragController::SaveFocus()` does for the Views
+    // omnibox, so the dragged tab saves an unfocused omnibox and a new window
+    // it's dropped into doesn't focus it. Blurring saves the selection to
+    // restore if the tab comes back.
+    if (auto* popup_view = GetOmniboxPopupView()) {
+      popup_view->Blur();
+    }
+    return;
+  }
+
+  // Like `TabDragController::RestoreFocus()`, refocus the omnibox if the tab
+  // ended up back in this window. A canceled drag resets the drag status before
+  // reselecting the dragged tab, so check once that's done.
+  if (base::WeakPtr<content::WebContents> web_contents =
+          std::exchange(tab_drag_focused_web_contents_, nullptr)) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE,
+        base::BindOnce(&LocationBarView::RestoreFocusAfterTabDrag,
+                       weak_factory_.GetWeakPtr(), std::move(web_contents)));
+  }
+}
+
+void LocationBarView::RestoreFocusAfterTabDrag(
+    base::WeakPtr<content::WebContents> web_contents) {
+  if (!web_contents || GetWebContents() != web_contents.get() ||
+      !GetWidget() || GetWidget()->IsMinimized() ||
+      GetOmniboxController()->edit_model()->has_focus()) {
+    return;
+  }
+  if (auto* focus_manager = GetFocusManager()) {
+    focus_manager->SetFocusedViewWithReason(
+        this, views::FocusManager::FocusChangeReason::kFocusRestore);
+  }
+}
+
 bool LocationBarView::ShouldUsePopupOpenAppearance() const {
   // The full popup covers the location bar, so the native look underneath
   // isn't visible while it's on screen, and any frame where it isn't on screen
@@ -1679,12 +1733,14 @@ void LocationBarView::OnFocus() {
   if (is_full_webui_omnibox_) {
     // In Full WebUI mode, `LocationBarView` is the focusable Views proxy for
     // the WebUI omnibox. When `FocusManager` moves focus here on its own (tab
-    // traversal, focus restoration), forward to WebUI without triggering an
-    // unexpected Zero-Prefix Suggestion (ZPS) query.
+    // traversal, focus restoration), open and focus the popup as
+    // `OmniboxViewViews::OnFocus()` would focus the Views omnibox: select all
+    // on focus traversal, and otherwise restore the selection saved on blur,
+    // without triggering an unexpected Zero-Prefix Suggestion (ZPS) query.
     if (!moving_focus_to_webui_) {
-      if (omnibox::ShouldHostUnboundedOmniboxInLocationBar() &&
-          GetFocusManager() &&
-          GetFocusManager()->focus_change_reason() ==
+      auto* focus_manager = GetFocusManager();
+      if (omnibox::ShouldHostUnboundedOmniboxInLocationBar() && focus_manager &&
+          focus_manager->focus_change_reason() ==
               views::FocusManager::FocusChangeReason::kFocusRestore) {
         // On activation by a click, `FocusManager` restores focus before the
         // click is dispatched; let the click take focus first.
@@ -1694,17 +1750,27 @@ void LocationBarView::OnFocus() {
                 [](base::WeakPtr<LocationBarView> self) {
                   // `LocationBarView::HasFocus()` checks `edit_model()`, not
                   // Views focus.
-                  if (self && self->views::View::HasFocus()) {
-                    self->ForwardFocusToWebUI(/*query_zps=*/false,
-                                              /*select_all=*/false,
-                                              /*show_full_url=*/false);
+                  if (!self || !self->views::View::HasFocus()) {
+                    return;
+                  }
+                  if (auto* popup_view = self->GetOmniboxPopupView()) {
+                    popup_view->OnFocus(/*query_zps=*/false,
+                                        /*select_all=*/false,
+                                        /*show_full_url=*/false);
                   }
                 },
                 weak_factory_.GetWeakPtr()));
         return;
       }
-      ForwardFocusToWebUI(/*query_zps=*/false, /*select_all=*/false,
-                          /*show_full_url=*/false);
+      if (auto* popup_view = GetOmniboxPopupView()) {
+        const bool is_focus_traversal =
+            focus_manager &&
+            focus_manager->focus_change_reason() ==
+                views::FocusManager::FocusChangeReason::kFocusTraversal;
+        popup_view->OnFocus(/*query_zps=*/false,
+                            /*select_all=*/is_focus_traversal,
+                            /*show_full_url=*/false);
+      }
     }
     return;
   }
@@ -2032,6 +2098,10 @@ void LocationBarView::AnnounceAlert(const std::u16string& announcement) {
   GetViewAccessibility().AnnounceAlert(announcement);
 }
 
+bool LocationBarView::CanAnnounceAlert() const {
+  return GetWidget() != nullptr;
+}
+
 const LocationBarModel* LocationBarView::GetLocationBarModel() const {
   return delegate_->GetLocationBarModel();
 }
@@ -2057,6 +2127,10 @@ void LocationBarView::OnOmniboxFocused() {
 void LocationBarView::OpenOmniboxPopup(bool query_zps) {
   if (is_full_webui_omnibox_ && !in_popup_state_transition_) {
     if (auto* popup_view = GetOmniboxPopupView()) {
+      // The native view hands off a selection the user just made (e.g. by
+      // clicking or dragging), which replaces the one saved on blur, as a
+      // click in `OmniboxViewViews` sets the selection after `OnFocus()`.
+      popup_view->ClearSavedSelectionForFocusChange();
       popup_view->OnFocus(query_zps, /*select_all=*/false,
                           /*show_full_url=*/false);
     }

@@ -50,6 +50,8 @@ class PageSpecificSiteDataDialogTestApi {
                              BrowsingDataModel* blocked);
   std::vector<PageSpecificSiteDataDialogSite> GetAllSites();
   void DeleteStoredObjects(const url::Origin& origin);
+  void OnManageOnDeviceSiteDataClicked();
+  void OnRelatedApplicationLinkToAppSettings(const webapps::AppId& app_id);
 
  private:
   std::unique_ptr<PageSpecificSiteDataDialogModelDelegate> delegate_;

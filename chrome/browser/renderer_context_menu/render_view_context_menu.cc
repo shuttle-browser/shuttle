@@ -860,6 +860,13 @@ std::pair<int, const gfx::VectorIcon*> GetOpenLinkInSplitStringAndIcon(
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
+bool HasSearchProviderItem(const ui::SimpleMenuModel& menu_model) {
+  return menu_model.GetIndexOfCommandId(IDC_CONTENT_CONTEXT_SEARCHWEBFOR)
+             .has_value() ||
+         menu_model.GetIndexOfCommandId(IDC_CONTENT_CONTEXT_GOTOURL)
+             .has_value();
+}
+
 }  // namespace
 
 // static
@@ -2006,19 +2013,24 @@ void RenderViewContextMenu::AppendPageItems() {
 
   if (features::IsMenuSimplificationEnabled() &&
       params_.selection_text.empty() && !params_.is_editable) {
+    const bool glic_search_above_save_and_print =
+        features::kMenuSimplificationGlicSearchAboveSaveAndPrint.Get();
+
     // Navigation
     menu_model_.AddItemWithStringId(IDC_BACK, IDS_CONTENT_CONTEXT_BACK);
     menu_model_.AddItemWithStringId(IDC_FORWARD, IDS_CONTENT_CONTEXT_FORWARD);
     menu_model_.AddItemWithStringId(IDC_RELOAD, IDS_CONTENT_CONTEXT_RELOAD);
     menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
 
-    // Save as & Print
-    menu_model_.AddItemWithStringId(IDC_SAVE_PAGE,
-                                    IDS_CONTENT_CONTEXT_SAVEPAGEAS);
-    menu_model_.AddItemWithStringId(IDC_PRINT, IDS_CONTENT_CONTEXT_PRINT);
+    if (!glic_search_above_save_and_print) {
+      // Save as & Print
+      menu_model_.AddItemWithStringId(IDC_SAVE_PAGE,
+                                      IDS_CONTENT_CONTEXT_SAVEPAGEAS);
+      menu_model_.AddItemWithStringId(IDC_PRINT, IDS_CONTENT_CONTEXT_PRINT);
 
-    AppendLiveCaptionItem();
-    menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
+      AppendLiveCaptionItem();
+      menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
+    }
 
     if (!glic_below_search) {
       // Ask gemini
@@ -2044,6 +2056,18 @@ void RenderViewContextMenu::AppendPageItems() {
       // Save to Memory Banks
       AppendSaveToMemoryBanksItem();
       AppendBrowseMemoryBanksItem();
+    }
+
+    menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
+
+    if (glic_search_above_save_and_print) {
+      // Save as & Print
+      menu_model_.AddItemWithStringId(IDC_SAVE_PAGE,
+                                      IDS_CONTENT_CONTEXT_SAVEPAGEAS);
+      menu_model_.AddItemWithStringId(IDC_PRINT, IDS_CONTENT_CONTEXT_PRINT);
+
+      AppendLiveCaptionItem();
+      menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
     }
 
     // Cast
@@ -2408,6 +2432,10 @@ void RenderViewContextMenu::AppendOtherEditableItems() {
     AppendSearchProvider();
     if (glic_below_search) {
       MaybeAppendOpenGlicItem(/*add_separator=*/false);
+    }
+    // Glic and search should be within the same section in the menu.
+    if (glic_item_shown_ || HasSearchProviderItem(menu_model_)) {
+      menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
     }
     AppendPrintItem();
     AppendTranslateOrPartialTranslateItem();
@@ -3653,8 +3681,7 @@ RenderViewContextMenu::CreateDataEndpoint(bool notify_if_restricted) const {
         render_frame_host->GetMainFrame()->GetLastCommittedURL(),
         ui::DataTransferEndpointOptions{
             .notify_if_restricted = notify_if_restricted,
-            .off_the_record =
-                render_frame_host->GetBrowserContext()->IsOffTheRecord()});
+            .off_the_record = browser_context_->IsOffTheRecord()});
   }
   return nullptr;
 }
@@ -4295,6 +4322,12 @@ void RenderViewContextMenu::AppendRevisedTextSelectionSection() {
     // Link + Selection case
     AppendCopyItem();
     AppendLinkToTextItems();
+    AppendSaveToMemoryBanksItem();
+    AppendPrintItem();
+    AppendTranslateOrPartialTranslateItem();
+
+    menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
+
     if (!glic_below_search) {
       MaybeAppendOpenGlicItem(/*add_separator=*/false);
     }
@@ -4302,10 +4335,10 @@ void RenderViewContextMenu::AppendRevisedTextSelectionSection() {
     if (glic_below_search) {
       MaybeAppendOpenGlicItem(/*add_separator=*/false);
     }
-    AppendSaveToMemoryBanksItem();
-    AppendPrintItem();
 
-    AppendTranslateOrPartialTranslateItem();
+    if (glic_item_shown_ || HasSearchProviderItem(menu_model_)) {
+      menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
+    }
   } else {
     // Pure Selection case
     AppendCopyItem();
@@ -4321,6 +4354,11 @@ void RenderViewContextMenu::AppendRevisedTextSelectionSection() {
     if (glic_below_search) {
       MaybeAppendOpenGlicItem(/*add_separator=*/false);
     }
+
+    if (glic_item_shown_ || HasSearchProviderItem(menu_model_)) {
+      menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
+    }
+
     AppendSaveToMemoryBanksItem();
 
     AppendTranslateOrPartialTranslateItem();

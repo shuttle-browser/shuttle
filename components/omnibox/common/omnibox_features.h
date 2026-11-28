@@ -144,6 +144,7 @@ BASE_DECLARE_FEATURE(kWebUISearchboxWithoutModelController);
 // popup).
 BASE_DECLARE_FEATURE(kOmniboxMultimodalInput);
 BASE_DECLARE_FEATURE(kOmniboxDebounceKeyboardVisibility);
+BASE_DECLARE_FEATURE(kOmniboxUrlBarAimNaturalTextIme);
 BASE_DECLARE_FEATURE(kOmniboxSkipRedundantLocationBarUpdates);
 BASE_DECLARE_FEATURE(kOmniboxDisableTabsForCanvas);
 

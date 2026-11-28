@@ -141,7 +141,7 @@ class ChromePageInfoDelegate : public PageInfoDelegate {
   // but can be overridden by callers for WebContents not directly hosted as
   // browser tabs (e.g. payment handler dialogs or modal web dialogs).
   GetBrowserCallback get_browser_callback_;
-  raw_ptr<content::WebContents, AcrossTasksDanglingUntriaged> web_contents_;
+  raw_ptr<content::WebContents> web_contents_;
   security_state::SecurityLevel security_level_for_tests_;
   security_state::VisibleSecurityState visible_security_state_for_tests_;
   bool security_state_for_tests_set_ = false;
