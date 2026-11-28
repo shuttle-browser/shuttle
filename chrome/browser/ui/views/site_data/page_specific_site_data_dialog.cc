@@ -526,11 +526,6 @@ void PageSpecificSiteDataDialogTestApi::OnManageOnDeviceSiteDataClicked() {
   delegate_->OnManageOnDeviceSiteDataClicked();
 }
 
-void PageSpecificSiteDataDialogTestApi::OnRelatedApplicationLinkToAppSettings(
-    const webapps::AppId& app_id) {
-  delegate_->OnRelatedApplicationLinkToAppSettings(app_id);
-}
-
 }  // namespace test
 
 DEFINE_ELEMENT_IDENTIFIER_VALUE(kPageSpecificSiteDataDialogRow);
