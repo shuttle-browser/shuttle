@@ -490,6 +490,7 @@ absl_cc_library(
     ${ABSL_DEFAULT_COPTS}
   DEPS
     absl::config
+    absl::core_headers
     absl::hash
     absl::memory
     absl::type_traits
@@ -667,6 +668,7 @@ absl_cc_library(
   DEPS
     absl::base
     absl::config
+    absl::container_memory
     absl::exponential_biased
     absl::no_destructor
     absl::raw_logging_internal
@@ -815,7 +817,6 @@ absl_cc_library(
     absl::base
     absl::bits
     absl::common_policy_traits
-    absl::compressed_tuple
     absl::config
     absl::container_common
     absl::container_memory

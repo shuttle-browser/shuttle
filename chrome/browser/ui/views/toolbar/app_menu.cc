@@ -58,6 +58,7 @@
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/identity_manager/account_info.h"
+#include "components/subscription_eligibility/ai_subscription_tier_names.h"
 #include "components/zoom/page_zoom.h"
 #include "components/zoom/zoom_controller.h"
 #include "components/zoom/zoom_event_manager.h"
@@ -74,10 +75,10 @@
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/image_model.h"
 #include "ui/base/mojom/menu_source_type.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/themed_vector_icon.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
@@ -112,6 +113,7 @@
 #include "ui/views/style/typography.h"
 #include "ui/views/style/typography_provider.h"
 #include "ui/views/view_class_properties.h"
+#include "ui/views/view_tracker.h"
 #include "ui/views/view_utils.h"
 #include "ui/views/widget/widget.h"
 
@@ -443,7 +445,11 @@ class FullscreenButton : public ImageButton {
   FullscreenButton& operator=(const FullscreenButton&) = delete;
 
   void UpdateState(bool is_fullscreen, bool can_fullscreen) {
+    views::ViewTracker tracker(this);
     SetEnabled(can_fullscreen || is_fullscreen);
+    if (!tracker.view()) {
+      return;
+    }
 
     const int accname_string_id =
         is_fullscreen ? IDS_ACCNAME_EXIT_FULLSCREEN
@@ -1128,7 +1134,7 @@ bool AppMenu::ShouldExecuteCommandWithoutClosingMenu(int command_id,
                                                      const ui::Event& event) {
   return IsRecentTabsCommand(command_id) && event.IsMouseEvent() &&
          (ui::DispositionFromEventFlags(event.flags()) ==
-          WindowOpenDisposition::kNewBackgroundTab);
+          ui::mojom::WindowOpenDisposition::kNewBackgroundTab);
 }
 
 bool AppMenu::ShouldTryPositioningBesideAnchor() const {
@@ -1269,6 +1275,13 @@ void AppMenu::PopulateMenu(MenuItemView* parent, MenuModel* model) {
         CHECK(!recent_tabs_menu_model_delegate_.get(),
               base::NotFatalUntil::M162);
         recent_tabs_menu_model_delegate_ =
+            std::make_unique<RecentTabsMenuModelDelegate>(
+                this, model->GetSubmenuModelAt(i), item);
+        break;
+      case AppMenuModel::kOtherDeviceTabsMenuPlaceholder:
+        // Forwards async favicon updates and dynamic menu rebuilds to the view.
+        CHECK(!other_device_tabs_menu_model_delegate_);
+        other_device_tabs_menu_model_delegate_ =
             std::make_unique<RecentTabsMenuModelDelegate>(
                 this, model->GetSubmenuModelAt(i), item);
         break;

@@ -84,6 +84,11 @@ class CORE_EXPORT DocumentAnimations final
   void UpdateAnimationTimingForAnimationFrame();
   bool NeedsAnimationTimingUpdate();
   void UpdateAnimationTimingIfNeeded();
+
+  // Syncs the activations and deactivations observed by compositor triggers,
+  // see AnimationTrigger::ExecutePendingCompositorNotifications(). Called by
+  // PageAnimator after "update animations and send events".
+  void ExecutePendingCompositorTriggerNotifications();
   void GetAnimationsTargetingTreeScope(HeapVector<Member<Animation>>&,
                                        const TreeScope&);
 
@@ -100,6 +105,9 @@ class CORE_EXPORT DocumentAnimations final
   size_t GetAnimationsCount();
 
   void MarkAnimationsCompositorPending();
+
+  // Stops active compositor animations and marks them for a future restart.
+  void CancelCompositorAnimationsAndMarkForRestart();
 
   HeapVector<Member<Animation>> getAnimations(const TreeScope&);
   void PrepareAnimationsForSVGImageReset(
@@ -139,6 +147,9 @@ class CORE_EXPORT DocumentAnimations final
   // declared in the animation-trigger property.
   void UpdateAnimationTriggerAttachments();
   void AddCSSAnimationNeedingTriggerAttachment(CSSAnimation* animation);
+  void RemoveCSSAnimationNeedingTriggerAttachment(CSSAnimation* animation) {
+    css_animations_needing_trigger_attachment_.erase(animation);
+  }
 
   const HeapHashSet<WeakMember<CSSAnimation>>&
   CSSAnimationsNeedingTriggerAttachmentForTesting() const {

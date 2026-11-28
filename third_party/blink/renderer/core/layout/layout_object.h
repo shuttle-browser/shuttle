@@ -294,18 +294,18 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
   FRIEND_TEST_ALL_PREFIXES(LayoutObjectTest, MutableForPaintingClearPaintFlags);
   FRIEND_TEST_ALL_PREFIXES(
       LayoutObjectTest,
-      ContainingBlockAbsoluteLayoutObjectShouldBeNonStaticallyPositionedBlockAncestor);
+      ContainingBoxAbsoluteLayoutObjectShouldBeNonStaticallyPositionedBlockAncestor);
   FRIEND_TEST_ALL_PREFIXES(LayoutObjectTest,
-                           ContainingBlockFixedLayoutObjectInTransformedDiv);
+                           ContainingBoxFixedLayoutObjectInTransformedDiv);
   FRIEND_TEST_ALL_PREFIXES(LayoutObjectTest,
-                           ContainingBlockFixedLayoutObjectInTransformedDiv);
+                           ContainingBoxFixedLayoutObjectInTransformedDiv);
   FRIEND_TEST_ALL_PREFIXES(LayoutObjectTest,
-                           ContainingBlockFixedLayoutObjectInBody);
+                           ContainingBoxFixedLayoutObjectInBody);
   FRIEND_TEST_ALL_PREFIXES(LayoutObjectTest,
-                           ContainingBlockAbsoluteLayoutObjectInBody);
+                           ContainingBoxAbsoluteLayoutObjectInBody);
   FRIEND_TEST_ALL_PREFIXES(
       LayoutObjectTest,
-      ContainingBlockAbsoluteLayoutObjectShouldNotBeNonStaticallyPositionedInlineAncestor);
+      ContainingBoxAbsoluteLayoutObjectShouldNotBeNonStaticallyPositionedInlineAncestor);
   FRIEND_TEST_ALL_PREFIXES(LayoutObjectTest, VisualRect);
 
   friend class VisualRectMappingTest;
@@ -491,11 +491,6 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
   // context root. |this| is required to be an object that participates in an
   // inline formatting context (i.e. something inline-level, or a float).
   LayoutBlockFlow* FragmentItemsContainer() const;
-
-  // Return the containing NG block, if the containing block is an NG block,
-  // or the LayoutMedia parent.
-  // Nullptr otherwise.
-  LayoutBox* ContainingNGBox() const;
 
   // Return the nearest fragmentation context root, if any.
   LayoutBox* ContainingFragmentationContextRoot() const;
@@ -1581,20 +1576,10 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
   }
   bool HasClipRelatedProperty() const;
 
-  // Both scroll containers that host overscroll area parent pseudo-elements and
-  // overscroll area parent pseudo elements are overcroll containers.
-  // TODO(crbug.com/468055741): See if we can remove the overscroll-area-parent
-  // pseudo check after they can host scrollable overflow.
   bool IsOverscrollContainer() const {
     NOT_DESTROYED();
-    if (!IsBox()) {
-      return false;
-    }
-    if (IsOverscrollAreaParent()) {
-      return true;
-    }
-    return Style().EffectiveOverscrollContainerType() !=
-           EOverscrollContainerType::kNone;
+    return IsBox() && Style().EffectiveOverscrollContainerType() !=
+                          EOverscrollContainerType::kNone;
   }
 
   bool IsContentMovingOverscrollContainer() const {
@@ -1736,7 +1721,6 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
 
   bool IsScrollMarker() const;
   bool IsScrollMarkerGroup() const;
-  bool IsScrollMarkerGroupBefore() const;
 
   // Returns true if this object represents ::marker for the first SUMMARY
   // child of a DETAILS, and list-style-type is disclosure-*.
@@ -2184,8 +2168,10 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
 
   // Recalculates visual overflow for this object and non-self-painting
   // PaintLayer descendants.
-  virtual void RecalcVisualOverflow();
-  void RecalcNormalFlowChildVisualOverflowIfNeeded();
+  virtual void RecalcVisualOverflow() { NOT_DESTROYED(); }
+
+  void RecalcVisualOverflowForChildren();
+
 #if DCHECK_IS_ON()
   // Enables DCHECK to ensure that the visual overflow for |this| is computed.
   // The actual invalidation is maintained in |PaintLayer|.
@@ -2293,31 +2279,24 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
   void SetModifiedStyleOutsideStyleRecalc(const ComputedStyle&,
                                           ApplyStyleChanges);
 
-  // This function returns an enclosing non-anonymous LayoutBlock for this
+  // This function returns an enclosing non-anonymous LayoutBox for this
   // element. This function is not always returning the containing block as
   // defined by CSS. In particular:
-  // - if the CSS containing block is a relatively positioned inline,
-  //   the function returns the inline's enclosing non-anonymous LayoutBlock.
-  //   This means that a LayoutInline would be skipped (expected as it's not a
-  //   LayoutBlock) but so would be an inline LayoutNGTable or LayoutBlockFlow.
-  //   TODO(jchaffraix): Is that REALLY what we want here?
+  // - if the CSS containing block is a relatively positioned inline, the
+  //   function returns the inline's enclosing non-anonymous LayoutBlockFlow.
   // - if the CSS containing block is anonymous, we find its enclosing
-  //   non-anonymous LayoutBlock.
-  //   Note that in the previous examples, the returned LayoutBlock has no
+  //   non-anonymous LayoutBox.
+  //   Note that in the previous examples, the returned LayoutBox has no
   //   logical relationship to the original element.
-  //
-  // LayoutBlocks are the one that handle laying out positioned elements,
-  // thus this function is important during layout, to insert the positioned
-  // elements into the correct LayoutBlock.
   //
   // See container() for the function that returns the containing block.
   // See layout_block.h for some extra explanations on containing blocks.
-  LayoutBox* ContainingBlock(AncestorSkipInfo* = nullptr) const;
+  LayoutBox* ContainingBox(AncestorSkipInfo* = nullptr) const;
 
   // Returns the containing block that owns the text-overflow style,
   // resolving anonymous blocks to their parent. Returns nullptr if the
   // resolved parent is not a block container (e.g., flex or inline).
-  LayoutObject* ContainingBlockForTextOverflow() const;
+  LayoutObject* ContainerForTextOverflow() const;
 
   // Returns the object whose scroll state decides whether text laid out in
   // this block container should be truncated. This is normally the block
@@ -2332,7 +2311,7 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
   // or null if there is none.
   LayoutObject* NearestAncestorForElement() const;
 
-  LayoutBox* InclusiveContainingBlock(AncestorSkipInfo* = nullptr);
+  LayoutBox* InclusiveContainingBox(AncestorSkipInfo* = nullptr);
 
   // Returns the nearest ancestor scroll container in any axis.
   const LayoutBox* ContainingScrollContainer(
@@ -2568,7 +2547,7 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
   /* The following methods are inlined in layout_object_inlines.h */
   // If first line style is requested and there is no applicable first line
   // style, the functions will return the style of this object.
-  inline const ComputedStyle& FirstLineStyleRef() const;
+  inline const ComputedStyle& FirstLineStyle() const;
   inline const ComputedStyle& Style(bool first_line) const;
 
   const ComputedStyle& EffectiveStyle(StyleVariant style_variant) const {
@@ -3141,6 +3120,15 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
       SetShouldCheckForPaintInvalidation();
       layout_object_.SetShouldDoFullPaintInvalidation(reason);
     }
+    void SetSubtreeShouldDoFullPaintInvalidation(
+        PaintInvalidationReason reason = PaintInvalidationReason::kSubtree) {
+      DCHECK_EQ(layout_object_.GetDocument().Lifecycle().GetState(),
+                DocumentLifecycle::kInPrePaint);
+      // Avoid marking ancestors for paint invalidation; see
+      // SetShouldDoFullPaintInvalidation() above.
+      SetShouldCheckForPaintInvalidation();
+      layout_object_.SetSubtreeShouldDoFullPaintInvalidation(reason);
+    }
     void SetShouldDoFullPaintInvalidationWithoutLayoutChange(
         PaintInvalidationReason reason) {
       DCHECK_EQ(layout_object_.GetDocument().Lifecycle().GetState(),
@@ -3660,11 +3648,11 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
 
   // Returns ContainerForAbsolutePosition() if it's a LayoutBlock, or the
   // containing LayoutBlock of it.
-  LayoutBox* ContainingBlockForAbsolutePosition(
+  LayoutBox* ContainingBoxForAbsolutePosition(
       AncestorSkipInfo* = nullptr) const;
   // Returns ContainerForFixedPosition() if it's a LayoutBlock, or the
   // containing LayoutBlock of it.
-  LayoutBox* ContainingBlockForFixedPosition(AncestorSkipInfo* = nullptr) const;
+  LayoutBox* ContainingBoxForFixedPosition(AncestorSkipInfo* = nullptr) const;
 
   // Returns the first line style declared in CSS. The style may be declared on
   // an ancestor block (see LayoutBlock::FirstLineStyleParentBlock) that applies
@@ -3676,27 +3664,19 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
   void SetTransformAffectsVectorEffect(bool b) {
     NOT_DESTROYED();
     DCHECK(IsSVGChild());
-    transform_affects_vector_effect_ = b;
+    if (transform_affects_vector_effect_ != b) {
+      transform_affects_vector_effect_ = b;
+      // `CompositorAnimations::CanStartTransformAnimationOnCompositorForSVG`
+      // depends on `TransformAffectsVectorEffect`, which is used for the
+      // transform paint property.
+      SetNeedsPaintPropertyUpdate();
+    }
   }
 
   void ClearSVGDescendantMayHaveTransformRelatedOperations() {
     NOT_DESTROYED();
     DCHECK(IsSVGChild());
     svg_descendant_may_have_transform_related_operations_ = false;
-  }
-
-  void SetCanTraversePhysicalFragments(bool b) {
-    NOT_DESTROYED();
-    can_traverse_physical_fragments_ = b;
-  }
-
-  void SetHasValidCachedGeometry(bool b) {
-    NOT_DESTROYED();
-    has_valid_cached_geometry_ = b;
-  }
-  bool HasValidCachedGeometry() const {
-    NOT_DESTROYED();
-    return has_valid_cached_geometry_;
   }
 
   bool HavePhysicalFragmentsChanged() const {
@@ -3732,10 +3712,6 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
   }
 
  private:
-  gfx::QuadF LocalToAncestorQuadInternal(const gfx::QuadF&,
-                                         const LayoutBoxModelObject* ancestor,
-                                         MapCoordinatesFlags = {}) const;
-
   void AddAsImageObserver(StyleImage*);
   void RemoveAsImageObserver(StyleImage*);
 
@@ -4085,11 +4061,6 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
   // layout results, by reading out the post-layout results from the children.
   unsigned has_broken_spine_ : 1 = false;
 
-  // True if LayoutBox::frame_size_ has the latest value computed from its
-  // physical fragments.
-  // This is set to false when LayoutBox::layout_results_ is updated.
-  unsigned has_valid_cached_geometry_ : 1 = false;
-
   // For LayoutBox, true if the physical fragments might be different from
   // previous_layout_results_. Cleared when previous fragments are saved.
   unsigned have_physical_fragments_changed_ : 1 = false;
@@ -4140,11 +4111,10 @@ class CORE_EXPORT LayoutObject : public GarbageCollected<LayoutObject>,
   }
 
  private:
-  friend class LineLayoutItem;
   friend class LocalFrameView;
 
   Member<const ComputedStyle> style_;
-  Member<Node> node_;
+  WeakMember<Node> node_;
 
   Member<LayoutObject> parent_;
   Member<LayoutObject> previous_;

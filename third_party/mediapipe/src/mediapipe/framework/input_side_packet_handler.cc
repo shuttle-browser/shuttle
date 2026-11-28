@@ -14,7 +14,10 @@
 
 #include "mediapipe/framework/input_side_packet_handler.h"
 
-#include "absl/log/absl_check.h"
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/status/status_builder.h"  // from @com_google_absl
+#include "absl/status/status_macros.h"   // from @com_google_absl
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/framework/port/status_builder.h"
@@ -29,7 +32,7 @@ absl::Status InputSidePacketHandler::PrepareForRun(
     std::function<void(absl::Status)> error_callback) {
   int missing_input_side_packet_count;
   prev_input_side_packets_ = std::move(input_side_packets_);
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       input_side_packets_,
       tool::FillPacketSet(*input_side_packet_types, all_side_packets,
                           &missing_input_side_packet_count));
@@ -67,7 +70,7 @@ absl::Status InputSidePacketHandler::SetInternal(CollectionItemId id,
   }
   absl::Status result = input_side_packet_types_->Get(id).Validate(packet);
   if (!result.ok()) {
-    return mediapipe::StatusBuilder(result, MEDIAPIPE_LOC).SetPrepend()
+    return absl::StatusBuilder(result, MEDIAPIPE_LOC).SetPrepend()
            << absl::StrCat(
                   "Packet type mismatch on calculator input side packet with "
                   "id ",

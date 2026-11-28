@@ -10,6 +10,7 @@
 #include <string_view>
 #include <utility>
 
+#include "base/containers/flat_set.h"
 #include "base/debug/alias.h"
 #include "base/debug/crash_logging.h"
 #include "base/debug/dump_without_crashing.h"
@@ -1831,7 +1832,7 @@ void HttpStreamPool::AttemptManager::OnJobDone(Job* job) {
               [](Job* job, raw_ptr<Job> other_job) { return other_job == job; },
               job))
           .is_null());
-  DCHECK_EQ(preconnect_jobs_.count(job), 0u);
+  DCHECK(!preconnect_jobs_.contains(job));
 
   limit_ignoring_jobs_.erase(job);
   ip_based_pooling_disabling_jobs_.erase(job);
@@ -1901,7 +1902,7 @@ void HttpStreamPool::AttemptManager::MaybeCreateSpdyStreamAndNotify(
   CHECK(spdy_session);
   CHECK(spdy_session->IsAvailable());
 
-  std::set<std::string> dns_aliases =
+  base::flat_set<std::string> dns_aliases =
       http_network_session()->spdy_session_pool()->GetDnsAliasesForSessionKey(
           spdy_session_key());
 
@@ -1930,8 +1931,9 @@ void HttpStreamPool::AttemptManager::MaybeCreateQuicStreamAndNotify(
   CHECK(availability_state_ == AvailabilityState::kAvailable);
   CHECK(quic_session);
 
-  std::set<std::string> dns_aliases = quic_session->GetDnsAliasesForSessionKey(
-      quic_session_alias_key().session_key());
+  base::flat_set<std::string> dns_aliases =
+      quic_session->GetDnsAliasesForSessionKey(
+          quic_session_alias_key().session_key());
 
   std::vector<std::unique_ptr<QuicHttpStream>> streams(request_jobs_.size());
   std::ranges::generate(streams, [&] {
@@ -2069,8 +2071,7 @@ HttpStreamPool::AttemptManager::ExtractTcpBasedAttempt(
     TcpBasedAttempt* raw_attempt,
     int rv) {
   TcpBasedAttemptSlot* slot = raw_attempt->slot();
-  auto it = tcp_based_attempt_slots_.find(slot);
-  CHECK(it != tcp_based_attempt_slots_.end());
+  CHECK(tcp_based_attempt_slots_.contains(slot));
 
   std::unique_ptr<TcpBasedAttempt> attempt = slot->TakeAttempt(raw_attempt);
 

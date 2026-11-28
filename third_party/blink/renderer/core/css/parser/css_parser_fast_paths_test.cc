@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/core/css/css_identifier_value.h"
 #include "third_party/blink/renderer/core/css/css_numeric_literal_value.h"
 #include "third_party/blink/renderer/core/css/css_value_list.h"
+#include "third_party/blink/renderer/core/css/parser/css_parser.h"
 #include "third_party/blink/renderer/core/execution_context/security_context.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 
@@ -151,6 +152,40 @@ TEST(CSSParserFastPathsTest, ParseRevertRule) {
     CSSValue* value = CSSParserFastPaths::MaybeParseValue(
         CSSPropertyID::kDirection, "revert-rule", context);
     EXPECT_FALSE(value);
+  }
+}
+
+TEST(CSSParserFastPathsTest, ParseReadingFlow) {
+  auto* context = MakeGarbageCollected<CSSParserContext>(
+      kHTMLStandardMode, SecureContextMode::kInsecureContext);
+  for (const char* keyword : {"normal", "flex-visual", "flex-flow", "grid-rows",
+                              "grid-columns", "grid-order", "source-order"}) {
+    SCOPED_TRACE(keyword);
+    EXPECT_TRUE(CSSParserFastPaths::MaybeParseValue(CSSPropertyID::kReadingFlow,
+                                                    keyword, context));
+    EXPECT_TRUE(CSSParser::ParseSingleValue(CSSPropertyID::kReadingFlow,
+                                            keyword, context));
+  }
+
+  for (const char* keyword :
+       {"grid-lanes-flow", "grid-lanes-track", "grid-lanes-order"}) {
+    SCOPED_TRACE(keyword);
+    // 'grid-lanes' feature disabled
+    {
+      ScopedCSSGridLanesLayoutForTest disabled(false);
+      EXPECT_FALSE(CSSParserFastPaths::MaybeParseValue(
+          CSSPropertyID::kReadingFlow, keyword, context));
+      EXPECT_FALSE(CSSParser::ParseSingleValue(CSSPropertyID::kReadingFlow,
+                                               keyword, context));
+    }
+    // 'grid-lanes' feature enabled
+    {
+      ScopedCSSGridLanesLayoutForTest enabled(true);
+      EXPECT_TRUE(CSSParserFastPaths::MaybeParseValue(
+          CSSPropertyID::kReadingFlow, keyword, context));
+      EXPECT_TRUE(CSSParser::ParseSingleValue(CSSPropertyID::kReadingFlow,
+                                              keyword, context));
+    }
   }
 }
 
@@ -467,6 +502,12 @@ TEST(CSSParserFastPathsTest, ParseHSLInvalid) {
   EXPECT_EQ(
       ParseColorResult::kFailure,
       CSSParserFastPaths::ParseColor("hsl(9,0.6", kHTMLStandardMode, color));
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("rgb(255 255 255 / 1)b(7)",
+                                           kHTMLStandardMode, color));
+  EXPECT_EQ(ParseColorResult::kFailure,
+            CSSParserFastPaths::ParseColor("rgba(255, 255, 255, 2)b(7)",
+                                           kHTMLStandardMode, color));
 }
 
 TEST(CSSParserFastPathsTest, IsValidKeywordPropertyAndValueOverflowClip) {
@@ -570,6 +611,46 @@ TEST(CSSParserFastPathsTest, TextDecorationSkipInk_All) {
   value = CSSParserFastPaths::MaybeParseValue(
       CSSPropertyID::kTextDecorationSkipInk, "invalid", context);
   EXPECT_EQ(nullptr, value);
+}
+
+TEST(CSSParserFastPathsTest, ParseAnimationNavigationBehavior) {
+  ScopedCSSAnimationNavigationBehaviorForTest scoped_feature(true);
+  auto* context = MakeGarbageCollected<CSSParserContext>(
+      kHTMLStandardMode, SecureContextMode::kInsecureContext);
+
+  EXPECT_TRUE(CSSParserFastPaths::IsHandledByKeywordFastPath(
+      CSSPropertyID::kAnimationNavigationBehavior));
+
+  const CSSValue* value = CSSParserFastPaths::MaybeParseValue(
+      CSSPropertyID::kAnimationNavigationBehavior, "abrupt", context);
+  ASSERT_NE(nullptr, value);
+  EXPECT_EQ(CSSValueID::kAbrupt, To<CSSIdentifierValue>(value)->GetValueID());
+  EXPECT_TRUE(CSSParser::ParseSingleValue(
+      CSSPropertyID::kAnimationNavigationBehavior, "abrupt", context));
+
+  value = CSSParserFastPaths::MaybeParseValue(
+      CSSPropertyID::kAnimationNavigationBehavior, "continuous", context);
+  ASSERT_NE(nullptr, value);
+  EXPECT_EQ(CSSValueID::kContinuous,
+            To<CSSIdentifierValue>(value)->GetValueID());
+  EXPECT_TRUE(CSSParser::ParseSingleValue(
+      CSSPropertyID::kAnimationNavigationBehavior, "continuous", context));
+
+  value = CSSParserFastPaths::MaybeParseValue(
+      CSSPropertyID::kAnimationNavigationBehavior, "CoNtInUoUs", context);
+  ASSERT_NE(nullptr, value);
+  EXPECT_EQ(CSSValueID::kContinuous,
+            To<CSSIdentifierValue>(value)->GetValueID());
+
+  for (const char* invalid : {"auto", "none", "abrupt, continuous"}) {
+    SCOPED_TRACE(invalid);
+    EXPECT_EQ(nullptr, CSSParserFastPaths::MaybeParseValue(
+                           CSSPropertyID::kAnimationNavigationBehavior, invalid,
+                           context));
+    EXPECT_EQ(nullptr, CSSParser::ParseSingleValue(
+                           CSSPropertyID::kAnimationNavigationBehavior, invalid,
+                           context));
+  }
 }
 
 }  // namespace blink

@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/browser_actions.h"
 
+#include <array>
 #include <memory>
 #include <optional>
 #include <string>
@@ -19,6 +20,7 @@
 #include "base/metrics/user_metrics.h"
 #include "base/metrics/user_metrics_action.h"
 #include "base/notreached.h"
+#include "base/strings/string_split.h"
 #include "base/types/to_address.h"
 #include "build/branding_buildflags.h"
 #include "chrome/app/chrome_command_ids.h"
@@ -29,7 +31,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
-#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/ui/accelerator_table.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
@@ -41,7 +42,7 @@
 #include "content/public/common/page_zoom.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/interaction/element_tracker.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/global_keyboard_shortcuts_mac.h"
 #include "chrome/browser/ui/browser_commands_mac.h"
@@ -82,7 +83,6 @@
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_controller.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
@@ -122,10 +122,12 @@
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/page_navigator.h"
+#include "extensions/buildflags/buildflags.h"
 #include "extensions/common/extension_urls.h"
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ui/ash/multi_user/multi_user_context_menu.h"
 #include "chrome/browser/ui/browser_commands_chromeos.h"
+#include "chromeos/strings/grit/chromeos_strings.h"
 #endif
 #include "components/user_prefs/user_prefs.h"
 #include "components/vector_icons/vector_icons.h"
@@ -171,6 +173,15 @@ ui::Accelerator GetAcceleratorForCommandId(int command_id) {
     return accelerator;
   }
   return ui::Accelerator();
+}
+
+// Splits the comma-separated synonym list stored in the string resource
+// `message_id` into individual search terms. Translators may delimit the list
+// with the Arabic ('،'), ideographic ('、') or fullwidth ('，') comma instead
+// of ',', so split on all of them.
+std::vector<std::u16string> GetSynonymsForAction(int message_id) {
+  return base::SplitString(l10n_util::GetStringUTF16(message_id), u",،、，",
+                           base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
 }
 
 actions::ActionItem::ActionItemBuilder ChromeMenuAction(
@@ -234,6 +245,58 @@ void BrowserActions::InitializeBrowserActions() {
   InitializeToolbarAndMiscActions();
   InitializeNavigationActions();
   InitializeSubmenuActions();
+  PopulateSynonyms();
+}
+
+void BrowserActions::PopulateSynonyms() {
+  CHECK(root_action_item_);
+
+  // Maps an action to the string resource holding its comma-separated search
+  // synonyms. To add synonyms for an action, add a message to
+  // chrome/app/action_synonym_strings.grdp and list it here.
+  static constexpr auto kActionSynonymMessageIds = std::to_array<
+      std::pair<actions::ActionId, int>>({
+      {kActionShowPasswordManager, IDS_ACTION_SYNONYMS_SHOW_PASSWORD_MANAGER},
+      {kActionShowPaymentMethods, IDS_ACTION_SYNONYMS_SHOW_PAYMENT_METHODS},
+      {kActionShowContactInfo, IDS_ACTION_SYNONYMS_SHOW_CONTACT_INFO},
+      {kActionCustomizeChrome, IDS_ACTION_SYNONYMS_CUSTOMIZE_CHROME},
+      {kActionCloseProfile, IDS_ACTION_SYNONYMS_CLOSE_PROFILE},
+      {kActionManageGoogleAccount, IDS_ACTION_SYNONYMS_MANAGE_GOOGLE_ACCOUNT},
+      {kActionOpenGuestProfile, IDS_ACTION_SYNONYMS_OPEN_GUEST_PROFILE},
+      {kActionAddNewProfile, IDS_ACTION_SYNONYMS_ADD_NEW_PROFILE},
+      {kActionManageChromeProfiles, IDS_ACTION_SYNONYMS_MANAGE_CHROME_PROFILES},
+      {kActionShowHistory, IDS_ACTION_SYNONYMS_SHOW_HISTORY},
+      {kActionImportSettings, IDS_ACTION_SYNONYMS_IMPORT_SETTINGS},
+      {kActionExtensionsSubmenuManageExtensions,
+       IDS_ACTION_SYNONYMS_MANAGE_EXTENSIONS},
+      {kActionExtensionsSubmenuVisitChromeWebStore,
+       IDS_ACTION_SYNONYMS_VISIT_CHROME_WEB_STORE},
+      {kActionFind, IDS_ACTION_SYNONYMS_FIND},
+      {kActionSavePage, IDS_ACTION_SYNONYMS_SAVE_PAGE},
+      {kActionInstallPwa, IDS_ACTION_SYNONYMS_INSTALL_PWA},
+      {kActionCreateShortcut, IDS_ACTION_SYNONYMS_CREATE_SHORTCUT},
+      {kActionQrCodeGenerator, IDS_ACTION_SYNONYMS_QR_CODE_GENERATOR},
+      {kActionRouteMedia, IDS_ACTION_SYNONYMS_ROUTE_MEDIA},
+      {kActionTabSearch, IDS_ACTION_SYNONYMS_TAB_SEARCH},
+      {kActionNameWindow, IDS_ACTION_SYNONYMS_NAME_WINDOW},
+      {kActionToggleVerticalTabs, IDS_ACTION_SYNONYMS_TOGGLE_VERTICAL_TABS},
+      {kActionPerformance, IDS_ACTION_SYNONYMS_PERFORMANCE},
+      {kActionTaskManagerAppMenu, IDS_ACTION_SYNONYMS_TASK_MANAGER},
+      {kActionDevTools, IDS_ACTION_SYNONYMS_DEV_TOOLS},
+      {kActionNewIncognitoWindow, IDS_ACTION_SYNONYMS_NEW_INCOGNITO_WINDOW},
+      {kActionClearBrowsingData, IDS_ACTION_SYNONYMS_CLEAR_BROWSING_DATA},
+      {kActionOptions, IDS_ACTION_SYNONYMS_OPTIONS},
+      {kActionExit, IDS_ACTION_SYNONYMS_EXIT},
+  });
+
+  // TODO(crbug.com/581423314): Each entry costs a FindAction tree walk during
+  // window creation. Verify this stays performant as the synonym table grows.
+  for (const auto& [action_id, message_id] : kActionSynonymMessageIds) {
+    if (actions::ActionItem* action = actions::ActionManager::Get().FindAction(
+            action_id, root_action_item_)) {
+      action->AddSynonyms(GetSynonymsForAction(message_id));
+    }
+  }
 }
 
 void BrowserActions::InitializePageActionIconActions() {
@@ -261,42 +324,42 @@ void BrowserActions::InitializePageActionIconActions() {
           .SetEnabled(true)
           .Build());
 
+  if (base::FeatureList::IsEnabled(
+          content_settings::features::kBlockV8OptimizerOnUnfamiliarSites)) {
+    root_action_item_->AddChild(
+        actions::ActionItem::Builder(
+            base::BindRepeating(
+                [](BrowserWindowInterface* bwi, actions::ActionItem* item,
+                   actions::ActionInvocationContext context) {
+                  if (!bwi) {
+                    return;
+                  }
+                  auto anchor =
+                      CHECK_DEREF(BrowserView::GetBrowserViewForBrowser(bwi))
+                          .toolbar_button_provider()
+                          ->GetBubbleAnchor(kActionShowJsOptimizationsIcon);
+
+                  JsOptimizationsPageActionController::From(
+                      bwi->GetActiveTabInterface())
+                      ->ShowBubble(anchor, item);
+                },
+                bwi))
+            .SetActionId(kActionShowJsOptimizationsIcon)
+            .SetTooltipText(l10n_util::GetStringUTF16(
+                IDS_JS_OPTIMIZATIONS_DISABLED_ICON_TOOLTIP))
+            .SetImage(ui::ImageModel::FromVectorIcon(
+                vector_icons::kShieldIcon, ui::kColorIcon,
+                ui::SimpleMenuModel::kDefaultIconSize))
+            .SetEnabled(true)
+            .Build());
+  }
+
   root_action_item_->AddChild(
       actions::ActionItem::Builder(
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                if (!bwi) {
-                  return;
-                }
-                auto anchor =
-                    CHECK_DEREF(BrowserView::GetBrowserViewForBrowser(bwi))
-                        .toolbar_button_provider()
-                        ->GetBubbleAnchor(kActionShowJsOptimizationsIcon);
-
-                bwi->GetActiveTabInterface()
-                    ->GetTabFeatures()
-                    ->js_optimizations_page_action_controller()
-                    ->ShowBubble(anchor, item);
-              },
-              bwi))
-          .SetActionId(kActionShowJsOptimizationsIcon)
-          .SetTooltipText(l10n_util::GetStringUTF16(
-              IDS_JS_OPTIMIZATIONS_DISABLED_ICON_TOOLTIP))
-          .SetImage(ui::ImageModel::FromVectorIcon(
-              vector_icons::kShieldIcon, ui::kColorIcon,
-              ui::SimpleMenuModel::kDefaultIconSize))
-          .SetEnabled(true)
-          .Build());
-
-  root_action_item_->AddChild(
-      actions::ActionItem::Builder(
-          base::BindRepeating(
-              [](BrowserWindowInterface* bwi, actions::ActionItem* item,
-                 actions::ActionInvocationContext context) {
-                bwi->GetActiveTabInterface()
-                    ->GetTabFeatures()
-                    ->zoom_view_controller()
+                zoom::ZoomViewController::From(bwi->GetActiveTabInterface())
                     ->UpdateBubbleVisibility(
                         /*prefer_to_show_bubble=*/true,
                         /*from_user_gesture=*/true);
@@ -363,19 +426,12 @@ void BrowserActions::InitializeChromeMenuActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                // Shuttle: the new tab button, pressed while looking at an
-                // agent's tab, adds a tab to that agent (its right-click menu
-                // picks any agent). Ctrl+T stays a plain new tab.
-                if (auto* agents =
-                        shuttle::ShuttleService::Get(bwi->GetProfile())) {
-                  const std::string agent_id = agents->AgentOfTab(
-                      bwi->GetTabStripModel()->GetActiveWebContents());
-                  if (!agent_id.empty() &&
-                      agents->OpenNewTabInAgent(agent_id, {.browser = bwi})) {
-                    return;
-                  }
-                }
-                chrome::NewTab(bwi, NewTabTypes::kNewTabCommand);
+                const NewTabTypes new_tab_type =
+                    context.GetProperty(chrome::kActionInvocationSourceKey) ==
+                            chrome::ActionInvocationSource::kViewButton
+                        ? NewTabTypes::kNewTabButton
+                        : NewTabTypes::kNewTabCommand;
+                chrome::NewTab(bwi, new_tab_type);
               },
               bwi))
           .SetActionId(kActionNewTab)
@@ -1034,6 +1090,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           .SetActionId(kActionFullscreen)
           .SetTooltipText(l10n_util::GetStringUTF16(IDS_ACCNAME_FULLSCREEN))
           .SetAccessibleName(l10n_util::GetStringUTF16(IDS_ACCNAME_FULLSCREEN))
+          .SetAccelerator(GetAcceleratorForCommandId(IDC_FULLSCREEN))
           .SetImage(ui::ImageModel::FromVectorIcon(
               features::IsRoundedIconsEnabled() ? kFullscreenIcon
                                                 : kFullscreenRefreshOldIcon))
@@ -1748,6 +1805,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               bwi))
           .SetActionId(kActionZoomPlus)
           .SetTooltipText(l10n_util::GetStringUTF16(IDS_ACCNAME_ZOOM_PLUS2))
+          .SetAccelerator(GetAcceleratorForCommandId(IDC_ZOOM_PLUS))
           .SetImage(ui::ImageModel::FromVectorIcon(
               features::IsRoundedIconsEnabled() ? kAddIcon
                                                 : kZoomPlusMenuRefreshOldIcon))
@@ -1763,6 +1821,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
               bwi))
           .SetActionId(kActionZoomMinus)
           .SetTooltipText(l10n_util::GetStringUTF16(IDS_ACCNAME_ZOOM_MINUS2))
+          .SetAccelerator(GetAcceleratorForCommandId(IDC_ZOOM_MINUS))
           .SetImage(ui::ImageModel::FromVectorIcon(
               features::IsRoundedIconsEnabled() ? kRemoveIcon
                                                 : kZoomMinusMenuRefreshOldIcon))
@@ -2148,6 +2207,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           .SetImage(ui::ImageModel::FromVectorIcon(
               features::IsRoundedIconsEnabled() ? kHelpCustomIcon
                                                 : kHelpMenuOldIcon))
+          .SetAccelerator(GetAcceleratorForCommandId(IDC_HELP_PAGE_VIA_MENU))
           .Build());
 
   root_action_item_->AddChild(
@@ -2246,8 +2306,7 @@ void BrowserActions::InitializeToolbarAndMiscActions() {
           /*is_pinnable=*/false)
 #if BUILDFLAG(IS_LINUX)
           .SetVisible(
-              enterprise_util::IsBrowserManaged(base::to_address(profile_)) &&
-              base::FeatureList::IsEnabled(features::kEnterpriseReleaseNotes))
+              enterprise_util::IsBrowserManaged(base::to_address(profile_)))
 #else
           .SetVisible(false)
 #endif
@@ -2489,7 +2548,7 @@ void BrowserActions::InitializeNavigationActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                WindowOpenDisposition disposition =
+                ui::mojom::WindowOpenDisposition disposition =
                     context.GetProperty(chrome::kDispositionKey);
                 chrome::GoBack(bwi, disposition);
               },
@@ -2502,7 +2561,7 @@ void BrowserActions::InitializeNavigationActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                WindowOpenDisposition disposition =
+                ui::mojom::WindowOpenDisposition disposition =
                     context.GetProperty(chrome::kDispositionKey);
                 chrome::Reload(bwi, disposition);
               },
@@ -2526,7 +2585,7 @@ void BrowserActions::InitializeNavigationActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                WindowOpenDisposition disposition =
+                ui::mojom::WindowOpenDisposition disposition =
                     context.GetProperty(chrome::kDispositionKey);
                 chrome::ClearCache(bwi);
                 chrome::ReloadBypassingCache(bwi, disposition);
@@ -2540,7 +2599,7 @@ void BrowserActions::InitializeNavigationActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                WindowOpenDisposition disposition =
+                ui::mojom::WindowOpenDisposition disposition =
                     context.GetProperty(chrome::kDispositionKey);
                 chrome::ReloadBypassingCache(bwi, disposition);
               },
@@ -2564,7 +2623,7 @@ void BrowserActions::InitializeNavigationActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                WindowOpenDisposition disposition =
+                ui::mojom::WindowOpenDisposition disposition =
                     context.GetProperty(chrome::kDispositionKey);
                 chrome::Home(bwi, disposition);
               },
@@ -2577,7 +2636,7 @@ void BrowserActions::InitializeNavigationActions() {
           base::BindRepeating(
               [](BrowserWindowInterface* bwi, actions::ActionItem* item,
                  actions::ActionInvocationContext context) {
-                WindowOpenDisposition disposition =
+                ui::mojom::WindowOpenDisposition disposition =
                     context.GetProperty(chrome::kDispositionKey);
                 chrome::GoForward(bwi, disposition);
               },
@@ -2674,6 +2733,10 @@ void BrowserActions::InitializeSubmenuActions() {
           features::IsRoundedIconsEnabled() ? kHelpCustomIcon
                                             : kHelpMenuOldIcon,
           /*is_pinnable=*/false)
+          .SetImage(ui::ImageModel::FromVectorIcon(
+              features::IsRoundedIconsEnabled() ? kHelpCustomIcon
+                                                : kHelpMenuOldIcon,
+              ui::kColorIcon))
           .Build());
 
   root_action_item_->AddChild(

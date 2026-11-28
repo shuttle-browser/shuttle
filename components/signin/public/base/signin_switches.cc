@@ -7,6 +7,7 @@
 #include "base/feature.h"
 #include "base/feature_list.h"
 #include "base/time/time.h"
+#include "build/build_config.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/base/signin_pref_names.h"
@@ -65,6 +66,12 @@ BASE_FEATURE(kAccountRetrievalWaitsForRestoration,
 // the primary account is in a persistent auth error) instead of starting the
 // add account flow.
 BASE_FEATURE(kAddSessionFallbackToPrimaryAccount,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// When enabled, an ADDSESSION Mirror header for a secondary account on the
+// device starts the reauth flow for the primary account if the primary account
+// is in a persistent auth error and the secondary account is not.
+BASE_FEATURE(kAddSessionReauthPrimaryAccountFirst,
              base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -274,6 +281,9 @@ BASE_FEATURE(kCrossDeviceSigninFromDesktopFollowup,
              base::FEATURE_DISABLED_BY_DEFAULT);
 const base::FeatureParam<bool> kCrossDeviceSigninFromDesktopWhatsNew{
     &kCrossDeviceSigninFromDesktopFollowup, "whats_new", true};
+
+BASE_FEATURE(kCrossDeviceSigninPromoEligibilityLogging,
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
@@ -281,7 +291,11 @@ BASE_FEATURE(kDiceHeaderVersion2, base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
-BASE_FEATURE(kDiceLinkedAccounts, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kDiceInterceptSanitizeGaiaUrl, base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
+
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+BASE_FEATURE(kDiceLinkedAccounts, base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
@@ -418,11 +432,6 @@ BASE_FEATURE_PARAM(size_t,
                    &kEnableAccountPreviewPreferredAccount,
                    6);
 #endif
-BASE_FEATURE_PARAM(
-    base::TimeDelta,
-    kAccountPreviewPreferredAccountSingleAccountPromoFetchTimeout,
-    &kEnableAccountPreviewPreferredAccount,
-    base::Seconds(1));
 
 // Controls followup features for preferred account preview (new promos, and
 // updated strings). This flag has no effect if
@@ -430,7 +439,7 @@ BASE_FEATURE_PARAM(
 BASE_FEATURE(kEnableAccountPreviewPreferredAccountFollowup,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-#if BUILDFLAG(IS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 BASE_FEATURE(kEnableAccountPreviewPreferredAccountFRE,
              base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(base::TimeDelta,
@@ -439,13 +448,25 @@ BASE_FEATURE_PARAM(base::TimeDelta,
                    base::Seconds(1));
 #endif
 
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+// Controls whether preferred account preview personalization is enabled for
+// sign-in interceptions. This flag has no effect if
+// `kEnableAccountPreviewPreferredAccount` is not enabled.
+BASE_FEATURE(kEnableAccountPreviewPreferredAccountIntercept,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(base::TimeDelta,
+                   kAccountPreviewPreferredAccountInterceptFetchTimeout,
+                   &kEnableAccountPreviewPreferredAccountIntercept,
+                   base::Seconds(1));
+#endif
+
 // Controls whether storing and exposing the preferred account for switching is
 // enabled. This flag has no effect if `kEnableAccountPreviewData` is not
 // enabled.
 BASE_FEATURE(kEnableAccountPreviewSwitchingAccount,
              base::FEATURE_DISABLED_BY_DEFAULT);
-// When true, skips cooldowns and throttling limits for the account switching
-// promo. Used for manual and automated testing.
+// When true, skips cooldowns and per-account-pair throttling limits for the
+// account switching promo. Used for manual testing only.
 BASE_FEATURE_PARAM(bool,
                    kEnableAccountPreviewSwitchingAccountSkipCooldown,
                    &kEnableAccountPreviewSwitchingAccount,
@@ -510,7 +531,7 @@ const base::FeatureParam<std::string>
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 // Enables Chrome refresh tokens binding to a device.
 BASE_FEATURE(kEnableChromeRefreshTokenBinding,
-#if BUILDFLAG(IS_WIN)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
              base::FEATURE_ENABLED_BY_DEFAULT
 #else
              base::FEATURE_DISABLED_BY_DEFAULT
@@ -605,18 +626,23 @@ BASE_FEATURE_PARAM(bool,
 //
 // It takes precedence over the `kEnableOAuthMultiloginCookiesBinding` flag.
 BASE_FEATURE(kEnableOAuthMultiloginStandardCookiesBinding,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+             base::FEATURE_ENABLED_BY_DEFAULT
+#else
+             base::FEATURE_DISABLED_BY_DEFAULT
+#endif
+);
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 // Enables binding the OAuthMultilogin cookies to a device with DBSC standard
 // for secondary partitions.
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 BASE_FEATURE(kEnableOAuthMultiloginStandardCookiesBindingForSecondaryPartitions,
-#if BUILDFLAG(IS_WIN)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
              base::FEATURE_ENABLED_BY_DEFAULT
 #else
              base::FEATURE_DISABLED_BY_DEFAULT
-#endif  // BUILDFLAG(IS_WIN)
+#endif
 );
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
@@ -736,11 +762,6 @@ BASE_FEATURE(kFirstRunDesktopRevampSound, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kFirstRunDesktopRevampSurvey, base::FEATURE_DISABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-BASE_FEATURE(kFirstRunFeatureShowcaseGeminiStep,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-
 #if BUILDFLAG(IS_ANDROID)
 BASE_FEATURE(kForceHistoryOptInScreen, base::FEATURE_DISABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_ANDROID)
@@ -755,6 +776,11 @@ BASE_FEATURE(kForceShowWebSigninLoadingDialog,
 BASE_FEATURE(kForceStartupSigninPromo, base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kFullscreenSigninMediatorStateMachine,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_ANDROID)
+
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
 BASE_FEATURE(kFullscreenSignInPromoUseDate, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(int,
@@ -764,7 +790,7 @@ BASE_FEATURE_PARAM(int,
                    -1);
 #endif
 
-BASE_FEATURE(kGaiaAccountIdEnforcement, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kGaiaAccountIdEnforcement, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kHandleMdmErrorsForDasherAccounts,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -783,10 +809,6 @@ const base::FeatureParam<int> kMagiChromePasskeySignInGaiaExpBranch{
 bool IsMagiChromePasskeyAutofillEnabled() {
   return base::FeatureList::IsEnabled(kMagiChromePasskeySignIn) &&
          kMagiChromePasskeySignInFlowType.Get() == "autofill";
-}
-bool IsMagiChromePasskeyBannerEnabled() {
-  return base::FeatureList::IsEnabled(kMagiChromePasskeySignIn) &&
-         kMagiChromePasskeySignInFlowType.Get() == "banner";
 }
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
@@ -813,10 +835,6 @@ BASE_FEATURE(kMigrateAccountManagerDelegate, base::FEATURE_DISABLED_BY_DEFAULT);
 #if BUILDFLAG(IS_IOS)
 BASE_FEATURE(kMigrateToSigninReauthCoordinator,
              base::FEATURE_DISABLED_BY_DEFAULT);
-#endif  // BUILDFLAG(IS_IOS)
-
-#if BUILDFLAG(IS_IOS)
-BASE_FEATURE(kNoAccountWebSignin, base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_IOS)
 
 BASE_FEATURE(kNonDefaultGaiaOriginCheck, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -859,6 +877,13 @@ BASE_FEATURE(kProfilesReordering, base::FEATURE_DISABLED_BY_DEFAULT);
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 BASE_FEATURE(kReauthSkipIdentifierPage, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kReauthSkipIdentifierPageFollowup,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
+
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+BASE_FEATURE(kRecordChromeLastSigninTime, base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -966,9 +991,10 @@ BASE_FEATURE(kSupportAddSessionEmailPrefill, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kSupportErrorsInProfilePicker, base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
-#if BUILDFLAG(IS_ANDROID)
-BASE_FEATURE(kSupportForcedSigninPolicy, base::FEATURE_ENABLED_BY_DEFAULT);
-#endif  // BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+BASE_FEATURE(kSupportSigninInterceptionInPopups,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 #if BUILDFLAG(IS_ANDROID)
 // Killswitch for the support of AddSession in web sign-in flow.

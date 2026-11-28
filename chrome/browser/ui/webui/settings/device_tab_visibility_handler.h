@@ -9,7 +9,7 @@
 #include "base/memory/raw_ref.h"
 #include "base/values.h"
 #include "chrome/browser/ui/webui/settings/settings_page_ui_handler.h"
-#include "components/prefs/pref_change_registrar.h"
+#include "components/sync_sessions/session_sync_prefs.h"
 
 class Profile;
 
@@ -41,7 +41,7 @@ class DeviceTabVisibilityHandler : public SettingsPageUIHandler {
   void HandleGetDeviceTabVisibilityList(const base::ListValue& args);
 
   // Handles the `"setDeviceTabVisibility"` message with arguments
-  // `[callback_id, session_tag, visible]`.
+  // `[session_tag, visible]`.
   void HandleSetDeviceTabVisibility(const base::ListValue& args);
 
   // Notifies the WebUI listener when synced foreign sessions or local
@@ -49,7 +49,8 @@ class DeviceTabVisibilityHandler : public SettingsPageUIHandler {
   void OnForeignSessionsChanged();
 
   const raw_ref<Profile> profile_;
-  PrefChangeRegistrar pref_change_registrar_;
+  sync_sessions::SessionSyncPrefs session_sync_prefs_;
+  base::CallbackListSubscription session_visibility_changed_subscription_;
   base::CallbackListSubscription foreign_session_updated_subscription_;
 };
 

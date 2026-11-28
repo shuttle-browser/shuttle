@@ -77,7 +77,7 @@ cc_library(
         "//mediapipe/framework/formats:classification_cc_proto",
         "//mediapipe/framework/formats:landmark_cc_proto",
         "//mediapipe/framework/formats:rect_cc_proto",
-        "@org_tensorflow//tensorflow/lite/c:common",
+        "@litert//tflite/c:common",
     ],
 )
 
@@ -121,7 +121,6 @@ cc_test(
         "//mediapipe/framework/port:gtest",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:parse_text_proto",
-        "//mediapipe/framework/port:status",
         "//mediapipe/framework/port:status_matchers",
     ],
 )
@@ -180,7 +179,6 @@ cc_test(
         "//mediapipe/framework/port:gtest",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:parse_text_proto",
-        "//mediapipe/framework/port:status",
         "//mediapipe/framework/port:status_matchers",
     ],
 )
@@ -414,7 +412,7 @@ cc_library(
         "//mediapipe/framework/formats:matrix",
         "//mediapipe/framework/formats:rect_cc_proto",
         "//mediapipe/framework/formats:tensor",
-        "@org_tensorflow//tensorflow/lite/c:common",
+        "@litert//tflite/c:common",
     ],
 )
 

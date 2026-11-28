@@ -4,7 +4,9 @@
 
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_webui_content.h"
 
+#include <memory>
 #include <string_view>
+#include <utility>
 
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
@@ -21,18 +23,44 @@
 #include "ui/base/metadata/metadata_impl_macros.h"
 
 OmniboxPopupWebUIContent::OmniboxPopupWebUIContent(
-    OmniboxPopupPresenterBase* presenter,
+    OmniboxPopupContentDelegate* content_delegate,
+    OmniboxPopupContentSizer* sizer,
+    OmniboxPopupContentConfig config,
     LocationBar* location_bar,
     OmniboxController* controller,
     bool include_location_bar_cutout,
     bool wants_focus,
     bool set_content_url)
+    : OmniboxPopupWebUIContent(content_delegate,
+                               sizer,
+                               config,
+                               location_bar,
+                               controller,
+                               include_location_bar_cutout,
+                               wants_focus,
+                               set_content_url,
+                               /*contents=*/nullptr) {}
+
+OmniboxPopupWebUIContent::OmniboxPopupWebUIContent(
+    OmniboxPopupContentDelegate* content_delegate,
+    OmniboxPopupContentSizer* sizer,
+    OmniboxPopupContentConfig config,
+    LocationBar* location_bar,
+    OmniboxController* controller,
+    bool include_location_bar_cutout,
+    bool wants_focus,
+    bool set_content_url,
+    std::unique_ptr<ContentsWrapper> contents)
     : OmniboxPopupWebUIBaseContent(
-          presenter,
+          content_delegate,
+          sizer,
+          config,
           location_bar,
           controller,
-          /*top_rounded_corners=*/!include_location_bar_cutout),
+          /*top_rounded_corners=*/!include_location_bar_cutout,
+          std::move(contents)),
       wants_focus_(wants_focus) {
+  // `SetContentURL()`, here or in a subclass, adopts `contents`.
   if (set_content_url) {
     SetContentURL(chrome::kChromeUIOmniboxPopupURL);
   }

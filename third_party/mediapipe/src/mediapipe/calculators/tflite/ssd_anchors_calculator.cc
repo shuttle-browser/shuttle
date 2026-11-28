@@ -16,8 +16,10 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/tflite/ssd_anchors_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/object_detection/anchor.pb.h"
@@ -163,7 +165,7 @@ class SsdAnchorsCalculator : public CalculatorBase {
     const SsdAnchorsCalculatorOptions& options =
         cc->Options<SsdAnchorsCalculatorOptions>();
 
-    auto anchors = absl::make_unique<std::vector<Anchor>>();
+    auto anchors = std::make_unique<std::vector<Anchor>>();
     if (!options.fixed_anchors().empty()) {
       // Check fields for generating anchors are not set.
       if (options.has_input_size_height() || options.has_input_size_width() ||
@@ -179,7 +181,7 @@ class SsdAnchorsCalculator : public CalculatorBase {
       cc->OutputSidePackets().Index(0).Set(Adopt(anchors.release()));
       return absl::OkStatus();
     }
-    MP_RETURN_IF_ERROR(GenerateAnchors(anchors.get(), options));
+    ABSL_RETURN_IF_ERROR(GenerateAnchors(anchors.get(), options));
     cc->OutputSidePackets().Index(0).Set(Adopt(anchors.release()));
     return absl::OkStatus();
   }

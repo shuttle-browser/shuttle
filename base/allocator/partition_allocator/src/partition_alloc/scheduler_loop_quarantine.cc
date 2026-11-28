@@ -187,8 +187,12 @@ PA_ALWAYS_INLINE void ReleaseDequarantinedSlot(
     queue->Queue(slot_start);
     return;
   } else {
+    // `Quarantine()` already zapped the slot with `kFreedByte` (`0xcd`), so
+    // poisoning the first cacheline again with `0xbadbad00` when inserting
+    // into the `ThreadCache` freelist is redundant.
     std::optional<size_t> slot_size_opt =
-        tcache->MaybePutInCache<allow_clear_bucket>(slot_start, bucket_index);
+        tcache->MaybePutInCache<allow_clear_bucket, /*poison=*/false>(
+            slot_start, bucket_index);
 
     if (slot_size_opt.has_value()) [[likely]] {
       PA_DCHECK(slot_size_opt.value() == slot_size);
@@ -265,7 +269,7 @@ void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::Configure(
 
   root_ = &root;
   enable_quarantine_ = config.enable_quarantine;
-  enable_zapping_ = config.enable_zapping;
+  zap_max_ = config.zap_max;
   leak_on_destruction_ = config.leak_on_destruction;
   purge_headroom_percent_ = static_cast<uint8_t>(
       std::min(config.purge_headroom_percent, kMaxPurgeHeadroomPercent));
@@ -415,11 +419,10 @@ void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::Quarantine(
       PublishStats();
     }
 
-    if (enable_zapping_) {
-      internal::SecureMemset(
-          slot_start.ToObject(), internal::kFreedByte,
-          allocator_root_->GetSlotUsableSize(size_details, slot_span));
-    }
+    internal::SecureMemset(
+        slot_start.ToObject(), internal::kFreedByte,
+        std::min(allocator_root_->GetSlotUsableSize(size_details, slot_span),
+                 zap_max_));
   };
 
   if (capacity_unlimited_) {
@@ -456,17 +459,64 @@ void SchedulerLoopQuarantineBranch<thread_bound, quarantine_target>::Quarantine(
   }
   PurgeInternal(target_size_in_bytes);
 
-  // Put the entry onto the list.
-  slots_.push_back({
+  // Put the entry onto the list and swap it with a randomly chosen slot so that
+  // the quarantine list remains shuffled. This is not uniformly random, but
+  // sufficiently random.
+  //
+  // The simpler formulation:
+  //   slots_.push_back({
+  //       .slot_start = slot_start,
+  //       .bucket_index = size_details.bucket_index(),
+  //   });
+  //   const size_t random_index = random_.RandUint32() % slots_.size();
+  //   std::swap(slots_[random_index], slots_.back());
+  // has two inefficiencies in PGO + ThinLTO builds (x86_64):
+  // 1. `% slots_.size()` emits a 64-bit hardware division (`divq`) because
+  //    `slots_.size()` is only known at runtime.
+  // 2. `std::swap(slots_[random_index], slots_.back())` copies
+  //    `slots_[random_index]` to a temporary variable on the stack, and reads
+  //    `slots_.back()` back from memory (as a single 16-byte load) right after
+  //    `push_back()` wrote it (as two 8-byte stores), instead of reusing
+  //    `slot_start` and `bucket_index` from CPU registers:
+  //      xorl    %edx, %edx
+  //      divq    %rsi                   # %rdx = RandUint32() % slots_.size()
+  //      shlq    $0x4, %rdx
+  //      shlq    $0x4, %rsi
+  //      movups  (%rcx,%rdx), %xmm0     # read slots_[random_index] (16B)
+  //      movaps  %xmm0, -0x180(%rbp)    # write temp to stack (16B)
+  //      movups  -0x10(%rcx,%rsi), %xmm0  # re-read slots_.back() from memory
+  //      movups  %xmm0, (%rcx,%rdx)     # slots_[random_index] = slots_.back()
+  //      movaps  -0x180(%rbp), %xmm0    # read temp from stack (16B)
+  //      movups  %xmm0, -0x10(%rcx,%rsi)  # slots_.back() = temp
+  //
+  // Instead:
+  // 1. Append an empty slot (`slots_.push_back({})`), since it will be
+  //    overwritten immediately below.
+  // 2. Map the 32-bit random number into `[0, slots_.size())` using a 64-bit
+  //    multiply and shift (`imulq` + `shrq`, no division; see Lemire, "Fast
+  //    Random Integer Generation in an Interval",
+  //    https://arxiv.org/abs/1805.10941).
+  // 3. Copy `random_slot` (`slots_[random_index]`) to `slots_.back()`, and
+  //    write `{slot_start, bucket_index}` directly into `random_slot`:
+  //      imulq   %r14, %rsi               # %rsi = RandUint32() * slots_.size()
+  //      shrq    $0x20, %rsi              # %rsi = random_index
+  //      cmpq    %rdx, %rsi               # bounds check: random_index < size()
+  //      movq    -0x40(%rbp), %rbx
+  //      jae     0x37625b
+  //      shlq    $0x4, %rsi               # %rsi = random_index * 16
+  //      movups  (%rax,%rsi), %xmm0       # read random_slot (16B)
+  //      movups  %xmm0, -0x10(%rax,%rcx)  # slots_.back() = random_slot (16B)
+  //      movq    %rbx, (%rax,%rsi)        # random_slot.slot_start
+  //      movq    %r13, 0x8(%rax,%rsi)     # random_slot.bucket_index
+  slots_.push_back({});
+  const size_t random_index =
+      (static_cast<uint64_t>(random_.RandUint32()) * slots_.size()) >> 32;
+  QuarantineSlot& random_slot = slots_[random_index];
+  slots_.back() = random_slot;
+  random_slot = {
       .slot_start = slot_start,
       .bucket_index = size_details.bucket_index(),
-  });
-
-  // Swap randomly so that the quarantine list remain shuffled.
-  // This is not uniformly random, but sufficiently random.
-  const size_t random_index = random_.RandUint32() % slots_.size();
-  std::swap(slots_[random_index], slots_.back());
-
+  };
   update_stats_and_zap();
 }
 

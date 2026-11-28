@@ -173,7 +173,6 @@ void SimpleFontData::PlatformInit(bool subpixel_ascent_descent,
   } else {
     line_gap = metrics.fLeading;
   }
-  font_metrics_.SetLineGap(line_gap);
   font_metrics_.SetLineSpacing(lroundf(ascent) + lroundf(descent) +
                                lroundf(line_gap));
 
@@ -340,7 +339,7 @@ SimpleFontData* SimpleFontData::MetricsOverriddenFontData(
 // -------------------------------------------
 FontHeight SimpleFontData::NormalizedTypoAscentAndDescent(
     FontBaseline baseline_type) const {
-  if (baseline_type == kAlphabeticBaseline) {
+  if (baseline_type == FontBaseline::kAlphabetic) {
     if (!normalized_typo_ascent_descent_.ascent)
       ComputeNormalizedTypoAscentAndDescent();
     return normalized_typo_ascent_descent_;

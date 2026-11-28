@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include <memory>
+#include <optional>
 #include <unordered_set>
 #include <utility>
 
@@ -44,8 +45,10 @@
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
 #include "net/base/net_errors.h"
+#include "net/base/schemeful_site.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "third_party/protobuf/src/google/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "url/origin.h"
 
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
 #include "components/captive_portal/content/captive_portal_tab_helper.h"
@@ -341,6 +344,7 @@ class SSLErrorHandlerDelegateImpl : public SSLErrorHandler::Delegate {
       net::Error cert_error,
       int options_mask,
       const GURL& request_url,
+      std::optional<content::OpenURLParams> open_url_params,
       captive_portal::CaptivePortalService* captive_portal_service,
       std::unique_ptr<SecurityBlockingPageFactory> blocking_page_factory,
       SSLErrorHandler::OnBlockingPageShownCallback
@@ -352,6 +356,7 @@ class SSLErrorHandlerDelegateImpl : public SSLErrorHandler::Delegate {
         cert_error_(cert_error),
         options_mask_(options_mask),
         request_url_(request_url),
+        open_url_params_(std::move(open_url_params)),
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
         captive_portal_service_(captive_portal_service),
 #endif
@@ -396,6 +401,7 @@ class SSLErrorHandlerDelegateImpl : public SSLErrorHandler::Delegate {
   const net::Error cert_error_;
   const int options_mask_;
   const GURL request_url_;
+  std::optional<content::OpenURLParams> open_url_params_;
   std::unique_ptr<CommonNameMismatchHandler> common_name_mismatch_handler_;
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
   raw_ptr<captive_portal::CaptivePortalService> captive_portal_service_;
@@ -450,6 +456,34 @@ void SSLErrorHandlerDelegateImpl::CheckSuggestedUrl(
 
 void SSLErrorHandlerDelegateImpl::NavigateToSuggestedURL(
     const GURL& suggested_url) {
+  if (open_url_params_) {
+    content::NavigationController::LoadURLParams load_params(*open_url_params_);
+    load_params.url = suggested_url;
+    if (load_params.is_renderer_initiated &&
+        !load_params.initiator_origin.has_value()) {
+      load_params.initiator_origin = url::Origin();
+    }
+    if (!load_params.initiator_origin.has_value() ||
+        net::SchemefulSite::IsSameSite(*load_params.initiator_origin,
+                                       url::Origin::Create(suggested_url))) {
+      for (const GURL& redirect_url : load_params.redirect_chain) {
+        if (!net::SchemefulSite::IsSameSite(redirect_url, suggested_url)) {
+          // Use an opaque origin rather than deriving an origin from
+          // `redirect_chain` so that the new navigation is treated as
+          // cross-site without attributing initiator authority to an
+          // intermediate redirect hop.
+          load_params.initiator_origin = url::Origin();
+          load_params.initiator_base_url = std::nullopt;
+          break;
+        }
+      }
+    }
+    // Note: LoadURLWithParams synchronously triggers DidStartNavigation, which
+    // destroys `this`. Do not access any members after this call.
+    web_contents_->GetController().LoadURLWithParams(load_params);
+    return;
+  }
+
   content::NavigationController::LoadURLParams load_params(suggested_url);
   load_params.transition_type = ui::PAGE_TRANSITION_TYPED;
   web_contents_->GetController().LoadURLWithParams(load_params);
@@ -550,7 +584,8 @@ void SSLErrorHandler::HandleSSLError(
     network_time::NetworkTimeTracker* network_time_tracker,
     captive_portal::CaptivePortalService* captive_portal_service,
     std::unique_ptr<SecurityBlockingPageFactory> blocking_page_factory,
-    bool user_can_proceed_past_interstitial /*=true*/) {
+    bool user_can_proceed_past_interstitial /*=true*/,
+    std::optional<content::OpenURLParams> open_url_params /*=std::nullopt*/) {
   DCHECK(!FromWebContents(web_contents));
 
   bool hard_override_disabled = !user_can_proceed_past_interstitial;
@@ -560,8 +595,8 @@ void SSLErrorHandler::HandleSSLError(
 
   auto delegate = std::make_unique<SSLErrorHandlerDelegateImpl>(
       web_contents, ssl_info, web_contents->GetBrowserContext(), cert_error,
-      options_mask, request_url, captive_portal_service,
-      std::move(blocking_page_factory),
+      options_mask, request_url, std::move(open_url_params),
+      captive_portal_service, std::move(blocking_page_factory),
       GetConfig().on_blocking_page_shown_callback(),
       std::move(blocking_page_ready_callback));
   // Protected ctor.
@@ -689,15 +724,25 @@ void SSLErrorHandler::StartHandlingError() {
     return;
   }
 
-  bool is_captive_portal_login_tab = false;
+  bool is_captive_portal_login = false;
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
-  // Check whether this SSL Error is for a Captive Portal Login tab. If so, we
-  // must not show another Captive Portal interstitial because doing so will
-  // remove a user's ability to "ignore" the cert error to log onto the portal.
+  // Check whether this SSL Error is for a Captive Portal Login tab, or for a
+  // dedicated captive portal sign-in window. If so, we must not show another
+  // Captive Portal interstitial because doing so will remove a user's ability
+  // to "ignore" the cert error to log onto the portal.
+  //
+  // IsLoginTab() alone is not sufficient here. CaptivePortalLoginDetector
+  // clears it once a probe stops reporting a captive portal, which is correct
+  // for a tab that then returns to ordinary browsing, but not for a dedicated
+  // sign-in window, which never does. The window type is structural and is set
+  // once when the surface is created.
   captive_portal::CaptivePortalTabHelper* captive_portal_tab_helper =
       captive_portal::CaptivePortalTabHelper::FromWebContents(web_contents());
-  if (captive_portal_tab_helper && captive_portal_tab_helper->IsLoginTab())
-    is_captive_portal_login_tab = true;
+  if (captive_portal_tab_helper) {
+    is_captive_portal_login =
+        captive_portal_tab_helper->IsLoginTab() ||
+        captive_portal_tab_helper->is_captive_portal_window();
+  }
 #endif
 
   bool does_os_report_captive_portal = delegate_->DoesOSReportCaptivePortal();
@@ -730,7 +775,7 @@ void SSLErrorHandler::StartHandlingError() {
       return;
     }
 
-    if (!is_captive_portal_login_tab) {
+    if (!is_captive_portal_login) {
       ShowCaptivePortalInterstitial(GURL());
       return;
     }
@@ -776,7 +821,7 @@ void SSLErrorHandler::StartHandlingError() {
       // the only error. Need not check for captive portal in this case (See
       // the comment below). Also show the SSL interstitial if we're already
       // on a login tab launched by the Captive Portal interstitial.
-      if (!only_error_is_name_mismatch || is_captive_portal_login_tab) {
+      if (!only_error_is_name_mismatch || is_captive_portal_login) {
         ShowSSLInterstitial();
         return;
       }
@@ -817,7 +862,7 @@ void SSLErrorHandler::StartHandlingError() {
     captive_portal_tab_helper->OnSSLCertError(ssl_info_);
   }
 
-  if (!is_captive_portal_login_tab) {
+  if (!is_captive_portal_login) {
     delegate_->CheckForCaptivePortal();
     timer_.Start(FROM_HERE, GetConfig().interstitial_delay(), this,
                  &SSLErrorHandler::ShowSSLInterstitial);

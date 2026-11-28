@@ -19,7 +19,6 @@
 #include "third_party/blink/renderer/platform/heap/member.h"
 #include "third_party/blink/renderer/platform/loader/fetch/ad_tagging_utils.h"
 #include "third_party/blink/renderer/platform/wtf/hash_map.h"
-#include "third_party/blink/renderer/platform/wtf/hash_set.h"
 #include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 #include "third_party/blink/renderer/platform/wtf/vector.h"
 #include "v8/include/v8-inspector.h"
@@ -64,17 +63,10 @@ class CORE_EXPORT ScriptAncestryTracker
     : public GarbageCollected<ScriptAncestryTracker>,
       public ScriptInitiationMonitor::Observer {
  public:
-  // Stack scans of `kBottomOnly` will only scan the bottom frame of the sync
-  // stack and also include async frames. `kTopOnly` will scan the top
-  // frame, and fall back on the async stack if there is no top frame (e.g.,
-  // executing a continuation in blink).
-  enum class StackType { kBottomOnly, kTopOnly };
-
   using MonkeyPatchableApi = ::blink::MonkeyPatchableApi;
 
   struct ScriptMetadata {
     v8_inspector::V8DebuggerId context_id;
-    V8ScriptId marked_script_id;
     String url;
   };
 
@@ -93,6 +85,26 @@ class CORE_EXPORT ScriptAncestryTracker
   void DidExecuteScript(V8ScriptId script_id) override;
   void DidRegisterDynamicScript(V8ScriptId script_id,
                                 LazyStackTrace& stack_trace) override;
+  // Tracks ES module graphs at compile time (`JSModuleScript::Create`), since
+  // `V8ScriptRunner::EvaluateModule` only invokes `WillExecuteScript` for the
+  // root module and V8 evaluates static imports internally. Provenance is
+  // propagated across the module graph using two alternating
+  // `AsyncTaskContext`s:
+  // 1. `ModuleScriptLoader::async_task_context_` captures the initiating script
+  //    (or parent module) in `FetchInternal` and restores it in
+  //    `NotifyFetchFinishedSuccess` when `JSModuleScript::Create` compiles the
+  //    module and calls `DidCompileModuleScript`.
+  // 2. If the compiled module is marked, `DidCompileModuleScript` records its
+  //    `V8ScriptId` on `ModuleScript::async_task_context_` (`task_context`),
+  //    which `ModuleTreeLinker::FetchDescendants` activates via
+  //    `probe::AsyncTask` when starting descendant `ModuleScriptLoader`
+  //    fetches.
+  void DidCompileModuleScript(ExecutionContext& execution_context,
+                              V8ScriptId script_id,
+                              const String& script_url,
+                              bool is_inline,
+                              probe::AsyncTaskContext* task_context,
+                              LazyStackTrace& stack_trace) override;
   void WillCallFunction(ExecutionContext& execution_context,
                         V8ScriptId script_id,
                         bool is_nested,
@@ -117,11 +129,11 @@ class CORE_EXPORT ScriptAncestryTracker
   // Returns true if `execution_context` is hosted within a marked frame.
   bool IsMarkedExecutionContext(ExecutionContext* execution_context) const;
 
-  // Returns the script ID if the script at the top of isolate's
-  // stack is a marked script (or bottom, depending on `StackType`), or
-  // std::nullopt otherwise. `kTopOnly` is generally best since it's directly
-  // triggering blink native code, but you may want to call `kBottomOnly` if you
-  // truly only care about that frame.
+  // If the current ExecutionContext is hosted within a marked frame, returns
+  // the frame's initiating script ID (or an empty `V8ScriptId` if unavailable).
+  // Otherwise, returns the script ID if the script at the top of the isolate's
+  // stack (falling back to the async stack when the sync stack is empty) is a
+  // marked script, or `std::nullopt` if not.
   //
   // When `ignore_monkey_patch` is specified, a heuristic is enabled to mitigate
   // inaccurate stack tagging caused by API monkey patching (i.e., the immediate
@@ -138,7 +150,6 @@ class CORE_EXPORT ScriptAncestryTracker
   // Note: This function is not idempotent when `ignore_monkey_patch` is used,
   // as it tracks the first call to an API within a synchronous task.
   std::optional<V8ScriptId> GetMarkedScriptInStack(
-      StackType stack_type,
       LazyStackTrace& stack_trace,
       MonkeyPatchableApi ignore_monkey_patch = MonkeyPatchableApi::kNone);
 
@@ -177,13 +188,18 @@ class CORE_EXPORT ScriptAncestryTracker
       const String& url,
       std::optional<V8ScriptId> marked_script_id) = 0;
 
+  // Called when the bottom-most marked script on the synchronous call stack
+  // starts or finishes executing.
+  virtual void OnBottomMostScriptStarted(ExecutionContext& execution_context) {}
+  virtual void OnBottomMostScriptFinished() {}
+
   // Explicitly registers a script (like inline attribute event handlers) that
   // is compiled dynamically rather than run as a standalone script.
   void RegisterScript(V8ScriptId script_id,
                       std::optional<V8ScriptId> marked_script_id);
 
-  // Retrieves generic metadata (like parent script relationship and resolved
-  // URL) for a given V8ScriptId.
+  // Retrieves metadata (context ID and resolved URL) for a marked script's
+  // V8ScriptId, or nullptr if the script is not marked.
   const ScriptMetadata* GetScriptMetadata(V8ScriptId script_id) const;
 
   ScriptInitiationMonitor* GetScriptInitiationMonitor() const {
@@ -193,6 +209,11 @@ class CORE_EXPORT ScriptAncestryTracker
   v8::Isolate* GetIsolate() const;
 
  private:
+  void RegisterScriptWithUrl(ExecutionContext& execution_context,
+                             V8ScriptId script_id,
+                             const String& script_url,
+                             bool is_inline_script,
+                             LazyStackTrace& stack_trace);
   // Helper for `ignore_monkey_patch` heuristic. Tracks the API call within
   // the current synchronous task and returns true if it is the first time the
   // API is being called. This method is not const because it modifies
@@ -217,6 +238,10 @@ class CORE_EXPORT ScriptAncestryTracker
                                          MonkeyPatchableApi api,
                                          LazyStackTrace& stack_trace) const;
 
+  void MaybeSetBottomMostScript(ExecutionContext& execution_context,
+                                V8ScriptId script_id);
+  void MaybeResetBottomMostScript();
+
   // The local root frame of the frame tree monitored by this tracker.
   Member<LocalFrame> local_root_;
 
@@ -224,17 +249,21 @@ class CORE_EXPORT ScriptAncestryTracker
   // context events to this tracker.
   Member<ScriptInitiationMonitor> monitor_;
 
-  // Indicates the bottom-most synchronous script on the current call stack.
-  std::optional<V8ScriptId> bottom_most_script_;
+  // The synchronous task depth at which the bottom-most marked script on the
+  // call stack started executing, or 0 if no marked script is active on the
+  // synchronous stack. Tracking depth (rather than comparing `V8ScriptId` on
+  // exit) ensures that re-entrant execution of a script with the same
+  // `V8ScriptId` (e.g. hitting V8's compilation cache) does not prematurely
+  // finish the outer execution.
+  int bottom_most_script_depth_ = 0;
 
   // Simulates the active asynchronous execution stack by pushing and popping
   // initiating marked script IDs as asynchronous/event-driven tasks start and
   // finish.
   Vector<std::optional<V8ScriptId>> async_script_stack_;
 
-  // The permanent registry mapping each compiled V8ScriptId to its resolved URL
-  // and marked parent script ID. This represents our compilation graph for
-  // marked scripts and their descendants.
+  // Maps each marked script's V8ScriptId to its debugger context ID and
+  // resolved URL. Empty until at least one marked script has been registered.
   HashMap<V8ScriptId, ScriptMetadata> script_metadata_;
 
   // Counter tracking the number of active synchronous script/task executions
@@ -243,13 +272,12 @@ class CORE_EXPORT ScriptAncestryTracker
 
   // Tracks active monkey-patched API calls in the current task scope to ensure
   // the ignore-monkey-patch heuristic only applies once per task.
-  HashSet<MonkeyPatchableApi> monkey_patch_calls_in_scope_;
+  MonkeyPatchableApiSet monkey_patch_calls_in_scope_;
 
   // Tracks frames created by marked scripts (or descendant frames).
   HeapHashMap<WeakMember<LocalFrame>, V8ScriptId> marked_frames_;
 
   friend class AdTrackerTest;
-  friend class ScriptAncestryTrackerTest;
 };
 
 }  // namespace blink

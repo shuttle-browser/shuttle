@@ -5,6 +5,7 @@
 #include "net/quic/quic_session_pool_endpoint_connector.h"
 
 #include <string_view>
+#include <utility>
 
 #include "base/check_op.h"
 #include "base/functional/bind.h"
@@ -120,6 +121,15 @@ void QuicSessionPool::EndpointConnector::OnSuperseded() {
   attempt_->Cancel();
 }
 
+void QuicSessionPool::EndpointConnector::CancelForPooling() {
+  if (!attempt_in_flight_) {
+    return;
+  }
+  RecordAttemptTime("IpPooled");
+  attempt_in_flight_ = false;
+  attempt_->CancelForProactiveIpPooling();
+}
+
 QuicSessionPool* QuicSessionPool::EndpointConnector::GetQuicSessionPool() {
   return job_->pool();
 }
@@ -130,6 +140,16 @@ const QuicSessionAliasKey& QuicSessionPool::EndpointConnector::GetKey() {
 
 const NetLogWithSource& QuicSessionPool::EndpointConnector::GetNetLog() {
   return job_->net_log();
+}
+
+std::vector<IPEndPoint>
+QuicSessionPool::EndpointConnector::GetResolvedIpEndpoints() const {
+  return job_->GetResolvedIpEndpoints();
+}
+
+const base::flat_set<std::string>*
+QuicSessionPool::EndpointConnector::GetDnsAliases() const {
+  return job_->GetDnsAliases();
 }
 
 void QuicSessionPool::EndpointConnector::OnConnectionFailedOnDefaultNetwork() {

@@ -4,7 +4,7 @@
 
 import 'chrome://resources/cr_components/searchbox/searchbox_input.js';
 
-import {createSearchMatchForTesting, SearchboxBrowserProxy} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
+import {createSearchMatchForTesting} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
 import type {SearchboxInputElement} from 'chrome://resources/cr_components/searchbox/searchbox_input.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {KeywordType, UrlDeemphasisMode} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
@@ -12,7 +12,6 @@ import {assertDeepEquals, assertEquals, assertFalse, assertNotEquals, assertTrue
 import {isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
 
 import {assertIconMaskImageUrl, createClipboardEvent, createUrlMatch} from './searchbox_test_utils.js';
-import {TestSearchboxBrowserProxy} from './test_searchbox_browser_proxy.js';
 
 async function createInput(properties: Partial<SearchboxInputElement> = {}):
     Promise<SearchboxInputElement> {
@@ -26,12 +25,9 @@ async function createInput(properties: Partial<SearchboxInputElement> = {}):
 
 suite('SearchboxInputTest', () => {
   let input: SearchboxInputElement;
-  let testProxy: TestSearchboxBrowserProxy;
 
   setup(() => {
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
-    testProxy = new TestSearchboxBrowserProxy();
-    SearchboxBrowserProxy.setInstance(testProxy);
   });
 
   test('default loupe icon', async () => {
@@ -172,22 +168,6 @@ suite('SearchboxInputTest', () => {
     assertEquals(2, eventCount);
   });
 
-  test('input text appears on page call from browser', async () => {
-    input = await createInput();
-    assertEquals(input.inputElement.value, '');
-
-    let textUpdatedEventCount = 0;
-    input.addEventListener('searchbox-input-text-updated', () => {
-      textUpdatedEventCount++;
-    });
-
-    testProxy.callbackRouterRemote.setInputText('Hello');
-    await microtasksFinished();
-
-    assertEquals(input.inputElement.value, 'Hello');
-    assertEquals(0, textUpdatedEventCount);
-  });
-
   test('Pasting file fires event', async () => {
     input = await createInput({allowFilePaste: true});
 
@@ -243,6 +223,60 @@ suite('SearchboxInputTest', () => {
     // The selection should now highlight 'o'.
     assertEquals(4, input.inputElement.selectionStart);
     assertEquals(5, input.inputElement.selectionEnd);
+  });
+
+
+  test('Typing key shortcut over inline autocompletion', async () => {
+    loadTimeData.overrideValues({
+      reportMetrics: false,
+    });
+    input = await createInput();
+    input.setInput({text: 'hel', inline: 'lo'});
+
+    let textUpdatedEventCount = 0;
+    input.addEventListener('searchbox-input-text-updated', (_e: Event) => {
+      textUpdatedEventCount++;
+    });
+
+    // Press 'ctrl-l' which shares the next char in inline autocompletion 'lo',
+    // but shouldn't advance completion.
+    const keydownEvent = new KeyboardEvent('keydown', {
+      key: 'l',
+      ctrlKey: true,
+      cancelable: true,
+    });
+    input.inputElement.dispatchEvent(keydownEvent);
+
+    // Nothing should change --- no text update, selection isn't moved, etc.
+    assertFalse(keydownEvent.defaultPrevented);
+    assertEquals(0, textUpdatedEventCount);
+    assertEquals('hello', input.inputElement.value);
+    assertEquals(3, input.inputElement.selectionStart);
+    assertEquals(5, input.inputElement.selectionEnd);
+  });
+
+  test('Text input type', async () => {
+    // By default, the input is a search field.
+    input = await createInput();
+    assertEquals('search', input.inputElement.type);
+    assertFalse(input.inputElement.hasAttribute('inputmode'));
+
+    // Otherwise, it's a text field with the given input mode.
+    input.textInputType = 'url';
+    await input.updateComplete;
+    assertEquals('text', input.inputElement.type);
+    assertEquals('url', input.inputElement.inputMode);
+    input.textInputType = 'search';
+    await input.updateComplete;
+    assertEquals('text', input.inputElement.type);
+    assertEquals('search', input.inputElement.inputMode);
+
+    // Multi-line inputs only have the input mode.
+    input = await createInput({multiLineEnabled: true});
+    assertFalse(input.inputElement.hasAttribute('inputmode'));
+    input.textInputType = 'url';
+    await input.updateComplete;
+    assertEquals('url', input.inputElement.inputMode);
   });
 
   test('Reports committed composition text unless blurred', async () => {
@@ -928,6 +962,165 @@ suite('SearchboxInputTest', () => {
     assertEquals(null, input.urlEmphasis);
   });
 
+  // Like the native omnibox, the additional text (e.g. the URL of a page whose
+  // title is inline autocompleted) is shown right after the input's text.
+  test('Shows additional text after the text in mirror element', async () => {
+    loadTimeData.overrideValues({reportMetrics: false});
+    input = await createInput({urlEmphasisEnabled: true});
+    input.setInput({
+      text: 'king',
+      inline: ' Arthur - Wikipedia',
+      additionalText: ' - en.wikipedia.org/wiki/King_Arthur',
+    });
+    await input.updateComplete;
+
+    // The additional text isn't part of the input's value.
+    assertEquals('king Arthur - Wikipedia', input.inputElement.value);
+    assertEquals(4, input.inputElement.selectionStart);
+    assertEquals(23, input.inputElement.selectionEnd);
+
+    const mirror = input.shadowRoot.querySelector<HTMLElement>('#mirror');
+    assertTrue(!!mirror);
+    assertEquals(
+        'king Arthur - Wikipedia - en.wikipedia.org/wiki/King_Arthur',
+        mirror.textContent);
+    const additionalText = mirror.querySelector<HTMLElement>('#additionalText');
+    assertTrue(!!additionalText);
+    assertEquals(mirror.lastElementChild, additionalText);
+    assertEquals(
+        ' - en.wikipedia.org/wiki/King_Arthur', additionalText.textContent);
+    assertTrue(isVisible(additionalText));
+
+    // It starts where the input's text ends, and is painted in the color of
+    // URLs in the matches.
+    const textSpan = additionalText.previousElementSibling!;
+    assertTrue(
+        Math.abs(
+            textSpan.getBoundingClientRect().right -
+            additionalText.getBoundingClientRect().left) < 1);
+    additionalText.style.setProperty(
+        '--color-omnibox-results-url', 'rgb(1, 2, 3)');
+    assertEquals('rgb(1, 2, 3)', getComputedStyle(additionalText).color);
+    additionalText.style.removeProperty('--color-omnibox-results-url');
+
+    // Typing the next character of the inline autocompletion keeps showing it,
+    // since the input still shows the same match.
+    const keydownEvent = new KeyboardEvent('keydown', {
+      key: ' ',
+      cancelable: true,
+    });
+    input.inputElement.dispatchEvent(keydownEvent);
+    assertTrue(keydownEvent.defaultPrevented);
+    assertEquals('king ', input.lastInput()!.text);
+    assertEquals(
+        ' - en.wikipedia.org/wiki/King_Arthur',
+        mirror.querySelector('#additionalText')?.textContent);
+
+    // Any other update clears it, e.g. when another match is selected.
+    input.setInput({text: 'king arthur legend', inline: ''});
+    await input.updateComplete;
+    assertEquals(null, mirror.querySelector('#additionalText'));
+    assertEquals('king arthur legend', mirror.textContent);
+  });
+
+  test('Clears additional text when the user edits the input', async () => {
+    loadTimeData.overrideValues({reportMetrics: false});
+    input = await createInput({urlEmphasisEnabled: true});
+    input.setInput({
+      text: 'king',
+      inline: ' Arthur - Wikipedia',
+      additionalText: ' - en.wikipedia.org/wiki/King_Arthur',
+    });
+    await input.updateComplete;
+    const mirror = input.shadowRoot.querySelector<HTMLElement>('#mirror');
+    assertTrue(!!mirror);
+    assertTrue(!!mirror.querySelector('#additionalText'));
+
+    input.inputElement.value = 'kin';
+    input.inputElement.dispatchEvent(new InputEvent('input'));
+    await input.updateComplete;
+    assertEquals(null, mirror.querySelector('#additionalText'));
+    assertEquals('kin', mirror.textContent);
+  });
+
+  test('clearAdditionalText() clears additional text', async () => {
+    input = await createInput({urlEmphasisEnabled: true});
+    input.setInput({
+      text: 'king',
+      inline: ' Arthur - Wikipedia',
+      additionalText: ' - en.wikipedia.org/wiki/King_Arthur',
+    });
+    await input.updateComplete;
+    const mirror = input.shadowRoot.querySelector<HTMLElement>('#mirror');
+    assertTrue(!!mirror);
+    assertTrue(!!mirror.querySelector('#additionalText'));
+
+    input.clearAdditionalText();
+    assertEquals(null, mirror.querySelector('#additionalText'));
+    assertEquals('king Arthur - Wikipedia', mirror.textContent);
+    // The input itself is unchanged.
+    assertEquals('king Arthur - Wikipedia', input.inputElement.value);
+    assertEquals(' Arthur - Wikipedia', input.lastInput()!.inline);
+  });
+
+  // Like the native omnibox's additional text label, additional text that
+  // doesn't fit after the text is elided with an ellipsis, rather than cut off
+  // (or pushing the text out of view).
+  test('Elides additional text that does not fit', async () => {
+    input = await createInput({urlEmphasisEnabled: true});
+    input.style.width = '400px';
+    const mirror = input.shadowRoot.querySelector<HTMLElement>('#mirror');
+    assertTrue(!!mirror);
+
+    // Where the text is painted without additional text.
+    input.setInput({text: 'king', inline: ' Arthur - Wikipedia'});
+    await input.updateComplete;
+    const textRect = mirror.querySelector('span')!.getBoundingClientRect();
+
+    const additionalText = ' - en.wikipedia.org/wiki/King_Arthur' +
+        '/a/very/long/path'.repeat(10);
+    input.setInput({
+      text: 'king',
+      inline: ' Arthur - Wikipedia',
+      additionalText,
+    });
+    await input.updateComplete;
+
+    // The text is painted exactly where it was, i.e. still over the input's
+    // own (transparent) text, and in full.
+    const mirrorText = mirror.querySelector<HTMLElement>('#mirrorText');
+    assertTrue(!!mirrorText);
+    const span = mirrorText.querySelector('span')!;
+    assertEquals('king Arthur - Wikipedia', mirrorText.textContent);
+    const spanRect = span.getBoundingClientRect();
+    assertTrue(Math.abs(textRect.left - spanRect.left) < 0.5);
+    assertTrue(Math.abs(textRect.top - spanRect.top) < 0.5);
+    assertTrue(Math.abs(textRect.width - spanRect.width) < 0.5);
+    assertTrue(mirrorText.scrollWidth <= mirrorText.clientWidth);
+
+    // The additional text fills the rest of the #mirror's content box, and is
+    // elided with an ellipsis.
+    const additionalTextEl =
+        mirror.querySelector<HTMLElement>('#additionalText');
+    assertTrue(!!additionalTextEl);
+    assertEquals(additionalText, additionalTextEl.textContent);
+    assertEquals('ellipsis', getComputedStyle(additionalTextEl).textOverflow);
+    assertTrue(
+        additionalTextEl.scrollWidth > additionalTextEl.clientWidth,
+        'additional text should be truncated');
+    const mirrorStyle = getComputedStyle(mirror);
+    const mirrorRect = mirror.getBoundingClientRect();
+    const additionalTextRect = additionalTextEl.getBoundingClientRect();
+    assertTrue(Math.abs(spanRect.right - additionalTextRect.left) < 1);
+    assertTrue(
+        Math.abs(
+            mirrorRect.right - parseFloat(mirrorStyle.paddingRight) -
+            additionalTextRect.right) < 1,
+        `additional text ends at ${additionalTextRect.right}px, not at the ` +
+            `end of the #mirror's content box`);
+    assertEquals(0, mirror.scrollLeft);
+  });
+
   test(
       'Does not clear urlEmphasis on setInput if value does not change',
       async () => {
@@ -1025,5 +1218,36 @@ suite('SearchboxInputTest', () => {
         inputRect.right <= buttonRect.left,
         `input right ${inputRect.right} overlaps button left ${
             buttonRect.left}`);
+  });
+
+  test('Hides placeholder-overlay slot when input is non-empty', async () => {
+    input = await createInput({placeholderText: 'Search'});
+    const overlay = document.createElement('div');
+    overlay.slot = 'placeholder-overlay';
+    overlay.textContent = 'Overlay';
+    input.appendChild(overlay);
+    await input.updateComplete;
+    await microtasksFinished();
+
+    const slot = input.shadowRoot.querySelector<HTMLSlotElement>(
+        'slot[name="placeholder-overlay"]');
+    assertTrue(!!slot);
+    assertNotEquals('none', window.getComputedStyle(slot).display);
+
+    // Even a single space makes :placeholder-shown false and hides the slot.
+    input.setInput({text: ' ', inline: ''});
+    await input.updateComplete;
+    assertEquals('none', window.getComputedStyle(slot).display);
+
+    // Match preview also sets input.value and hides the slot.
+    input.setInput(
+        {text: 'https://example.com', inline: '', isMatchPreview: true});
+    await input.updateComplete;
+    assertEquals('none', window.getComputedStyle(slot).display);
+
+    // Clearing the input shows the slot again.
+    input.setInput({text: '', inline: ''});
+    await input.updateComplete;
+    assertNotEquals('none', window.getComputedStyle(slot).display);
   });
 });

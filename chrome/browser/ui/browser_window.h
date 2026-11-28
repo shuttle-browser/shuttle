@@ -18,8 +18,8 @@
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "ui/base/base_window.h"
 #include "ui/base/interaction/element_identifier.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/base/mojom/window_show_state.mojom-forward.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/point_f.h"
 #include "ui/gfx/native_ui_types.h"
 #include "url/origin.h"
@@ -276,7 +276,8 @@ class BrowserWindow : public ui::BaseWindow {
   // Link will be opened with |disposition|.
   // TODO(crbug.com/40719979): see if this can't be piped through TabStripModel
   // events instead.
-  virtual void LinkOpeningFromGesture(WindowOpenDisposition disposition) = 0;
+  virtual void LinkOpeningFromGesture(
+      ui::mojom::WindowOpenDisposition disposition) = 0;
 
   // Focuses the app menu like it was a menu bar.
   //

@@ -1075,13 +1075,23 @@ TEST_F(HTMLCapabilityElementBaseSimTest, EnableClickingAfterDelay) {
 TEST_F(HTMLCapabilityElementBaseSimTest, InvalidDisplayStyleElement) {
   auto* permission_element = CreatePermissionElement(GetDocument(), "camera");
   DeferredChecker checker(permission_element);
-  permission_element->setAttribute(
-      html_names::kStyleAttr,
-      AtomicString("display: contents; position: absolute;"));
-  GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
-  checker.CheckClickingEnabled(/*enabled=*/false);
-  checker.CheckClickingEnabledAfterDelay(kDefaultTimeout,
-                                         /*expected_enabled=*/false);
+  for (const String invalid_display :
+       {"contents", "inline", "list-item", "inline list-item",
+        "flow-root list-item", "inline flow-root list-item", "ruby",
+        "block ruby", "ruby-text"}) {
+    SCOPED_TRACE(invalid_display);
+    permission_element->setAttribute(
+        html_names::kStyleAttr,
+        AtomicString("display: " + invalid_display + ";"));
+    GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+    EXPECT_EQ(permission_element->GetPseudoElement(kPseudoIdMarker), nullptr);
+    checker.CheckClickingEnabled(/*enabled=*/false);
+    checker.CheckClickingEnabledAfterDelay(kDefaultTimeout,
+                                           /*expected_enabled=*/false);
+  }
+
+  EXPECT_FALSE(
+      permission_element->CanGeneratePseudoElement(kPseudoIdMarker));
 
   permission_element->setAttribute(
       html_names::kStyleAttr,
@@ -1180,6 +1190,30 @@ TEST_F(HTMLCapabilityElementBaseSimTest, InheritedVerticalWritingModeIsReset) {
   EXPECT_TRUE(element_rect.Contains(text_rect))
       << "element=" << element_rect.ToString()
       << " text=" << text_rect.ToString();
+}
+
+TEST_F(HTMLCapabilityElementBaseSimTest, InheritedSVGMarkersAreReset) {
+  SimRequest main_resource("https://example.test/", "text/html");
+  LoadURL("https://example.test/");
+  main_resource.Complete(R"HTML(
+    <body>
+      <div id="container" style="marker-start: url(#m1); marker-mid: url(#m2); marker-end: url(#m3);">
+        <usermedia id="camera" type="camera"></usermedia>
+      </div>
+    </body>
+  )HTML");
+
+  Compositor().BeginFrame();
+  auto* permission_element = To<HTMLCapabilityElementBase>(
+      GetDocument().QuerySelector(AtomicString("usermedia")));
+  ASSERT_TRUE(permission_element);
+  GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  const ComputedStyle* style = permission_element->GetComputedStyle();
+  ASSERT_TRUE(style);
+  EXPECT_EQ(nullptr, style->MarkerStartResource());
+  EXPECT_EQ(nullptr, style->MarkerMidResource());
+  EXPECT_EQ(nullptr, style->MarkerEndResource());
 }
 
 TEST_F(HTMLCapabilityElementBaseSimTest, FontSizeCanDisableElement) {

@@ -97,8 +97,8 @@ class ActiveTabTracker : public TabModelObserver {
 // `ActiveTabTracker` with `TabModelObserver` on Android.
 class ActiveTabObserver : public TabModelListObserver {
  public:
-  ActiveTabObserver() { TabModelList::AddObserver(this); }
-  ~ActiveTabObserver() override { TabModelList::RemoveObserver(this); }
+  ActiveTabObserver() { TabModelList::AddGlobalObserver(this); }
+  ~ActiveTabObserver() override { TabModelList::RemoveGlobalObserver(this); }
 
  private:
   void OnTabModelAdded(TabModel* tab_model) override {
@@ -217,7 +217,7 @@ class PageLiveStateDecoratorHelper::WebContentsObserver
         next_(outer->first_web_contents_observer_) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     if (next_) {
-      DCHECK(!next_->prev_);
+      CHECK(!next_->prev_, base::NotFatalUntil::M163);
       next_->prev_ = this;
     }
     outer_->first_web_contents_observer_ = this;
@@ -262,14 +262,15 @@ class PageLiveStateDecoratorHelper::WebContentsObserver
   void DetachAndDestroy() {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     if (prev_) {
-      DCHECK_EQ(prev_->next_, this);
+      CHECK_EQ(prev_->next_, this, base::NotFatalUntil::M163);
       prev_->next_ = next_;
     } else {
-      DCHECK_EQ(outer_->first_web_contents_observer_, this);
+      CHECK_EQ(outer_->first_web_contents_observer_, this,
+               base::NotFatalUntil::M163);
       outer_->first_web_contents_observer_ = next_;
     }
     if (next_) {
-      DCHECK_EQ(next_->prev_, this);
+      CHECK_EQ(next_->prev_, this, base::NotFatalUntil::M163);
       next_->prev_ = prev_;
     }
 
@@ -384,7 +385,7 @@ void PageLiveStateDecoratorHelper::DevToolsAgentHostDetached(
 void PageLiveStateDecoratorHelper::OnPageNodeCreatedForWebContents(
     content::WebContents* web_contents) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(web_contents);
+  CHECK(web_contents, base::NotFatalUntil::M163);
   // Start observing the WebContents. See comment on
   // |first_web_contents_observer_| for lifetime management details.
   new WebContentsObserver(web_contents, this);

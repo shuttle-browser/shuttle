@@ -28,6 +28,8 @@
 #include "third_party/blink/renderer/core/xml/parser/xml_document_parser_rs.h"
 
 #include "base/auto_reset.h"
+#include "base/containers/span_rust.h"
+#include "base/memory/safety_checks.h"
 #include "base/notimplemented.h"
 #include "base/strings/string_view_rust.h"
 #include "third_party/blink/renderer/core/css/style_engine.h"
@@ -114,26 +116,19 @@ bool HandleNamespaceAttributes(
     xml_ffi::NamespacesIterator& namespaces,
     bool& encountered_namespace_reset,
     ExceptionState& exception_state) {
-  rust::String prefix;
-  rust::String uri;
-
-  while (namespaces_next(namespaces, prefix, uri)) {
-    AtomicString namespace_q_name = g_xmlns_atom;
-    if (prefix.length()) {
-      namespace_q_name = AtomicString(
-          StrCat({g_xmlns_with_colon, RustStrToWtfString(prefix)}));
-    }
+  xml_ffi::NamespaceView namespace_view;
+  while (namespaces_next(namespaces, namespace_view)) {
     std::optional<QualifiedName> parsed_name = Element::ParseAttributeName(
-        xmlns_names::kNamespaceURI, namespace_q_name, exception_state);
+        xmlns_names::kNamespaceURI, namespace_view.q_name, exception_state);
     if (!parsed_name) {
       DCHECK(exception_state.HadException());
       return false;
     }
     if (parsed_name->LocalName() == g_xmlns_atom) {
-      encountered_namespace_reset = uri.empty();
+      encountered_namespace_reset = namespace_view.uri.empty();
     }
     prefixed_attributes.push_back(
-        Attribute(std::move(*parsed_name), RustStrToAtomicString(uri)));
+        Attribute(std::move(*parsed_name), namespace_view.uri));
   }
   return true;
 }
@@ -265,15 +260,28 @@ void XMLDocumentParserRs::Append(const String& xml_string) {
     return;
   }
 
+  if (!xml_string.empty()) {
+    // Resume parsing, recover from unbalanced root error at previous chunk
+    // boundary.
+    carry_unbalanced_root_error_ = std::nullopt;
+  }
+
   if (parser_paused_ || in_process_events_) {
     pending_src_.Append(xml_string);
     return;
   }
 
-  if (!xml_string.empty()) {
-    // Resume parsing, recover from unbalanced root error at previous chunk
-    // boundary.
-    carry_unbalanced_root_error_ = std::nullopt;
+  AppendToSource(xml_string);
+  ProcessEvents();
+}
+
+void XMLDocumentParserRs::AppendToSource(const String& xml_string) {
+  if (xml_string.Is8Bit() && xml_string.ContainsOnlyAsciiOrEmpty()) {
+    // ASCII is valid UTF-8, so the characters can be appended without
+    // converting them.
+    xml_ffi::append_to_source(*read_state_,
+                              base::SpanToRustSlice(xml_string.Span8()));
+    return;
   }
   if (RuntimeEnabledFeatures::XMLParserReplaceLoneSurrogatesEnabled()) {
     // Replace lone surrogates with U+FFFD so the parser does a best-effort
@@ -285,16 +293,32 @@ void XMLDocumentParserRs::Append(const String& xml_string) {
     xml_ffi::append_to_source(*read_state_,
                               base::StringViewToRustSlice(xml_string.Utf8()));
   }
-  ProcessEvents();
 }
 
 void XMLDocumentParserRs::ProcessEvents() {
+  CHECK(!IsDetached());
+  CHECK(!parser_paused_);
+  CHECK(!in_process_events_);
+
   {
-    CHECK(!in_process_events_);
     base::AutoReset<bool> reentrancy_guard(&in_process_events_, true);
-    while (!parser_paused_ && !IsStopped() && !saw_end_document_ &&
-           !xml_ffi::saw_error(*read_state_)) {
-      xml_ffi::process_next_event(*read_state_);
+    while (!parser_paused_ && !IsStopped() && !saw_xsl_transform_ &&
+           !saw_end_document_ && !xml_ffi::saw_error(*read_state_)) {
+      if (!pending_src_.empty()) {
+        AppendToSource(pending_src_.ReleaseString());
+      }
+      {
+        // Reading an event makes and frees many short-lived allocations in
+        // the Rust parser. Freeing them through the Scheduler-Loop Quarantine,
+        // which holds on to each freed allocation until the end of the task,
+        // is expensive, so this excludes reading events (which also frees the
+        // previous event) from it. This only runs Rust code, and doesn't call
+        // into Blink or script, which only happens in dispatch_event(). In
+        // builds with DCHECKs, read_next_event() verifies this.
+        base::ScopedSafetyChecksExclusion exclusion;
+        xml_ffi::read_next_event(*read_state_);
+      }
+      xml_ffi::dispatch_event(*read_state_);
     }
     if (xml_ffi::saw_error(*read_state_)) {
       rust::String error_message = "";
@@ -319,14 +343,6 @@ void XMLDocumentParserRs::ProcessEvents() {
 
   if (IsDetached() || parser_paused_) {
     return;
-  }
-
-  if (!pending_src_.empty()) {
-    String rest = pending_src_.ReleaseString();
-    Append(rest);
-    if (IsDetached() || parser_paused_) {
-      return;
-    }
   }
 
   if (finish_called_) {
@@ -909,11 +925,6 @@ void XMLDocumentParserRs::EndInternal() {
 }
 
 void XMLDocumentParserRs::Finish() {
-  // FIXME: We should DCHECK(!m_parserStopped) here, since it does not
-  // makes sense to call any methods on DocumentParser once it's been stopped.
-  // However, FrameLoader::stop calls DocumentParser::finish unconditionally.
-  // FIXME carried over from XmlDocumentParser.
-
   Flush();
   if (IsDetached()) {
     return;
@@ -1129,14 +1140,10 @@ void XMLDocumentParserRs::PauseParsing() {
 }
 
 void XMLDocumentParserRs::ResumeParsing() {
-  DCHECK(!IsDetached());
-  DCHECK(parser_paused_);
+  CHECK(!IsDetached());
+  CHECK(parser_paused_);
   parser_paused_ = false;
   ProcessEvents();
-
-  if (finish_called_) {
-    EndInternal();
-  }
 }
 
 HashMap<String, String> ParseAttributesRust(const String& attrs_string,

@@ -16,6 +16,7 @@ class BlockBreakToken;
 class BlockNode;
 class ColumnSpannerPath;
 class ConstraintSpace;
+class FragmentedOofContainer;
 enum class BreakStatus;
 struct LogicalSize;
 struct MarginStrut;
@@ -78,6 +79,8 @@ class CORE_EXPORT ColumnLayoutAlgorithm
 
   const LayoutResult* Layout();
 
+  const LayoutResult* LayoutInternal();
+
   MinMaxSizesResult ComputeMinMaxSizes(const MinMaxSizesInput&);
 
   // Create an empty column fragment, modeled after an existing column. The
@@ -117,6 +120,7 @@ class CORE_EXPORT ColumnLayoutAlgorithm
                                  LayoutUnit line_offset,
                                  LayoutUnit miminum_column_block_size,
                                  bool has_wrapped,
+                                 LayoutUnit block_start_annotation_space,
                                  MarginStrut*);
 
   // Lay out a column spanner. The return value will tell whether to break
@@ -246,6 +250,19 @@ class CORE_EXPORT ColumnLayoutAlgorithm
     return gap_accumulator_ && row_gap_size_ > LayoutUnit();
   }
 
+  const FragmentedOofContainer* FragmentedOofContainerForColumns() const {
+    if (fragmented_oof_container_for_children_) {
+      // Only the outermost fragmentation context root may set
+      // fragmented_oof_container_for_children_.
+      DCHECK(!GetConstraintSpace().HasBlockFragmentation());
+
+      return fragmented_oof_container_for_children_;
+    }
+    // Fragmentainers have an entry in the FragmentedOofContainer tree, too, so
+    // get the child.
+    return container_builder_.FragmentedOofContainerForChildNode(Node());
+  }
+
   // Convert a line offset (which is relative to the block-start of the multicol
   // fragment under construction) to an offset relatively to the start of the
   // current row.
@@ -265,6 +282,8 @@ class CORE_EXPORT ColumnLayoutAlgorithm
   bool IsPastStartInWrappingRow(LayoutUnit line_offset) const;
 
   const ColumnSpannerPath* spanner_path_ = nullptr;
+  const FragmentedOofContainer* fragmented_oof_container_for_children_ =
+      nullptr;
 
   int used_column_count_;
 

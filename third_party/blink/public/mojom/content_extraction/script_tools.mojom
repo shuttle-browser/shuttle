@@ -43,7 +43,7 @@ struct ScriptTool {
   // reusing `ScriptTool`, this can be made required. See
   // https://crbug.com/536063275 and
   // https://docs.google.com/document/d/1psoB7k71-Dgkxg2tTG62DYJDTg02x8zOS3jCEd0QlbM/edit?pli=1&tab=t.0#heading=h.n6mukb2ajzia.
-  mojo_base.mojom.UnguessableToken? tool_id;
+  blink.mojom.ScriptToolToken? tool_id;
   // These directly map to the corresponding fields in the web API.
   string name;
   // The optional title for the tool. This can be null if the tool is registered
@@ -53,6 +53,7 @@ struct ScriptTool {
   string? title;
   string description;
   string? input_schema;
+  string? output_schema;
   ScriptToolAnnotations? annotations;
   // See the documentation in `model_context.idl` for more about this member.
   array<url.mojom.Origin> exposed_origins;
@@ -114,7 +115,7 @@ interface ScriptToolHost {
 interface ModelContextHost {
   // Binds the receiver for the browser to notify the renderer about changes in
   // tools.
-  BindModelContext(pending_remote<ModelContext> model_context);
+  BindModelContext(pending_associated_remote<ModelContext> model_context);
 
   // Registers a WebMCP script tool hosted in the caller document. The
   // registration goes to the browser process, so it can alert other relevant
@@ -124,7 +125,7 @@ interface ModelContextHost {
   // Unregisters a previously-declared tool. When this is called, `tool_id` is
   // guaranteed to match an existing tool; if this invariant is not upheld, the
   // renderer process is killed.
-  UnregisterScriptTool(mojo_base.mojom.UnguessableToken tool_id);
+  UnregisterScriptTool(blink.mojom.ScriptToolToken tool_id);
 
   // Returns all script tools visible to the caller document, optionally filtered
   // by `from_origins`. If `from_origins` is empty, it defaults to returning
@@ -143,7 +144,7 @@ interface ModelContextHost {
   // If tool execution fails, `error` is set to a `ExecuteRemoteScriptToolError`
   // corresponding to the `DOMException` that will be exposed to the caller.
   ExecuteRemoteScriptTool(blink.mojom.ToolInvocationToken invocation_id,
-                          mojo_base.mojom.UnguessableToken tool_id,
+                          blink.mojom.ScriptToolToken tool_id,
                           blink.mojom.FrameToken tool_owner_frame_token,
                           url.mojom.Origin expected_target_origin,
                           string input_arguments)
@@ -151,6 +152,27 @@ interface ModelContextHost {
 
   // Cancels a pending execution of a remote script tool.
   CancelRemoteScriptTool(blink.mojom.ToolInvocationToken invocation_id);
+
+  // Notifies whether the script tools associated with this Document are ready,
+  // i.e. not being updated by the page.
+  SetScriptToolsReady(bool ready);
+
+  // Requests a single-use continuation token for the tool execution
+  // `invocation_id`, which must be running in the calling document. Returns
+  // null if the calling document is inactive or not in the primary page, or if
+  // there is no pending tool execution for `invocation_id`.
+  RequestContinuationToken(blink.mojom.ToolInvocationToken invocation_id)
+      => (blink.mojom.ContinuationToken? token);
+
+  // Redeems a continuation token in the calling document. Returns
+  // `accepted = true` if the token exists and has not yet been redeemed, and the
+  // calling document is same-origin with the document that minted it and is in
+  // the primary page of the same tab. On acceptance, the
+  // browser sends this reply and *then* invokes `ResumeScriptTool()` on this
+  // document's `ModelContext`. Because `ModelContext` is associated with this
+  // interface, the renderer always receives the reply first.
+  RedeemContinuationToken(blink.mojom.ContinuationToken token)
+      => (bool accepted);
 };
 
 // Interface implemented by `blink::ModelContext` for the browser to notify the
@@ -168,7 +190,22 @@ interface ModelContext {
   // with the result and a null error_code, while failure passes a null result
   // and a non-null error_code.
   ExecuteScriptTool(blink.mojom.ToolInvocationToken invocation_id,
-                    mojo_base.mojom.UnguessableToken tool_id, string input_arguments)
+                    blink.mojom.ScriptToolToken tool_id, string input_arguments)
+      => (string? result, ScriptToolErrorCode? error_code);
+
+  // Invokes the callback registered via `modelContext.resumeTool(token, cb)`
+  // after `token` has been redeemed. Always sent after the
+  // `RedeemContinuationToken(token)` reply. `invocation_id` identifies this
+  // resumed execution step for cancellation and `options.invocation`.
+  //
+  // Resolution of the JavaScript Promise results in the callback being called
+  // with the result and a null error_code, while failure passes a null result
+  // and a non-null error_code.
+  ResumeScriptTool(
+      blink.mojom.ToolInvocationToken invocation_id,
+      blink.mojom.ContinuationToken token,
+      string tool_name,
+      string input_arguments)
       => (string? result, ScriptToolErrorCode? error_code);
 
   // Cancels a pending execution of a script tool in this Document.

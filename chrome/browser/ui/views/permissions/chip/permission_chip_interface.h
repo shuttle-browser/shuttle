@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_UI_VIEWS_PERMISSIONS_CHIP_PERMISSION_CHIP_INTERFACE_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/callback_list.h"
@@ -60,7 +61,8 @@ class PermissionChipInterface {
   virtual void SetMessage(std::u16string message) = 0;
   virtual void SetTooltipText(const std::u16string& tooltip) = 0;
   virtual void SetTheme(PermissionChipTheme theme) = 0;
-  virtual void SetUserDecision(permissions::PermissionAction user_decision) = 0;
+  virtual void SetUserDecision(
+      std::optional<permissions::PermissionAction> user_decision) = 0;
   virtual void SetBlockedIconShowing(bool should_show_blocked_icon) = 0;
   virtual void SetPermissionPromptStyle(PermissionPromptStyle prompt_style) = 0;
 
@@ -86,6 +88,8 @@ class PermissionChipInterface {
       base::RepeatingClosure callback) = 0;
 
   virtual void SetAccessibilityIgnored(bool is_ignored) = 0;
+  // Overrides the accessible name until the next `SetMessage()`, which resets
+  // it to the message.
   virtual void SetAccessibilityName(const std::u16string& name) = 0;
   virtual void AnnounceText(const std::u16string& text) = 0;
   virtual void AnnounceAlert(const std::u16string& text) = 0;

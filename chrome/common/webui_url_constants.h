@@ -10,8 +10,6 @@
 
 #include <stddef.h>
 
-#include <string_view>
-
 #include "base/containers/flat_set.h"
 #include "base/containers/span.h"
 #include "base/strings/cstring_view.h"
@@ -61,6 +59,9 @@ inline constexpr char kChromeUIContextualTasksURL[] =
 inline constexpr char kChromeUIContentSettingsHost[] = "content-settings";
 inline constexpr char kChromeUIContentSettingsURL[] =
     "chrome://settings/content";
+#if !BUILDFLAG(IS_ANDROID)
+inline constexpr char kChromeUICraftHost[] = "craft";
+#endif
 inline constexpr char kChromeUICreditsHost[] = "credits";
 inline constexpr char kChromeUICreditsURL[] = "chrome://credits/";
 inline constexpr char16_t kChromeUICreditsURL16[] = u"chrome://credits/";
@@ -155,7 +156,6 @@ inline constexpr char kChromeUISplitViewNewTabPageURL[] =
 inline constexpr char kChromeUISubresourceFilterInternalsHost[] =
     "subresource-filter-internals";
 inline constexpr char kChromeUISuggestInternalsHost[] = "suggest-internals";
-inline constexpr char kChromeUISyncConfirmationHost[] = "sync-confirmation";
 inline constexpr char kChromeUISystemInfoHost[] = "system";
 inline constexpr char kChromeUIAiOverlayDialogUntrustedURL[] =
     "chrome-untrusted://ai-overlay-dialog/";
@@ -191,13 +191,6 @@ inline constexpr char kChromeUISearchSettingsPath[] = "/search";
 inline constexpr char kChromeUITabSearchHost[] = "tab-search.top-chrome";
 inline constexpr char kChromeUIWebUIJsErrorHost[] = "webuijserror";
 #endif  // BUILDFLAG(IS_ANDROID)
-
-#if BUILDFLAG(IS_CHROMEOS)
-// Returns true if this web UI is part of the "system UI". Generally this is
-// UI that opens in a window (not a browser tab) and that on other operating
-// systems would be considered part of the OS or window manager.
-bool IsSystemWebUIHost(std::string_view host);
-#endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_DESKTOP_ANDROID)

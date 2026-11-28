@@ -15,7 +15,8 @@
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_base.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_content_delegate.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_delegate.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_handler.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 #include "chrome/browser/ui/webui/top_chrome/webui_contents_wrapper.h"
@@ -34,15 +35,34 @@
 #include "ui/views/widget/widget.h"
 
 OmniboxFullPopupWebUIContent::OmniboxFullPopupWebUIContent(
-    OmniboxPopupPresenterBase* presenter,
+    OmniboxPopupContentDelegate* content_delegate,
+    OmniboxPopupContentSizer* sizer,
+    OmniboxPopupContentConfig config,
     LocationBar* location_bar,
     OmniboxController* controller)
-    : OmniboxPopupWebUIContent(presenter,
+    : OmniboxFullPopupWebUIContent(content_delegate,
+                                   sizer,
+                                   config,
+                                   location_bar,
+                                   controller,
+                                   /*contents=*/nullptr) {}
+
+OmniboxFullPopupWebUIContent::OmniboxFullPopupWebUIContent(
+    OmniboxPopupContentDelegate* content_delegate,
+    OmniboxPopupContentSizer* sizer,
+    OmniboxPopupContentConfig config,
+    LocationBar* location_bar,
+    OmniboxController* controller,
+    std::unique_ptr<ContentsWrapper> contents)
+    : OmniboxPopupWebUIContent(content_delegate,
+                               sizer,
+                               config,
                                location_bar,
                                controller,
                                /*include_location_bar_cutout=*/false,
                                /*wants_focus=*/true,
-                               /*set_content_url=*/false),
+                               /*set_content_url=*/false,
+                               std::move(contents)),
       OmniboxContextMenuMixin<ui::SimpleMenuModel::Delegate>(location_bar,
                                                              controller) {
   SetContentURL(chrome::kChromeUIOmniboxPopupURL);
@@ -123,6 +143,18 @@ void OmniboxFullPopupWebUIContent::OnFocusChangedInPage(
   if (pending_context_menu_request_ &&
       details.editable_level != content::EditableLevel::kNotEditable) {
     ShowPendingContextMenuIfReady();
+  }
+}
+
+void OmniboxFullPopupWebUIContent::UpdateAimButtonVisibility() {
+  // AI Mode (AIM) is not part of this build: the popup has no AIM button.
+}
+
+void OmniboxFullPopupWebUIContent::DidFirstVisuallyNonEmptyPaint() {
+  // The host's `CompletedFirstVisuallyNonEmptyPaint()` turns true with this
+  // paint, so let `LocationBarView` drop its native focus ring.
+  if (auto* delegate = presenter_delegate()) {
+    delegate->OnPopupFirstVisuallyNonEmptyPaint();
   }
 }
 
@@ -251,13 +283,9 @@ views::Widget* OmniboxFullPopupWebUIContent::GetWidgetForTextServices() {
 
 const OmniboxPopupHandler* OmniboxFullPopupWebUIContent::GetPopupHandler()
     const {
-  if (!popup_presenter() || !popup_presenter()->GetWebUIContent()) {
-    return nullptr;
-  }
-  const auto* contents_wrapper =
-      popup_presenter()->GetWebUIContent()->contents_wrapper();
+  const auto* wrapper = contents_wrapper();
   const auto* webui_controller =
-      contents_wrapper ? contents_wrapper->GetWebUIController() : nullptr;
+      wrapper ? wrapper->GetWebUIController() : nullptr;
   const auto* popup_ui = static_cast<const OmniboxPopupUI*>(webui_controller);
   return popup_ui ? popup_ui->popup_handler() : nullptr;
 }

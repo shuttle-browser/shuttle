@@ -11,7 +11,7 @@
 #include "chrome/browser/safe_browsing/download_protection/download_protection_util.h"
 #include "chrome/common/safe_browsing/download_type_util.h"
 #include "components/download/public/common/download_item.h"
-#include "components/safe_browsing/content/common/file_type_policies.h"
+#include "components/safe_browsing/content/common/file_type_policies/file_type_policies.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/download_item_utils.h"
@@ -131,7 +131,7 @@ net::NetworkTrafficAnnotationTag DownloadProtectionDelegateDesktop::
               "the download is not allowlisted, and its file extension is "
               "supported by download protection service (e.g. executables, "
               "archives). Please refer to https://cs.chromium.org/chromium/src/"
-              "chrome/browser/resources/safe_browsing/"
+              "components/safe_browsing/content/resources/download_file_types/"
               "download_file_types.asciipb for the complete list of supported "
               "files."
             data:
@@ -144,7 +144,9 @@ net::NetworkTrafficAnnotationTag DownloadProtectionDelegateDesktop::
               type: SENSITIVE_URL
               type: WEB_CONTENT
             }
-            last_reviewed: "2025-02-25"
+            destination: GOOGLE_OWNED_SERVICE
+            api_service_name: "safebrowsingdownloadprotection.googleapis.com"
+            last_reviewed: "2026-11-03"
           })");
 }
 

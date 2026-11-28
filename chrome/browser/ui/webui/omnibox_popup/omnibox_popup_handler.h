@@ -24,10 +24,11 @@ class WebContents;
 
 class OmniboxController;
 
-// Returns the WebUI resource path or favicon URL for the default search
-// provider.
+// Returns the WebUI resource path or favicon URL for the DSE. In dark mode,
+// Google DSE uses the monochrome Super G icon.
 std::string GetDefaultSearchProviderIcon(
-    const TemplateURLService* template_url_service);
+    const TemplateURLService* template_url_service,
+    bool is_dark_mode);
 
 class OmniboxPopupHandler : public omnibox_popup::mojom::PageHandler,
                             public TemplateURLServiceObserver {
@@ -48,6 +49,15 @@ class OmniboxPopupHandler : public omnibox_popup::mojom::PageHandler,
     embedder_ = embedder;
   }
 
+  // Stops using the omnibox of the browser window that embeds the popup and
+  // drops the text state the page reported there. Called before the popup's
+  // WebContents moves to another browser window.
+  void DetachFromOmniboxController();
+
+  // Uses `controller`, the omnibox of the browser window that now embeds the
+  // popup.
+  void AttachToOmniboxController(OmniboxController* controller);
+
   // omnibox_popup::mojom::PageHandler:
   void ShowContextMenu(const gfx::Point& point) override;
   void CloseUI() override;
@@ -55,9 +65,11 @@ class OmniboxPopupHandler : public omnibox_popup::mojom::PageHandler,
                           uint32_t sequence_number,
                           bool show_full_url) override;
   void Revert(uint32_t sequence_number) override;
+  void RevertTemporaryText(uint32_t sequence_number) override;
   void LogEscapeAction(
       omnibox_popup::mojom::OmniboxEscapeAction action) override;
   void OnInputCleared(uint32_t sequence_number) override;
+  void StartUserInput(uint32_t sequence_number) override;
   void OnPaste(const std::string& text,
                const gfx::Range& selection,
                uint32_t sequence_number) override;
@@ -104,14 +116,15 @@ class OmniboxPopupHandler : public omnibox_popup::mojom::PageHandler,
   void OnTemplateURLServiceChanged() override;
   void OnTemplateURLServiceShuttingDown() override;
 
+  // Notifies the WebUI of the current DSE icon and placeholder type.
+  void NotifyDefaultSearchProviderChanged();
+
   const gfx::Range& latest_selection() const { return latest_selection_; }
   bool show_full_url() const { return show_full_url_; }
   bool can_undo() const { return can_undo_; }
   bool can_redo() const { return can_redo_; }
 
  private:
-  void NotifyDefaultSearchProviderChanged();
-
   mojo::Receiver<omnibox_popup::mojom::PageHandler> receiver_;
   mojo::Remote<omnibox_popup::mojom::Page> page_;
   base::WeakPtr<TopChromeWebUIController::Embedder> embedder_;

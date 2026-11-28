@@ -12,8 +12,8 @@
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "ui/ozone/platform/wayland/host/wayland_connection.h"
+#include "ui/ozone/platform/wayland/host/wayland_toplevel_window.h"
 #include "ui/ozone/platform/wayland/host/wayland_window.h"
-#include "ui/platform_window/platform_window_init_properties.h"
 
 namespace ui {
 
@@ -98,7 +98,8 @@ class XdgForeignWrapperImpl
     } else {
       // The |surface| has already been exported and its handle has been
       // received. Execute the |cb| and send the handle.
-      DCHECK(!exported_surface->exported_handle.empty());
+      CHECK(!exported_surface->exported_handle.empty(),
+            base::NotFatalUntil::M163);
       std::move(cb).Run(exported_surface->exported_handle);
     }
   }
@@ -131,7 +132,7 @@ class XdgForeignWrapperImpl
   static void OnHandle(void* data, ExportedType* exported, const char* handle) {
     auto* self =
         static_cast<XdgForeignWrapperImpl<ExporterType, ExportedType>*>(data);
-    DCHECK(self);
+    CHECK(self, base::NotFatalUntil::M163);
 
     auto exported_surface_it =
         std::ranges::find(self->exported_surfaces_, exported,
@@ -228,9 +229,15 @@ XdgForeignWrapper::XdgForeignWrapper(WaylandConnection* connection) {
 
 XdgForeignWrapper::~XdgForeignWrapper() = default;
 
-void XdgForeignWrapper::ExportSurfaceToForeign(WaylandWindow* window,
+void XdgForeignWrapper::ExportSurfaceToForeign(WaylandToplevelWindow* window,
                                                OnHandleExported cb) {
-  DCHECK_EQ(window->type(), PlatformWindowType::kWindow);
+  // The xdg_toplevel role only exists while the window is visible; exporting
+  // a surface without it is a protocol error that closes the connection.
+  if (!window->IsVisible()) {
+    std::move(cb).Run(std::string());
+    return;
+  }
+
   auto* surface = window->root_surface()->surface();
   impl_->ExportSurfaceToForeign(surface, std::move(cb));
 }

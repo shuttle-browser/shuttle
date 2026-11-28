@@ -10,6 +10,9 @@ namespace private_insights {
 
 BASE_FEATURE(kPrivateInsightsFeature, base::FEATURE_DISABLED_BY_DEFAULT);
 
+BASE_FEATURE(kPrivateInsightsUploadTaskPipeline,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 const base::FeatureParam<base::TimeDelta> kPrivateInsightsUploadInterval{
     &kPrivateInsightsFeature, "upload_interval", base::Minutes(30)};
 
@@ -57,8 +60,6 @@ const base::FeatureParam<base::TimeDelta> kFcpPermanentErrorsRetryDelay{
     &kPrivateInsightsFeature, "fcp_permanent_errors_retry_delay",
     base::Hours(4)};
 
-const base::FeatureParam<bool> kFcpEnablePrivacyIdV2{
-    &kPrivateInsightsFeature, "fcp_enable_privacy_id_v2", false};
 
 const base::FeatureParam<int> kMaxContextualCueEvents{
     &kPrivateInsightsFeature, "max_contextual_cue_events", 20};

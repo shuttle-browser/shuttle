@@ -16,8 +16,9 @@ limitations under the License.
 #include <string>
 #include <type_traits>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator.pb.h"
@@ -85,11 +86,11 @@ class TextClassifierGraph : public core::ModelTaskGraph {
  public:
   absl::StatusOr<CalculatorGraphConfig> GetConfig(
       SubgraphContext* sc) override {
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         const ModelResources* model_resources,
         CreateModelResources<proto::TextClassifierGraphOptions>(sc));
     Graph graph;
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto classifications,
         BuildTextClassifierTask(
             sc->Options<proto::TextClassifierGraphOptions>(), *model_resources,
@@ -117,10 +118,11 @@ class TextClassifierGraph : public core::ModelTaskGraph {
     // stream.
     auto& preprocessing = graph.AddNode(
         "mediapipe.tasks.components.processors.TextPreprocessingGraph");
-    MP_RETURN_IF_ERROR(components::processors::ConfigureTextPreprocessingGraph(
-        model_resources,
-        preprocessing.GetOptions<
-            components::processors::proto::TextPreprocessingGraphOptions>()));
+    ABSL_RETURN_IF_ERROR(
+        components::processors::ConfigureTextPreprocessingGraph(
+            model_resources,
+            preprocessing.GetOptions<components::processors::proto::
+                                         TextPreprocessingGraphOptions>()));
     text_in >> preprocessing.In(kTextTag);
 
     // Adds both InferenceCalculator and ModelResourcesCalculator.
@@ -136,7 +138,7 @@ class TextClassifierGraph : public core::ModelTaskGraph {
     auto& postprocessing = graph.AddNode(
         "mediapipe.tasks.components.processors."
         "ClassificationPostprocessingGraph");
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         components::processors::ConfigureClassificationPostprocessingGraph(
             model_resources, task_options.classifier_options(),
             &postprocessing

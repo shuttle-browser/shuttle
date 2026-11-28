@@ -38,6 +38,7 @@
 #include "components/viz/service/debugger/viz_debugger.h"
 #include "components/viz/service/display/bsp_tree.h"
 #include "components/viz/service/display/bsp_walk_action.h"
+#include "components/viz/service/display/hdr_video_passthrough.h"
 #include "components/viz/service/display/output_surface.h"
 #include "components/viz/service/display/render_pass_alpha_type.h"
 #include "components/viz/service/display/skia_output_surface.h"
@@ -300,6 +301,11 @@ void DirectRenderer::DrawFrame(
             .si_format = frame_si_format,
             .color_space = frame_color_space,
 #if BUILDFLAG(IS_OZONE)
+            // Ozone/Wayland forwards this to the system compositor.
+            .hdr_metadata =
+                OverlayProcessorInterface::ComputePrimaryPlaneHDRMetadata(
+                    current_frame()->display_color_spaces, frame_color_space,
+                    current_frame()->root_render_pass->content_color_usage),
             .overlay_testing_mailbox =
                 output_surface_->capabilities().renderer_allocates_images
                     ? GetPrimaryPlaneOverlayTestingMailbox()
@@ -320,6 +326,9 @@ void DirectRenderer::DrawFrame(
     has_primary_plane = std::ranges::any_of(
         current_frame()->overlay_list,
         [](const auto& candidate) { return candidate.is_root_render_pass; });
+#endif
+#if BUILDFLAG(IS_OZONE)
+    MaybeEnableHdrVideoPassthrough(frame_color_space);
 #endif
     TRACE_EVENT_END("viz,benchmark", "num candidates",
                     current_frame()->overlay_list.size(), "root_damage_rect",
@@ -454,6 +463,7 @@ void DirectRenderer::DrawFrame(
   // pointers.
   current_frame()->render_passes_in_draw_order = nullptr;
   current_frame()->root_render_pass = nullptr;
+  current_frame()->hdr_passthrough_quad = nullptr;
 
   render_passes_in_draw_order->clear();
   render_pass_bypass_quads_.clear();
@@ -862,7 +872,12 @@ bool DirectRenderer::CanSkipRenderPass(
         !render_pass->copy_requests.empty()) {
       return false;
     }
-    return IsRenderPassResourceAllocated(render_pass->id);
+    // Reuse the backing only if the drawn rect matches the `output_rect`.
+    // This is similar to handling within ComputeScissorRectForRenderPass, and
+    // avoids awkward situations where `output_rect` is larger than
+    // drawn rect.
+    return GetRenderPassBackingDrawnRect(render_pass->id) ==
+           render_pass->output_rect;
   }
 
   return false;
@@ -928,6 +943,47 @@ DirectRenderer::CalculateRenderPassRequirements(
 
   return requirements;
 }
+
+#if BUILDFLAG(IS_OZONE)
+void DirectRenderer::MaybeEnableHdrVideoPassthrough(
+    const gfx::ColorSpace& frame_color_space) {
+  const DrawQuad* quad = nullptr;
+  auto primary_plane = std::ranges::find_if(
+      current_frame()->overlay_list,
+      [](const auto& candidate) { return candidate.is_root_render_pass; });
+  // The passthrough metadata always has MDCV and may have CLLI, so the system
+  // compositor must tone map using both.
+  const auto& capabilities = output_surface_->capabilities();
+  if (capabilities.compositor_tone_maps_using_clli &&
+      capabilities.compositor_tone_maps_using_mdcv &&
+      base::FeatureList::IsEnabled(features::kHdrVideoMetadataPassthrough) &&
+      primary_plane != current_frame()->overlay_list.end()) {
+    // Quads promoted to overlays have been removed from the root render pass
+    // at this point, so they are not considered.
+    quad = FindHdrVideoPassthroughQuad(
+        resource_provider_, *current_frame()->render_passes_in_draw_order,
+        frame_color_space, is_page_fullscreen_);
+  }
+
+  // The primary plane's buffers may hold content from previous frames, which
+  // was drawn with or without tone mapping. Redraw everything when switching
+  // so that the whole buffer is consistent with the primary plane's metadata.
+  if (!!quad != last_frame_used_hdr_passthrough_) {
+    current_frame()->root_damage_rect.Union(
+        current_frame()->root_render_pass->output_rect);
+  }
+  last_frame_used_hdr_passthrough_ = !!quad;
+  if (!quad) {
+    return;
+  }
+
+  current_frame()->hdr_passthrough_quad = quad;
+  primary_plane->hdr_metadata = ComputeHdrVideoPassthroughMetadata(
+      resource_provider_->GetColorSpace(quad->resource_id),
+      resource_provider_->GetHDRMetadata(quad->resource_id),
+      current_frame()->display_color_spaces.GetSDRMaxLuminanceNits());
+}
+#endif
 
 gfx::ColorSpace DirectRenderer::RenderPassColorSpace(
     const AggregatedRenderPass* render_pass) const {

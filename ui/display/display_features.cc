@@ -57,17 +57,8 @@ BASE_FEATURE_PARAM(int,
                    &kCADisplayLinkInGpu,
                    15);
 
-BASE_FEATURE(kSkipPostTaskForCallbacks, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kSkipPostTaskForCallbacks, base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
-
-// TODO(gildekel): A temporary flag to control whether EDID-based (vs.
-// port-based) display IDs are generated per display. Remove once the migration
-// process it complete (b/193019614).
-BASE_FEATURE(kEnableEdidBasedDisplayIds, base::FEATURE_DISABLED_BY_DEFAULT);
-
-bool IsEdidBasedDisplayIdsEnabled() {
-  return base::FeatureList::IsEnabled(kEnableEdidBasedDisplayIds);
-}
 
 // Enable display scale factor meant for OLED display.
 BASE_FEATURE(kOledScaleFactorEnabled, base::FEATURE_DISABLED_BY_DEFAULT);

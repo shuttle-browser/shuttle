@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "base/check.h"
+#include "base/check_op.h"
 #include "base/trace_event/trace_event.h"
 #include "cc/paint/skottie_wrapper.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
@@ -52,7 +53,7 @@ void AnimatedImageView::SetAnimatedImage(
 
 void AnimatedImageView::Play(
     std::optional<lottie::Animation::PlaybackConfig> playback_config) {
-  DCHECK(animated_image_);
+  CHECK(animated_image_, base::NotFatalUntil::M163);
   if (state_ == State::kPlaying) {
     return;
   }
@@ -80,11 +81,18 @@ void AnimatedImageView::Stop() {
     return;
   }
 
-  DCHECK(animated_image_);
+  CHECK(animated_image_, base::NotFatalUntil::M163);
   compositor_observation_.Reset();
+  previous_timestamp_ = base::TimeTicks();
 
   animated_image_->Stop();
   state_ = State::kStopped;
+}
+
+void AnimatedImageView::SetFrameInterval(
+    std::optional<base::TimeDelta> frame_interval) {
+  CHECK(!frame_interval || frame_interval->is_positive());
+  frame_interval_ = frame_interval;
 }
 
 gfx::Size AnimatedImageView::GetImageSize() const {
@@ -116,7 +124,7 @@ void AnimatedImageView::OnPaint(gfx::Canvas* canvas) {
 
 void AnimatedImageView::NativeViewHierarchyChanged() {
   ui::Compositor* compositor = GetWidget()->GetCompositor();
-  DCHECK(compositor);
+  CHECK(compositor, base::NotFatalUntil::M163);
   if (!compositor_observation_.IsObservingSource(compositor)) {
     compositor_observation_.Reset();
 
@@ -144,6 +152,20 @@ void AnimatedImageView::RemovedFromWidget() {
 void AnimatedImageView::OnAnimationStep(base::TimeTicks timestamp) {
   TRACE_EVENT1("views", "AnimatedImageView::OnAnimationStep", "timestamp",
                timestamp);
+  if (frame_interval_.has_value() && !previous_timestamp_.is_null()) {
+    const ui::Compositor* compositor = compositor_observation_.GetSource();
+    CHECK(compositor);
+    const float refresh_rate = compositor->refresh_rate();
+    CHECK_GT(refresh_rate, 0.f);
+    // Allow half a compositor frame of tolerance so that a frame interval
+    // which is a multiple of the compositor's refresh interval is honored
+    // despite timer jitter, e.g. a 50ms interval paints on every third 60Hz
+    // tick.
+    const base::TimeDelta tolerance = base::Hertz(refresh_rate) / 2;
+    if (timestamp - previous_timestamp_ + tolerance < *frame_interval_) {
+      return;
+    }
+  }
   previous_timestamp_ = timestamp;
   SchedulePaint();
 }
@@ -162,15 +184,16 @@ void AnimatedImageView::DoPlay(
 }
 
 void AnimatedImageView::SetCompositorFromWidget() {
-  DCHECK(!compositor_observation_.IsObserving());
+  CHECK(!compositor_observation_.IsObserving(), base::NotFatalUntil::M163);
   auto* widget = GetWidget();
-  DCHECK(widget);
+  CHECK(widget, base::NotFatalUntil::M163);
   ui::Compositor* compositor = widget->GetCompositor();
-  DCHECK(!compositor->HasAnimationObserver(this));
+  CHECK(!compositor->HasAnimationObserver(this), base::NotFatalUntil::M163);
   compositor_observation_.Observe(compositor);
 }
 
 BEGIN_METADATA(AnimatedImageView)
+ADD_PROPERTY_METADATA(std::optional<base::TimeDelta>, FrameInterval)
 END_METADATA
 
 }  // namespace views

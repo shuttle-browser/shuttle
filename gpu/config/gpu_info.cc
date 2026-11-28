@@ -172,14 +172,33 @@ GPUInfo::GPUDevice& GPUInfo::active_gpu() {
 }
 
 const GPUInfo::GPUDevice& GPUInfo::active_gpu() const {
-  if (gpu.active || secondary_gpus.empty())
+  if (gpu.active || secondary_gpus.empty()) {
     return gpu;
+  }
+  const GPUDevice* first_non_software_gpu =
+      gpu.IsSoftwareRenderer() ? nullptr : &gpu;
   for (const auto& secondary_gpu : secondary_gpus) {
-    if (secondary_gpu.active)
+    if (secondary_gpu.active) {
       return secondary_gpu;
+    }
+    if (!first_non_software_gpu && !secondary_gpu.IsSoftwareRenderer()) {
+      first_non_software_gpu = &secondary_gpu;
+    }
   }
   DVLOG(2) << "No active GPU found, returning primary GPU.";
-  return gpu;
+  return first_non_software_gpu ? *first_non_software_gpu : gpu;
+}
+
+bool GPUInfo::IsActiveGpuSpecified() const {
+  if (gpu.active || GpuCount() <= 1) {
+    return true;
+  }
+  for (const auto& secondary_gpu : secondary_gpus) {
+    if (secondary_gpu.active) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool GPUInfo::IsInitialized() const {
@@ -242,7 +261,6 @@ void GPUInfo::EnumerateFields(Enumerator* enumerator) const {
     std::vector<GPUDevice> npus;
     std::string pixel_shader_version;
     std::string vertex_shader_version;
-    std::string max_msaa_samples;
     std::string machine_model_name;
     std::string machine_model_version;
     std::string display_type;
@@ -267,6 +285,7 @@ void GPUInfo::EnumerateFields(Enumerator* enumerator) const {
 #if BUILDFLAG(IS_WIN)
     uint32_t directml_feature_level;
     uint32_t d3d12_feature_level;
+    uint32_t d3d11_feature_level;
     uint32_t vulkan_version;
     OverlayInfo overlay_info;
     bool shared_image_d3d;
@@ -310,7 +329,6 @@ void GPUInfo::EnumerateFields(Enumerator* enumerator) const {
   enumerator->AddBool("amdSwitchable", amd_switchable);
   enumerator->AddString("pixelShaderVersion", pixel_shader_version);
   enumerator->AddString("vertexShaderVersion", vertex_shader_version);
-  enumerator->AddString("maxMsaaSamples", max_msaa_samples);
   enumerator->AddString("displayType", display_type);
   enumerator->AddString("skiaBackendType",
                         SkiaBackendTypeToString(skia_backend_type));
@@ -345,6 +363,8 @@ void GPUInfo::EnumerateFields(Enumerator* enumerator) const {
       gpu::DirectMLFeatureLevelToString(directml_feature_level));
   enumerator->AddString("dx12FeatureLevel",
                         gpu::D3DFeatureLevelToString(d3d12_feature_level));
+  enumerator->AddString("dx11FeatureLevel",
+                        gpu::D3DFeatureLevelToString(d3d11_feature_level));
   enumerator->AddString("vulkanVersion",
                         gpu::VulkanVersionToString(vulkan_version));
   enumerator->AddBool("supportsD3dSharedImages", shared_image_d3d);

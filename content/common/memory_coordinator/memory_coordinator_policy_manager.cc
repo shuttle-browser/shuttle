@@ -13,18 +13,12 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
-#include "base/feature_list.h"
 #include "base/memory_coordinator/memory_coordinator_features.h"
 #include "base/memory_coordinator/traits.h"
 #include "content/common/memory_coordinator/memory_consumer_group_host.h"
 #include "content/public/common/memory_coordinator/memory_coordinator_policy.h"
 
 namespace content {
-
-bool IsEffectivelyStateful(const base::MemoryConsumerTraits& traits) {
-  return base::FeatureList::IsEnabled(base::kStatefulMemoryPressure) &&
-         traits.is_stateful == base::MemoryConsumerTraits::IsStateful::kYes;
-}
 
 // MemoryCoordinatorPolicyManager::GroupState ----------------------------------
 
@@ -125,7 +119,7 @@ bool MemoryCoordinatorPolicyManager::GroupState::ClearMemoryReleaseSuppression(
   // its current limit allows. A stateful consumer can't be above the highest
   // limit applied since it last released memory. A stateless consumer ignores
   // limit updates, so it may be above its limit whenever under pressure.
-  return IsEffectivelyStateful(traits_)
+  return base::IsEffectivelyStateful(consumer_name_, traits_)
              ? current_limit_ < peak_limit_since_release_
              : current_limit_ < base::MemoryLimit::Default();
 }
@@ -220,10 +214,14 @@ void MemoryCoordinatorPolicyManager::RemovePolicy(
         updates.push_back({consumer_id, new_limit, release_memory});
       }
     }
-    if (!updates.empty()) {
+    if (!updates.empty() && !is_shutting_down_) {
       host_state->host->UpdateConsumers(std::move(updates));
     }
   }
+}
+
+void MemoryCoordinatorPolicyManager::PrepareForShutdown() {
+  is_shutting_down_ = true;
 }
 
 MemoryCoordinatorPolicyManager::HostState&
@@ -375,6 +373,7 @@ void MemoryCoordinatorPolicyManager::UpdateConsumersForProcess(
     MemoryCoordinatorPolicy* policy,
     ChildProcessId child_process_id,
     std::vector<MemoryConsumerUpdate> updates) {
+  CHECK(!is_shutting_down_);
   HostState& host_state = GetHostState(child_process_id);
 
   // The `updates` vector is modified in-place, removing entries that do not
@@ -451,6 +450,7 @@ void MemoryCoordinatorPolicyManager::ClearMemoryReleaseSuppression(
 void MemoryCoordinatorPolicyManager::ApplyMemoryReleaseSuppression(
     MemoryCoordinatorPolicy* policy,
     const ConsumerFilter* filter) {
+  CHECK(!is_shutting_down_);
   for (auto const& [child_id, host_state] : hosts_) {
     std::vector<MemoryConsumerUpdate> updates;
     for (auto const& [consumer_id, group_state] : host_state->groups) {
@@ -477,6 +477,7 @@ void MemoryCoordinatorPolicyManager::ApplyMemoryReleaseSuppression(
 void MemoryCoordinatorPolicyManager::ApplyMemoryLimitOverride(
     uint32_t consumer_id,
     base::MemoryLimit memory_limit) {
+  CHECK(!is_shutting_down_);
   for (auto const& [child_id, host_state] : hosts_) {
     auto it = host_state->groups.find(consumer_id);
     if (it != host_state->groups.end()) {
@@ -496,6 +497,7 @@ void MemoryCoordinatorPolicyManager::SetMemoryLimitOverride(
 
 void MemoryCoordinatorPolicyManager::ClearMemoryLimitOverride(
     uint32_t consumer_id) {
+  CHECK(!is_shutting_down_);
   size_t removed = memory_limit_overrides_.erase(consumer_id);
   CHECK_EQ(removed, 1u);
 

@@ -7,12 +7,14 @@
 #include <atomic>
 #include <utility>
 
+#include "base/containers/span.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "media/audio/audio_device_stats_reporter.h"
+#include "media/audio/audio_trace_utils.h"
 #include "media/base/audio_bus.h"
 #include "media/base/audio_glitch_info.h"
 #include "media/media_buildflags.h"
@@ -39,6 +41,9 @@ AudioOutputDeviceThreadCallback::AudioOutputDeviceThreadCallback(
 #if !BUILDFLAG(ENABLE_PASSTHROUGH_AUDIO_CODECS)
   CHECK(!audio_parameters_.IsBitstreamFormat());
 #endif
+
+  trace_flow_base_id_ =
+      GetAudioTraceFlowBaseId(shared_memory_region_.GetGUID());
 }
 
 AudioOutputDeviceThreadCallback::~AudioOutputDeviceThreadCallback() {
@@ -51,9 +56,9 @@ void AudioOutputDeviceThreadCallback::MapSharedMemory() {
   shared_memory_mapping_ = shared_memory_region_.MapAt(0, memory_length_);
   CHECK(shared_memory_mapping_.IsValid());
 
-  base::span<uint8_t> data = shared_memory_mapping_.GetMemoryAsSpan<uint8_t>();
   base::span<uint8_t> audio_data_span =
-      data.subspan<sizeof(media::AudioOutputBufferParameters)>();
+      base::span(shared_memory_mapping_)
+          .subspan<sizeof(media::AudioOutputBufferParameters)>();
 
   const media::AudioOutputBuffer* buffer =
       shared_memory_mapping_.GetMemoryAs<media::AudioOutputBuffer>();
@@ -70,8 +75,7 @@ void AudioOutputDeviceThreadCallback::Process(uint32_t control_signal) {
   callback_num_++;
 
   media::AudioOutputBuffer* buffer =
-      reinterpret_cast<media::AudioOutputBuffer*>(
-          shared_memory_mapping_.memory());
+      shared_memory_mapping_.GetMemoryAs<media::AudioOutputBuffer>();
   // Read the glitch info.
   media::AudioGlitchInfo glitch_info =
       buffer_helper_.GetGlitchIncrementSinceLastCall(buffer->params);
@@ -81,8 +85,11 @@ void AudioOutputDeviceThreadCallback::Process(uint32_t control_signal) {
   base::TimeTicks delay_timestamp =
       base::TimeTicks() + base::Microseconds(buffer->params.delay_timestamp_us);
 
-  TRACE_EVENT("audio", "AudioOutputDevice::FireRenderCallback", "callback_num",
-              callback_num_, "delay_timestamp (ms)",
+  // Truncate to match `SyncReader`'s 32-bit buffer index, which wraps.
+  TRACE_EVENT("audio", "AudioOutputDevice::FireRenderCallback",
+              AudioBufferFlow(trace_flow_base_id_,
+                              static_cast<uint32_t>(callback_num_)),
+              "callback_num", callback_num_, "delay_timestamp (ms)",
               (delay_timestamp - base::TimeTicks()).InMillisecondsF(),
               "playout_delay (ms)", delay.InMillisecondsF());
   glitch_info.MaybeAddTraceEvent();

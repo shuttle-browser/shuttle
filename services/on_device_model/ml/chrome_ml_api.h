@@ -115,6 +115,8 @@ struct ChromeMLModelDescriptor {
   // TODO(crbug.com/517228178): Remove this once internal LiteRT-LM migrates
   // to per-session speculative decoding.
   bool enable_speculative_decoding;
+  // TODO(crbug.com/578136046): Remove once LiteRT-LM GPU IR migration is done.
+  bool use_gpu_ir_model;
 
   ml::ModelPerformanceHint performance_hint;
 
@@ -467,6 +469,12 @@ struct ChromeMLASRStreamOptions {
   const char* language;
   // Optional model backing the post-processing polisher model.
   ChromeMLModel polisher_model = 0;
+  bool enable_token_stability = false;
+  int32_t interim_token_holdback = -1;
+  int32_t interim_release_silence_ms = -1;
+  int32_t interim_stability_steps = -1;
+  bool enable_draft_verification = false;
+  int32_t final_decoder_prefill_backoff = -2;
 };
 
 struct ChromeMLASRAPI {

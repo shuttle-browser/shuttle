@@ -997,12 +997,6 @@ void LocalFrame::PrintNavigationErrorMessage(const Frame& target_frame,
   DomWindow()->PrintErrorMessage(message);
 }
 
-void LocalFrame::PrintNavigationWarning(const String& message) {
-  console_->AddMessage(MakeGarbageCollected<ConsoleMessage>(
-      mojom::ConsoleMessageSource::kJavaScript,
-      mojom::ConsoleMessageLevel::kWarning, message));
-}
-
 bool LocalFrame::ShouldClose() {
   // TODO(crbug.com/1407078): This should be fixed to dispatch beforeunload
   // events to both local and remote frames.
@@ -2914,8 +2908,7 @@ void LocalFrame::SetAdEvidence(const FrameAdEvidence& ad_evidence) {
 }
 
 bool LocalFrame::IsAdScriptInStack() const {
-  return ad_tracker_ &&
-         ad_tracker_->IsAdScriptInStack(AdTracker::StackType::kTopOnly);
+  return ad_tracker_ && ad_tracker_->IsAdScriptInStack();
 }
 
 bool LocalFrame::IsFrameCreatedByAdScript() const {
@@ -2970,8 +2963,19 @@ void LocalFrame::ResumeSubresourceLoading() {
   pause_handle_receivers_.Clear();
 }
 
+void LocalFrame::AddAdTaskTime(base::TimeDelta time) {
+  unreported_ad_task_time_ += time;
+}
+
 void LocalFrame::UpdateTaskTime(base::TimeDelta time) {
-  Client()->DidChangeCpuTiming(time);
+  // Note: `ad_time` can occasionally exceed `time` in non-ad frames because
+  // `AdTracker` measures all ad script execution in the frame (including tasks
+  // on queues without a `FrameScheduler`, such as the shared main-thread input
+  // queue), whereas `time` only includes tasks attributed to the frame's
+  // `FrameScheduler`.
+  base::TimeDelta ad_time =
+      std::exchange(unreported_ad_task_time_, base::TimeDelta());
+  Client()->DidChangeCpuTiming(time, IsAdFrame() ? time : ad_time);
 }
 
 void LocalFrame::UpdateBackForwardCacheDisablingFeatures(
@@ -3046,9 +3050,10 @@ mojom::blink::DevicePostureProvider* LocalFrame::GetDevicePostureProvider() {
 // static
 void LocalFrame::NotifyUserActivation(
     LocalFrame* frame,
-    mojom::blink::UserActivationNotificationType notification_type) {
+    mojom::blink::UserActivationNotificationType notification_type,
+    bool need_browser_verification) {
   if (frame) {
-    frame->NotifyUserActivation(notification_type);
+    frame->NotifyUserActivation(notification_type, need_browser_verification);
   }
 }
 
@@ -3065,10 +3070,15 @@ bool LocalFrame::ConsumeTransientUserActivation(
 }
 
 void LocalFrame::NotifyUserActivation(
-    mojom::blink::UserActivationNotificationType notification_type) {
-  GetLocalFrameHostRemote().UpdateUserActivationState(
-      mojom::blink::UserActivationUpdateType::kNotifyActivation,
-      notification_type);
+    mojom::blink::UserActivationNotificationType notification_type,
+    bool need_browser_verification) {
+  mojom::blink::UserActivationUpdateType update_type =
+      need_browser_verification
+          ? mojom::blink::UserActivationUpdateType::
+                kNotifyActivationPendingBrowserVerification
+          : mojom::blink::UserActivationUpdateType::kNotifyActivation;
+  GetLocalFrameHostRemote().UpdateUserActivationState(update_type,
+                                                      notification_type);
   Client()->NotifyUserActivation();
   NotifyUserActivationInFrameTree(notification_type);
 }
@@ -3148,11 +3158,6 @@ class FrameColorOverlay final : public FrameOverlay::Delegate {
 };
 
 }  // namespace
-
-void LocalFrame::SetReducedAcceptLanguage(
-    const AtomicString& reduced_accept_language) {
-  reduced_accept_language_ = reduced_accept_language;
-}
 
 template <>
 struct DowncastTraits<FrameColorOverlay> {
@@ -3259,15 +3264,6 @@ void LocalFrame::SetContextPaused(bool is_paused) {
   Loader().SetDefersLoading(GetLoaderFreezeMode());
   // TODO(altimin): Move this to PageScheduler level.
   GetFrameScheduler()->SetPaused(is_paused);
-}
-
-LocalFrame* LocalFrame::GetPreviousLocalFrameForLocalSwap() {
-  CHECK(IsProvisional());
-  if (auto* previous_main_frame =
-          GetPage()->GetPreviousMainFrameForLocalSwap()) {
-    return previous_main_frame;
-  }
-  return DynamicTo<LocalFrame>(GetProvisionalOwnerFrame());
 }
 
 bool LocalFrame::SwapIn() {
@@ -3876,7 +3872,7 @@ void LocalFrame::SetVirtualKeyboardOverlayGeometry(const gfx::Rect& rect) {
 
 void LocalFrame::ShowInterestInElement(int nodeID) const {
   Element* element = DynamicTo<Element>(DOMNodeIds::NodeForId(nodeID));
-  if (!element) {
+  if (!element || element->GetDocument() != GetDocument()) {
     return;
   }
   element->ShowInterestNow();
@@ -4443,6 +4439,15 @@ void LocalFrame::CheckPositionAnchorsForCssVisibilityChanges() {
 void LocalFrame::CheckPositionAnchorsForChainedVisibilityChanges() {
   AnchorPositionVisibilityObserver::UpdateForChainedAnchorVisibility(
       post_layout_snapshot_clients_);
+}
+
+void LocalFrame::NotifyScrollEndForAnchorPositioning(
+    CompositorElementId scroll_element_id) {
+  for (auto& client : post_layout_snapshot_clients_) {
+    if (auto* scroll_data = DynamicTo<AnchorPositionScrollData>(client.Get())) {
+      scroll_data->NotifyScrollEnd(scroll_element_id);
+    }
+  }
 }
 
 bool LocalFrame::IsSameOrigin() {

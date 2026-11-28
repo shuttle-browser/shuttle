@@ -16,6 +16,7 @@ import '/strings.m.js';
 import {ColorChangeUpdater, COLORS_CSS_SELECTOR} from 'chrome://resources/cr_components/color_change_listener/colors_css_updater.js';
 import {HistoryResultType} from 'chrome://resources/cr_components/history/constants.js';
 import type {Device, PageCallbackRouter, QueryResult, QueryState, TimePeriodOption} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
+import {TimePeriodOptionId} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 import {getInstance as getAnnouncerInstance} from 'chrome://resources/cr_elements/cr_a11y_announcer/cr_a11y_announcer.js';
 import type {CrDrawerElement} from 'chrome://resources/cr_elements/cr_drawer/cr_drawer.js';
 import type {CrLazyRenderLitElement} from 'chrome://resources/cr_elements/cr_lazy_render/cr_lazy_render_lit.js';
@@ -126,8 +127,6 @@ export class HistoryAppElement extends HistoryAppElementBase {
       // The index of the currently selected tab.
       selectedTab_: {type: Number},
       scrollTarget_: {type: Object},
-      tabContentScrollOffset_: {type: Number},
-      numCharsTypedInSearch_: {type: Number},
       devices_: {type: Array},
       includeActorVisits_: {type: Boolean},
       includeUserVisits_: {type: Boolean},
@@ -136,6 +135,7 @@ export class HistoryAppElement extends HistoryAppElementBase {
       isBrowsingHistoryFilterByDeviceEnabled_: {type: Boolean},
       isBrowsingHistoryFilterByTimePeriodEnabled_: {type: Boolean},
       timePeriodOptions_: {type: Array},
+      selectedTimePeriodOptionId_: {type: Number},
     };
   }
 
@@ -162,26 +162,26 @@ export class HistoryAppElement extends HistoryAppElementBase {
     includeUserVisits: true,
     includeActorVisits: true,
     clientIds: [],
+    timePeriodOptionId: TimePeriodOptionId.kAllTime,
   };
   protected accessor selectedPage_: string = Page.HISTORY;
   protected accessor selectedTab_: number = 0;
   protected accessor scrollTarget_: HTMLElement = document.body;
-  protected accessor tabContentScrollOffset_: number = 0;
-  protected accessor numCharsTypedInSearch_: number = 0;
   protected accessor devices_: Device[] = [];
   protected accessor includeActorVisits_: boolean = true;
   protected accessor includeUserVisits_: boolean = true;
   protected accessor clientIds_: string[] = [];
-  protected accessor isGlicWebActuationAvailable_: boolean =
+  private accessor isGlicWebActuationAvailable_: boolean =
       loadTimeData.getBoolean('isGlicWebActuationAvailable');
-  protected accessor isBrowsingHistoryFilterByDeviceEnabled_: boolean =
+  private accessor isBrowsingHistoryFilterByDeviceEnabled_: boolean =
       loadTimeData.getBoolean('isBrowsingHistoryFilterByDeviceEnabled');
-  protected accessor isBrowsingHistoryFilterByTimePeriodEnabled_: boolean =
+  private accessor isBrowsingHistoryFilterByTimePeriodEnabled_: boolean =
       loadTimeData.getBoolean('isBrowsingHistoryFilterByTimePeriodEnabled');
   protected accessor timePeriodOptions_: TimePeriodOption[] = [];
+  protected accessor selectedTimePeriodOptionId_: TimePeriodOptionId =
+      TimePeriodOptionId.kAllTime;
 
   private callbackRouter_: PageCallbackRouter;
-  private dataFromNativeBeforeInput_: string|null = null;
   private eventTracker_: EventTracker = new EventTracker();
   private lastRecordedSelectedPageHistogramValue_: HistoryPageViewHistogram =
       HistoryPageViewHistogram.END;
@@ -418,11 +418,6 @@ export class HistoryAppElement extends HistoryAppElementBase {
             'History.SearchResultClicked.Index.Grouped', clampedIndex,
             boundary);
         break;
-      case HistoryResultType.EMBEDDINGS:
-        browserProxy.recordHistogram(
-            'History.SearchResultClicked.Index.Embeddings', clampedIndex,
-            boundary);
-        break;
       case HistoryResultType.END:
         break;
       default:
@@ -568,36 +563,6 @@ export class HistoryAppElement extends HistoryAppElementBase {
     this.selectedPage_ = e.detail.value;
   }
 
-  protected onToolbarSearchTermNativeBeforeInput_(
-      e: CustomEvent<{e: InputEvent}>) {
-    // TODO(crbug.com/40673976): This needs to be cached on the `beforeinput`
-    //   event since there is a bug where this data is not available in the
-    //   native `input` event below.
-    this.dataFromNativeBeforeInput_ = e.detail.e.data;
-  }
-
-  protected onToolbarSearchTermNativeInput_(
-      e: CustomEvent<{e: InputEvent, inputValue: string}>) {
-    const insertedText = this.dataFromNativeBeforeInput_;
-    this.dataFromNativeBeforeInput_ = null;
-    if (e.detail.inputValue.length === 0) {
-      // Input was entirely cleared (eg. backspace/delete was hit).
-      this.numCharsTypedInSearch_ = 0;
-    } else if (insertedText === e.detail.inputValue) {
-      // If the inserted text matches exactly with the current value of the
-      // input, that implies that the previous input value was cleared or
-      // was empty to begin with. So, reset the num chars typed and count this
-      // input event as 1 char typed.
-      this.numCharsTypedInSearch_ = 1;
-    } else {
-      this.numCharsTypedInSearch_++;
-    }
-  }
-
-  protected onToolbarSearchTermCleared_() {
-    this.numCharsTypedInSearch_ = 0;
-  }
-
   protected onListPendingDeleteChanged_(e: CustomEvent<{value: boolean}>) {
     this.pendingDelete_ = e.detail.value;
   }
@@ -610,16 +575,19 @@ export class HistoryAppElement extends HistoryAppElementBase {
     userVisits: boolean,
     actorVisits: boolean,
     clientIds: string[],
+    timePeriodOptionId: TimePeriodOptionId,
   }>) {
     this.includeUserVisits_ = e.detail.userVisits;
     this.includeActorVisits_ = e.detail.actorVisits;
     this.clientIds_ = e.detail.clientIds;
+    this.selectedTimePeriodOptionId_ = e.detail.timePeriodOptionId;
 
     this.fire('change-query', {
       search: this.queryState_.searchTerm,
       includeActorVisits: this.includeActorVisits_,
       includeUserVisits: this.includeUserVisits_,
       clientIds: this.clientIds_,
+      timePeriodOptionId: this.selectedTimePeriodOptionId_,
     });
   }
 

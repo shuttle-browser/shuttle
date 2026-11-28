@@ -111,7 +111,6 @@ class Origin;
 namespace content {
 class BrowserContext;
 class BucketContext;
-class IsolationContext;
 class ProcessLock;
 class RenderFrameHost;
 class RenderProcessHostObserver;
@@ -125,6 +124,7 @@ enum class ChildProcessImportance;
 
 namespace mojom {
 class Renderer;
+class RendererVariationsConfiguration;
 }  // namespace mojom
 
 // Interface that represents the browser side of the browser <-> renderer
@@ -629,6 +629,12 @@ class CONTENT_EXPORT RenderProcessHost : public IPC::Listener,
   // MockRenderProcessHost usage in tests.
   virtual mojom::Renderer* GetRendererInterface() = 0;
 
+  // Acquires the `mojom::RendererVariationsConfiguration` interface to the
+  // render process. This is for internal use only, and is only exposed here to
+  // support `MockRenderProcessHost` usage in tests.
+  virtual mojom::RendererVariationsConfiguration*
+  GetRendererVariationsConfiguration() = 0;
+
   // Whether this process is locked out from ever being reused for sites other
   // than the ones it currently has.
   virtual bool MayReuseHost() = 0;
@@ -662,8 +668,7 @@ class CONTENT_EXPORT RenderProcessHost : public IPC::Listener,
   // This method is public so that it can be called from within //content, and
   // used by MockRenderProcessHost. It isn't meant to be called outside of
   // //content.
-  virtual void SetProcessLock(const IsolationContext& isolation_context,
-                              const ProcessLock& process_lock) = 0;
+  virtual void SetProcessLock(const ProcessLock& process_lock) = 0;
 
   // Returns the ProcessLock associated with this process.
   // This method is public so that it can be called from within //content, and
@@ -855,6 +860,12 @@ class CONTENT_EXPORT RenderProcessHost : public IPC::Listener,
   // to support MockRenderProcessHost usage in tests.
   virtual bool IsOnlyHostingPrerenderedFramesOrEmpty() = 0;
 
+  // Returns whether the process is hosting any outermost main frame RFH that
+  // has not yet committed or any RFH that is currently loading. This is for
+  // internal use only, and is only exposed here to support
+  // MockRenderProcessHost usage in tests.
+  virtual bool HasLoadingFrames() const = 0;
+
   // Static management functions -----------------------------------------------
 
   // Flag to run the renderer in process.  This is primarily
@@ -910,11 +921,6 @@ class CONTENT_EXPORT RenderProcessHost : public IPC::Listener,
   // Returns the current maximum number of renderer process hosts kept by the
   // content module.
   static size_t GetMaxRendererProcessCount();
-
-  // TODO(siggi): Remove once https://crbug.com/806661 is resolved.
-  using AnalyzeHungRendererFunction = void (*)(const base::Process& renderer);
-  static void SetHungRendererAnalysisFunction(
-      AnalyzeHungRendererFunction analyze_hung_renderer);
 
   // Counts current RenderProcessHost(s), ignoring all spare processes, and
   // optionally ignoring processes that only host prerendered frames or no

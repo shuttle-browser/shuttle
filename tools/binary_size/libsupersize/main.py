@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env vpython3
 # Copyright 2017 The Chromium Authors
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
@@ -6,6 +6,7 @@
 
 import argparse
 import atexit
+import gc
 import logging
 import pathlib
 import platform
@@ -35,6 +36,11 @@ def _AddCommonArguments(parser):
     default=0,
     action='count',
     help='Verbose level (multiple times for more)',
+  )
+  parser.add_argument(
+    '--no-disable-gc',
+    action='store_true',
+    help='Do not disable cyclic garbage collection.',
   )
 
 
@@ -112,6 +118,11 @@ class _SaveDiffAction:
       '--after-directory',
       help='Defaults to directory containing after-patch .size file.',
     )
+    parser.add_argument(
+      '--format-v2',
+      action='store_true',
+      help='Save in experimental .size v2 (zstd binary) format.',
+    )
 
   @staticmethod
   def Run(args, on_config_error):
@@ -145,7 +156,9 @@ class _SaveDiffAction:
         delta_size_info, before_path_resolver, after_path_resolver
       )
 
-    file_format.SaveDeltaSizeInfo(delta_size_info, args.output_file)
+    file_format.SaveDeltaSizeInfo(
+      delta_size_info, args.output_file, use_v2=args.format_v2
+    )
 
 
 def main():
@@ -186,6 +199,12 @@ def main():
     level=logging.WARNING - args.verbose * 10,
     format='%(levelname).1s %(relativeCreated)6d %(message)s',
   )
+
+  if not args.no_disable_gc:
+    # SuperSize allocates millions of short-lived objects with almost no
+    # reference cycles; disabling cyclic GC avoids multi-second Gen-2 heap
+    # scans (~8-9% speedup on archive).
+    gc.disable()
 
   if logging.getLogger().isEnabledFor(logging.DEBUG):
     atexit.register(_LogPeakRamUsage)

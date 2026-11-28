@@ -5,7 +5,9 @@
 #ifndef THIRD_PARTY_BLINK_PUBLIC_COMMON_TOKENS_TOKENS_MOJOM_TRAITS_H_
 #define THIRD_PARTY_BLINK_PUBLIC_COMMON_TOKENS_TOKENS_MOJOM_TRAITS_H_
 
+#include "base/check.h"
 #include "base/immediate_crash.h"
+#include "mojo/public/cpp/base/uuid_mojom_traits.h"
 #include "third_party/blink/public/common/common_export.h"
 #include "third_party/blink/public/common/tokens/token_mojom_traits_helper.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
@@ -231,6 +233,29 @@ struct StructTraits<blink::mojom::ShadowRealmTokenDataView,
 // keep the following list in alphabetic order.
 
 template <>
+struct StructTraits<blink::mojom::ContinuationTokenDataView,
+                    blink::ContinuationToken> {
+  static const base::Uuid& value(const blink::ContinuationToken& token) {
+    DCHECK(blink::IsValidContinuationToken(token));
+    return token.value();
+  }
+
+  static bool Read(blink::mojom::ContinuationTokenDataView data,
+                   blink::ContinuationToken* output) {
+    base::Uuid uuid;
+    if (!data.ReadValue(&uuid)) {
+      return false;
+    }
+    blink::ContinuationToken token(std::move(uuid));
+    if (!blink::IsValidContinuationToken(token)) {
+      return false;
+    }
+    *output = std::move(token);
+    return true;
+  }
+};
+
+template <>
 struct BLINK_COMMON_EXPORT
     UnionTraits<blink::mojom::ExecutionContextTokenDataView,
                 blink::ExecutionContextToken> {
@@ -311,6 +336,13 @@ struct StructTraits<
     : public blink::TokenMojomTraitsHelper<
           blink::mojom::SameDocNavigationScreenshotDestinationTokenDataView,
           blink::SameDocNavigationScreenshotDestinationToken> {};
+
+template <>
+struct StructTraits<blink::mojom::ScriptToolTokenDataView,
+                    blink::ScriptToolToken>
+    : public blink::TokenMojomTraitsHelper<
+          blink::mojom::ScriptToolTokenDataView,
+          blink::ScriptToolToken> {};
 
 template <>
 struct StructTraits<blink::mojom::ToolInvocationTokenDataView,

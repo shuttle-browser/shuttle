@@ -14,7 +14,7 @@
 #include "base/scoped_observation.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
-#include "chrome/browser/ui/views/tabs/tab_slot_controller.h"
+#include "chrome/browser/ui/views/tabs/hovercard/hover_card_update_type.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "ui/views/animation/bubble_slide_animator.h"
 #include "ui/views/animation/widget_fade_animator.h"
@@ -52,7 +52,7 @@ class TabHoverCardController : public views::ViewObserver {
   bool IsHoverCardVisible() const;
   bool IsHoverCardShowingForTab(HoverCardAnchorTarget* anchor_target) const;
   void UpdateHoverCard(HoverCardAnchorTarget* anchor_target,
-                       TabSlotController::HoverCardUpdateType update_type);
+                       HoverCardUpdateType update_type);
   void PreventImmediateReshow();
 
   std::unique_ptr<ScopedHideHoverCardLock> GetHoverCardHideLock();
@@ -126,7 +126,7 @@ class TabHoverCardController : public views::ViewObserver {
   void StartThumbnailObservation(HoverCardAnchorTarget* anchor_target);
 
   void UpdateOrShowCard(HoverCardAnchorTarget* anchor_target,
-                        TabSlotController::HoverCardUpdateType update_type);
+                        HoverCardUpdateType update_type);
   void ShowHoverCard(bool is_initial, HoverCardAnchorTarget* intended_target);
   void HideHoverCard();
 

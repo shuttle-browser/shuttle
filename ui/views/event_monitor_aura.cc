@@ -13,6 +13,7 @@
 #include "ui/aura/window.h"
 #include "ui/events/event_observer.h"
 #include "ui/events/event_target.h"
+#include "ui/events/types/event_type.h"
 
 namespace views {
 
@@ -23,7 +24,7 @@ class WindowMonitorAura : public EventMonitorAura, public aura::WindowObserver {
  public:
   WindowMonitorAura(ui::EventObserver* event_observer,
                     aura::Window* target_window,
-                    const std::set<ui::EventType>& types)
+                    ui::EventTypeSet types)
       : EventMonitorAura(event_observer, target_window, types),
         target_window_(target_window) {
     window_observation_.Observe(target_window);
@@ -36,8 +37,9 @@ class WindowMonitorAura : public EventMonitorAura, public aura::WindowObserver {
 
   // aura::WindowObserver:
   void OnWindowDestroying(aura::Window* window) override {
-    DCHECK_EQ(window, target_window_);
-    DCHECK(window_observation_.IsObservingSource(target_window_.get()));
+    CHECK_EQ(window, target_window_, base::NotFatalUntil::M163);
+    CHECK(window_observation_.IsObservingSource(target_window_.get()),
+          base::NotFatalUntil::M163);
     window_observation_.Reset();
     target_window_ = nullptr;
     TearDown();
@@ -55,7 +57,7 @@ class WindowMonitorAura : public EventMonitorAura, public aura::WindowObserver {
 std::unique_ptr<EventMonitor> EventMonitor::CreateApplicationMonitor(
     ui::EventObserver* event_observer,
     gfx::NativeWindow context,
-    const std::set<ui::EventType>& types) {
+    ui::EventTypeSet types) {
   return std::make_unique<EventMonitorAura>(event_observer,
                                             aura::Env::GetInstance(), types);
 }
@@ -64,16 +66,16 @@ std::unique_ptr<EventMonitor> EventMonitor::CreateApplicationMonitor(
 std::unique_ptr<EventMonitor> EventMonitor::CreateWindowMonitor(
     ui::EventObserver* event_observer,
     gfx::NativeWindow target_window,
-    const std::set<ui::EventType>& types) {
+    ui::EventTypeSet types) {
   return std::make_unique<WindowMonitorAura>(event_observer, target_window,
                                              types);
 }
 
 EventMonitorAura::EventMonitorAura(ui::EventObserver* event_observer,
                                    ui::EventTarget* event_target,
-                                   const std::set<ui::EventType>& types)
+                                   ui::EventTypeSet types)
     : event_observer_(event_observer) {
-  DCHECK(event_observer_);
+  CHECK(event_observer_, base::NotFatalUntil::M163);
   aura::Env::GetInstance()->AddEventObserver(event_observer_, event_target,
                                              types);
 }

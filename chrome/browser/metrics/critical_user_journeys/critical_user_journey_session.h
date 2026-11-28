@@ -14,6 +14,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "base/timer/timer.h"
+#include "chrome/browser/metrics/critical_user_journeys/critical_user_journey_step.h"
 #include "ui/base/interaction/interaction_sequence.h"
 
 namespace ui {
@@ -35,11 +36,15 @@ class CriticalUserJourneySession {
     kCompleted = 0,
     kAborted = 1,
     kTimeout = 2,
-    // The journey ended through an exit branch (see Branch::SetExitBranch()).
+    // The journey ended through an exit branch (see `Branch::SetExitBranch()`).
     kAbandoned = 3,
-    // The journey reached an exit branch sooner than its minimum dwell time.
+    // The journey reached an exit branch before `min_dwell` elapsed (see
+    // `Branch::SetExitBranch()`).
     kAbandonedBelowDwell = 4,
-    kMaxValue = kAbandonedBelowDwell,
+    // The journey reached an exit branch after `max_dwell` elapsed (see
+    // `Branch::SetExitBranch()`).
+    kAbandonedAboveDwell = 5,
+    kMaxValue = kAbandonedAboveDwell,
   };
   // LINT.ThenChange(//tools/metrics/histograms/metadata/critical_user_journeys/enums.xml:CriticalUserJourneyResult)
 
@@ -63,6 +68,27 @@ class CriticalUserJourneySession {
 
   const CriticalUserJourney* journey() { return journey_; }
 
+  // Sentinel returned by `first_reached_metric_id()` and
+  // `last_reached_metric_id()` before any step has been reached.
+  static constexpr int kNoMetricId = -1;
+
+  // Returns the `metric_id` of the trigger step (or `AddAnyOf()` branch) that
+  // started this session, or `kNoMetricId` if no step has been reached yet.
+  int first_reached_metric_id() const { return first_reached_metric_id_; }
+
+  // Returns the `metric_id` of the most recently reached step in this
+  // session, or `kNoMetricId` if no step has been reached yet.
+  int last_reached_metric_id() const { return last_reached_metric_id_; }
+
+  // Plain-English UI entry-point label of the step or branch that started
+  // this session (see `Branch::SetHatsEntryPoint()`), or
+  // `kCujDefaultEntryStep` ("default") if none was set.
+  const std::string& hats_entry_point() const { return hats_entry_point_; }
+
+  // Returns the elapsed wall time since the first step of this session was
+  // reached, or zero if the session has not started yet.
+  base::TimeDelta GetTotalDuration() const;
+
  private:
   // Build the underlying InteractionSequence::Builder from the journey
   // definition.
@@ -77,7 +103,8 @@ class CriticalUserJourneySession {
   void OnStepStarted(int metric_id,
                      base::TimeDelta timeout,
                      bool is_exit_branch,
-                     base::TimeDelta min_dwell_duration);
+                     base::TimeDelta min_dwell_duration,
+                     base::TimeDelta max_dwell_duration);
   void OnTimeout();
   void OnAborted(const ui::InteractionSequence::AbortedData& data);
   void OnCompleted();
@@ -86,15 +113,15 @@ class CriticalUserJourneySession {
   base::OnceCallback<void(JourneyResult)> on_done_callback_;
   std::unique_ptr<ui::InteractionSequence> sequence_;
 
-  static constexpr int kNoMetricId = -1;
-
+  int first_reached_metric_id_ = kNoMetricId;
   int last_reached_metric_id_ = kNoMetricId;
+  std::string hats_entry_point_ = kCujDefaultEntryStep;
   base::TimeTicks journey_start_time_;
   base::TimeTicks last_step_time_;
   base::OneShotTimer timeout_timer_;
   bool was_timeout_ = false;
   bool completed_via_exit_branch_ = false;
-  bool aborted_by_dwell_guardrail_ = false;
+  std::optional<JourneyResult> aborted_dwell_result_;
 
   base::WeakPtrFactory<CriticalUserJourneySession> weak_factory_{this};
 };

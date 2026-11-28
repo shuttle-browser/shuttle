@@ -27,7 +27,9 @@
 
 #include "third_party/blink/renderer/core/layout/svg/layout_svg_filter_primitive.h"
 
+#include "third_party/blink/renderer/core/css/properties/longhands.h"
 #include "third_party/blink/renderer/core/layout/svg/svg_layout_info.h"
+#include "third_party/blink/renderer/core/svg/svg_animated_length.h"
 #include "third_party/blink/renderer/core/svg/svg_fe_diffuse_lighting_element.h"
 #include "third_party/blink/renderer/core/svg/svg_fe_drop_shadow_element.h"
 #include "third_party/blink/renderer/core/svg/svg_fe_flood_element.h"
@@ -40,24 +42,22 @@ LayoutSVGFilterPrimitive::LayoutSVGFilterPrimitive(
     SVGFilterPrimitiveStandardAttributes* filter_primitive_element)
     : LayoutObject(filter_primitive_element) {}
 
-static bool CurrentColorChanged(StyleDifference diff, const StyleColor& color) {
-  return diff.text_decoration_or_color_changed && color.DependsOnCurrentColor();
-}
-
 static void CheckForColorChange(SVGFilterPrimitiveStandardAttributes& element,
                                 const QualifiedName& attr_name,
-                                StyleDifference diff,
-                                const StyleColor& old_color,
-                                const StyleColor& new_color) {
-  // If the <color> change from/to depending on 'currentcolor' then invalidate
-  // the filter chain so that it is rebuilt. (Makes sure the 'tainted' flag is
-  // propagated.)
-  if (new_color.DependsOnCurrentColor() != old_color.DependsOnCurrentColor()) {
+                                const Longhand& color_property,
+                                const ComputedStyle& old_style,
+                                const ComputedStyle& new_style) {
+  // If the <color> changes from/to tainting the origin, invalidate the filter
+  // chain so that it is rebuilt. (Makes sure the 'tainted' flag is propagated.)
+  if (element.StyleColorTaintsOrigin(old_style, color_property) !=
+      element.StyleColorTaintsOrigin(new_style, color_property)) {
     element.Invalidate();
     return;
   }
-  if (new_color != old_color || CurrentColorChanged(diff, new_color))
+  if (old_style.VisitedDependentColor(color_property) !=
+      new_style.VisitedDependentColor(color_property)) {
     element.PrimitiveAttributeChanged(attr_name);
+  }
 }
 
 void LayoutSVGFilterPrimitive::WillBeDestroyed(const ComputedStyle* style) {
@@ -73,19 +73,21 @@ void LayoutSVGFilterPrimitive::StyleDidChange(
     const ComputedStyle& new_style,
     const StyleChangeContext& style_change_context) {
   NOT_DESTROYED();
-  if (!old_style)
-    return;
   auto& element = To<SVGFilterPrimitiveStandardAttributes>(*GetNode());
+  if (!old_style) {
+    element.Invalidate();
+    return;
+  }
   if (IsA<SVGFEFloodElement>(element) || IsA<SVGFEDropShadowElement>(element)) {
-    CheckForColorChange(element, svg_names::kFloodColorAttr, diff,
-                        old_style->FloodColor(), new_style.FloodColor());
+    CheckForColorChange(element, svg_names::kFloodColorAttr,
+                        GetCSSPropertyFloodColor(), *old_style, new_style);
     if (new_style.FloodOpacity() != old_style->FloodOpacity()) {
       element.PrimitiveAttributeChanged(svg_names::kFloodOpacityAttr);
     }
   } else if (IsA<SVGFEDiffuseLightingElement>(element) ||
              IsA<SVGFESpecularLightingElement>(element)) {
-    CheckForColorChange(element, svg_names::kLightingColorAttr, diff,
-                        old_style->LightingColor(), new_style.LightingColor());
+    CheckForColorChange(element, svg_names::kLightingColorAttr,
+                        GetCSSPropertyLightingColor(), *old_style, new_style);
   }
   if (new_style.ColorInterpolationFilters() !=
       old_style->ColorInterpolationFilters()) {
@@ -98,8 +100,17 @@ SVGLayoutResult LayoutSVGFilterPrimitive::UpdateSVGLayout(
     const SVGLayoutInfo&) {
   NOT_DESTROYED();
   ClearNeedsLayout();
-  return SVGLayoutResult(/*bounds_changed=*/false,
-                         /*has_viewport_dependence=*/false);
+  // The primitive subregion is resolved against the viewport when the
+  // filter is built, so a primitive with relative lengths makes the
+  // containing <filter> viewport dependent (and thus invalidated when the
+  // viewport changes).
+  const auto& element = To<SVGFilterPrimitiveStandardAttributes>(*GetNode());
+  const bool has_viewport_dependence =
+      element.x()->CurrentValue()->IsRelative() ||
+      element.y()->CurrentValue()->IsRelative() ||
+      element.width()->CurrentValue()->IsRelative() ||
+      element.height()->CurrentValue()->IsRelative();
+  return SVGLayoutResult(/*bounds_changed=*/false, has_viewport_dependence);
 }
 
 }  // namespace blink

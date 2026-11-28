@@ -13,6 +13,7 @@
 #include "base/containers/flat_map.h"
 #include "base/functional/function_ref.h"
 #include "base/memory/raw_ptr.h"
+#include "components/viz/common/frame_sinks/copy_output_request.h"
 #include "components/viz/common/quads/aggregated_render_pass.h"
 #include "components/viz/common/quads/compositor_frame_metadata.h"
 #include "components/viz/common/quads/compositor_render_pass.h"
@@ -58,7 +59,7 @@ struct VIZ_SERVICE_EXPORT FixedPassData {
   // Points to the original CompositorRenderPass held by the surface, which may
   // differ from `render_pass` when `RebuildRenderPassesForOffsetTags()` makes a
   // modified copy.
-  raw_ptr<const CompositorRenderPass> original_render_pass = nullptr;
+  raw_ptr<CompositorRenderPass> original_render_pass = nullptr;
 
   // How many times this render pass is embedded by another render pass in the
   // same frame.
@@ -86,6 +87,11 @@ struct VIZ_SERVICE_EXPORT AggregationPassData {
 
   // Embedded render passes that contribute pixels to this render pass.
   base::flat_set<raw_ptr<ResolvedPassData, CtnExperimental>> embedded_passes;
+
+  // True if there were any CopyOutputRequest(s) on this render pass. This is
+  // set after CheckCopyOutputRequests() is called. This value should be
+  // relied on rather than checking for CopyOutputRequests directly.
+  bool has_copy_request = false;
 
   // True if the render pass is drawn to fulfil part of a copy request. This
   // property is transitive from parent pass to embedded passes.
@@ -179,10 +185,15 @@ class VIZ_SERVICE_EXPORT ResolvedPassData {
     return !fixed_.is_root && fixed_.embed_count == 0;
   }
 
-  // Returns true if the original CompositorRenderPass in `Surface` has any
-  // CopyOutputRequests. Note that `render_pass().copy_requests` may be empty if
+  // Checks if the render pass has any CopyOutputRequests and sets
+  // `aggregation().has_copy_request`. Returns true if there were any requests,
+  // either now or previously.
+  bool CheckCopyOutputRequests();
+
+  // Moves any CopyOutputRequests from the original CompositorRenderPass and
+  // returns them. Note that `render_pass().copy_requests` may be empty if
   // `render_pass()` points to an OffsetTag-modified copy.
-  bool HasCopyOutputRequests() const;
+  std::vector<std::unique_ptr<CopyOutputRequest>> TakeCopyOutputRequests();
 
   AggregationPassData& aggregation() { return aggregation_; }
   const AggregationPassData& aggregation() const { return aggregation_; }
@@ -305,6 +316,10 @@ class VIZ_SERVICE_EXPORT ResolvedFrameData {
   // root render pass.
   bool WillDraw() const;
 
+  // Returns true if any render pass in the frame has CopyOutputRequests this
+  // aggregation.
+  bool HasCopyOutputRequests() const;
+
   // RenderPassData accessors.
   ResolvedPassData& GetRenderPassDataById(
       CompositorRenderPassId render_pass_id);
@@ -313,6 +328,11 @@ class VIZ_SERVICE_EXPORT ResolvedFrameData {
 
   ResolvedPassData& GetRootRenderPassData();
   const ResolvedPassData& GetRootRenderPassData() const;
+
+  // Takes the root render pass ID to be reused by a new surface from the same
+  // frame sink so the ID is not used by both surfaces. Returns a null ID if
+  // this frame was already used in the current aggregation.
+  AggregatedRenderPassId TakeRootRenderPassId();
 
   std::vector<ResolvedPassData>& GetResolvedPasses() {
     return resolved_passes_;
@@ -365,7 +385,8 @@ class VIZ_SERVICE_EXPORT ResolvedFrameData {
 
   // Set `CompositorRenderPass` for all `resolved_passes_`. Each
   // `ResolvedPassData` must have been aggregated before.
-  void ReuseActiveFrame();
+  void ReuseActiveFrame(
+      AggregatedRenderPassId::Generator& render_pass_id_generator);
 
   void RegisterWithResourceProvider();
   void MovePersistentPassDataFromPreviousFrame(
@@ -403,7 +424,8 @@ class VIZ_SERVICE_EXPORT ResolvedFrameData {
   base::flat_map<CompositorRenderPassId, AggregatedRenderPassId>
       aggregated_id_map_;
 
-  const AggregatedRenderPassId prev_root_pass_id_;
+  // A fixed ID used for the root render pass.
+  AggregatedRenderPassId root_pass_id_;
 
   // Track if the this resolved frame was used this aggregation.
   bool used_in_aggregation_ = false;

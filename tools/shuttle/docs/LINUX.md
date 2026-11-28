@@ -153,13 +153,15 @@ The fork originally pruned Linux along with the other platforms; Linux was resto
 
 ## Known issues
 
-- **Screenshots on background tabs in headless mode: ~3 s instead of a hang** (fixed in fork commit 61, 2026-11-10;
-  158.0.0 and 158.0.1 hang): `Page.captureScreenshot` waits for the renderer to present a forced frame, and for a tab
-  that isn't its window's active tab (agent tabs usually aren't) headless Linux sometimes never presents it. Upstream
+- **Screenshots on background tabs: ~3 s instead of a hang** (fork commit 61 for headless, 2026-11-10; fork 66 for
+  X11/Wayland, 2026-11-28; 158.0.0 and 158.0.1 hang headless, 158.x and 159 before fork 66 hang on X11):
+  `Page.captureScreenshot` waits for the renderer to present a forced frame, and for a tab that isn't its window's
+  active tab (agent tabs usually aren't) Linux sometimes never presents it (headless and X11 seen; WSLg X11 raw repro
+  on 159: `164 62 64 66 66 3421 HANG 52` ms). Upstream
   Chrome shows it too, less often. Since fork 61 such a capture copies the newest surface after 3 s, so captures on an
   agent tab can take ~3 s (every second one, in some states each one), and a renderer that takes over 3 s to paint can
   get the previous frame. Root cause upstream not fixed; `scripts/repro-screenshot-hang.mjs` reproduces it (`plain`
-  mode: an ordinary background tab, no agent). Not checked on X11/Wayland. The Mac is not affected.
+  mode: an ordinary background tab, no agent). The Mac is not affected.
 
 ## Later
 

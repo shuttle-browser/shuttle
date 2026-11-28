@@ -55,6 +55,10 @@ cr-toolbar {
   --cr-toolbar-center-basis: var(--settings-main-basis);
 }
 
+cr-toolbar::part(search-field) {
+  anchor-name: --search-field;
+}
+
 cr-toolbar:not([narrow]) {
   --cr-toolbar-left-spacer-width: var(--settings-menu-width);
 }
@@ -64,6 +68,7 @@ cr-toolbar:not([narrow]) {
     --iron-icon-fill-color: white;
   }
 }
+
 
 #container {
   display: flex;

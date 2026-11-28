@@ -32,6 +32,7 @@
 #include "base/memory/raw_ptr_exclusion.h"
 #include "base/memory/read_only_shared_memory_region.h"
 #include "base/metrics/histogram.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
@@ -56,6 +57,8 @@
 #include "cc/benchmarks/benchmark_instrumentation.h"
 #include "cc/debug/rendering_stats_instrumentation.h"
 #include "cc/input/browser_controls_offset_manager.h"
+#include "cc/input/browser_controls_offset_manager_cib.h"
+#include "cc/input/browser_controls_offset_manager_interface.h"
 #include "cc/input/browser_controls_offset_tag_modifications.h"
 #include "cc/input/page_scale_animation.h"
 #include "cc/input/scrollbar_animation_controller.h"
@@ -643,6 +646,11 @@ void LayerTreeHostImpl::UpdateBrowserControlsState(
       constraints, current, animate, offset_tag_modifications);
 }
 
+void LayerTreeHostImpl::SetBrowserControlsAnimation(
+    const BrowserControlsAnimationParams& params) {
+  browser_controls_offset_manager_->SetAnimation(params);
+}
+
 bool LayerTreeHostImpl::HasScrollLinkedAnimation(ElementId for_scroller) const {
   return mutator_host_->HasScrollLinkedAnimation(for_scroller);
 }
@@ -729,14 +737,18 @@ LayerTreeHostImpl::LayerTreeHostImpl(
     // tests.
     next_frame_token_from_client_ = 1u;
   } else {
+    const bool scroll_timing_supported =
+        settings.enable_scroll_performance_timing &&
+        task_runner_provider_->HasImplThread() &&
+        !settings.single_thread_proxy_scheduler &&
+        !settings.is_layer_tree_for_ui && !settings.TreesInVizInClientProcess();
     compositor_frame_reporting_controller_ =
         std::make_unique<CompositorFrameReportingController>(
             /*should_report_histograms=*/!settings
                 .single_thread_proxy_scheduler,
             /*report_event_latency_to_custom_recorder=*/
             settings.is_layer_tree_for_ui,
-            /*should_report_scroll_timing=*/
-            settings.enable_scroll_performance_timing,
+            /*should_report_scroll_timing=*/scroll_timing_supported,
             /*layer_tree_host_id=*/id,
             /*is_trees_in_viz_client=*/
             settings_.TreesInVizInClientProcess());
@@ -782,10 +794,19 @@ LayerTreeHostImpl::LayerTreeHostImpl(
                       perfetto::Flow::ProcessScoped(id_, "LayerTreeHostImpl"),
                       "layerTreeId", id_);
 
-  browser_controls_offset_manager_ = BrowserControlsOffsetManager::Create(
-      this, settings.top_controls_show_threshold,
-      settings.top_controls_hide_threshold,
-      settings.trees_in_viz_in_viz_process);
+  // Browser UI trees (ui::Compositor) have no browser controls, and the Android
+  // browser compositor does not use LayerTreeHostImpl, so this only selects the
+  // manager for the renderer compositor and its Viz display tree.
+  if (!settings.is_layer_tree_for_ui &&
+      base::FeatureList::IsEnabled(features::kControlsInBrowser)) {
+    browser_controls_offset_manager_ =
+        std::make_unique<BrowserControlsOffsetManagerCib>(this);
+  } else {
+    browser_controls_offset_manager_ = BrowserControlsOffsetManager::Create(
+        this, settings.top_controls_show_threshold,
+        settings.top_controls_hide_threshold,
+        settings.trees_in_viz_in_viz_process);
+  }
 
   SetDebugState(settings.initial_debug_state);
   compositor_frame_reporting_controller_->SetFrameSorter(&frame_sorter_);
@@ -1264,7 +1285,7 @@ DrawResult LayerTreeHostImpl::CalculateRenderPasses(FrameData* frame,
         SCOPED_CRASH_KEY_STRING64("cc", "device_viewport",
                                   active_tree_->GetDeviceViewport().ToString());
 
-        if (base::ShouldRecordSubsampledMetric(.1)) {
+        if (base::ShouldRecordSubsampledMetric(.01)) {
           DUMP_WILL_BE_CHECK(viz_damage_rect.Contains(root_layer_damage_rect_))
               << "crbug.com/454680865: Viz damage does not contain client "
                  "damage!";
@@ -3850,10 +3871,6 @@ void LayerTreeHostImpl::SetNeedsCommit(BeginMainFrameReason reason) {
   }
 }
 
-base::TimeDelta LayerTreeHostImpl::CurrentFrameInterval() const {
-  return CurrentBeginFrameInterval();
-}
-
 ScrollNode* LayerTreeHostImpl::InnerViewportScrollNode() const {
   return active_tree_->InnerViewportScrollNode();
 }
@@ -4759,8 +4776,8 @@ void LayerTreeHostImpl::DidScrollContent(ElementId element_id,
                                          const gfx::Vector2dF& scroll_delta) {
   // An animated scroll has not moved content yet; the movement lands on later
   // animation ticks that do not reach here.
-  if (settings_.enable_scroll_performance_timing && !animated && element_id &&
-      !scroll_delta.IsZero()) {
+  if (compositor_frame_reporting_controller_->has_scroll_timing_buffer() &&
+      !animated && element_id && !scroll_delta.IsZero()) {
     events_metrics_manager_.RecordAppliedScrollObservation(element_id);
   }
 
@@ -6105,6 +6122,11 @@ void LayerTreeHostImpl::NotifyDidPresentCompositorFrameOnImplThread(
   for (auto& callback : callbacks) {
     std::move(callback).Run(details.presentation_feedback.timestamp);
   }
+}
+
+base::ReadOnlySharedMemoryRegion
+LayerTreeHostImpl::TakeScrollTimingBufferRegion() {
+  return compositor_frame_reporting_controller_->TakeScrollTimingBufferRegion();
 }
 
 void LayerTreeHostImpl::AllocateLocalSurfaceId() {

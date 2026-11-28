@@ -6,8 +6,10 @@
 
 #include <list>
 #include <memory>
+#include <optional>
 #include <utility>
 
+#include "base/auto_reset.h"
 #include "base/check.h"
 #include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
@@ -15,6 +17,7 @@
 #include "ui/base/models/menu_model.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/paint_vector_icon.h"
+#include "ui/views/controls/menu/menu_controller.h"
 #include "ui/views/controls/menu/menu_item_view.h"
 #include "ui/views/controls/menu/menu_separator.h"
 #include "ui/views/controls/menu/submenu_view.h"
@@ -37,13 +40,33 @@ MenuModelAdapter::MenuModelAdapter(
 }
 
 MenuModelAdapter::~MenuModelAdapter() {
+  CHECK(!is_building_);
+  DetachFromMenuModel();
+}
+
+void MenuModelAdapter::DetachFromMenuModel() {
   if (menu_model_) {
+    // This clears `menu_model_` via OnMenuClearingDelegate().
     menu_model_->SetMenuModelDelegate(nullptr);
   }
 }
 
 void MenuModelAdapter::BuildMenu(MenuItemView* menu) {
-  DCHECK(menu);
+  CHECK(menu, base::NotFatalUntil::M163);
+
+  // Rebuilding a showing menu inserts items into a live view hierarchy, which
+  // can synchronously notify observers such as assistive technology. Those
+  // observers may in turn close the menu and release its MenuRunner. Keep the
+  // MenuController's call stack marked active for the duration of the rebuild
+  // so that destruction of the controller, the MenuRunnerImpl and therefore of
+  // `menu` is deferred until the rebuild has finished. The guard is declared
+  // first so that it is destroyed last, after all other uses of `this` and
+  // `menu`.
+  std::optional<MenuController::ScopedDeletionGuard> controller_guard;
+  if (MenuController* const controller = menu->GetMenuController()) {
+    controller_guard.emplace(controller->AsWeakPtr());
+  }
+  base::AutoReset<bool> building(&is_building_, true);
 
   // Clear the menu.
   if (menu->HasSubmenu()) {

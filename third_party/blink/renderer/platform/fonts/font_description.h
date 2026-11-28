@@ -104,7 +104,6 @@ class PLATFORM_EXPORT FontDescription {
     kTitlingCaps
   };
   static String ToString(FontVariantCaps);
-  static String ToStringForIdl(FontVariantCaps);
 
   enum FontSynthesisWeight {
     kAutoFontSynthesisWeight,
@@ -404,14 +403,14 @@ class PLATFORM_EXPORT FontDescription {
     UpdateTypesettingFeatures();
   }
   void SetTextSpacingTrim(TextSpacingTrim text_spacing_trim) {
-    fields_.text_spacing_trim_ = static_cast<uint32_t>(text_spacing_trim);
+    fields_.text_spacing_trim_ = std::to_underlying(text_spacing_trim);
   }
   void SetKeywordSize(wtf_size_t s) { fields_.keyword_size_ = s; }
   void SetFontSmoothing(FontSmoothingMode smoothing) {
-    fields_.font_smoothing_ = smoothing;
+    fields_.font_smoothing_ = std::to_underlying(smoothing);
   }
   void SetFontOpticalSizing(OpticalSizing font_optical_sizing) {
-    fields_.font_optical_sizing_ = font_optical_sizing;
+    fields_.font_optical_sizing_ = std::to_underlying(font_optical_sizing);
   }
   void SetFontPalette(scoped_refptr<const FontPalette> palette) {
     font_palette_ = std::move(palette);
@@ -426,7 +425,7 @@ class PLATFORM_EXPORT FontDescription {
   }
   void SetOrientation(FontOrientation orientation);
   void SetWidthVariant(FontWidthVariant width_variant) {
-    fields_.width_variant_ = width_variant;
+    fields_.width_variant_ = std::to_underlying(width_variant);
   }
   void SetLocale(scoped_refptr<const LayoutLocale> locale) {
     locale_ = std::move(locale);
@@ -461,7 +460,7 @@ class PLATFORM_EXPORT FontDescription {
     fields_.variant_position_ = variant_position;
   }
   void SetVariantEmoji(FontVariantEmoji variant_emoji) {
-    fields_.variant_emoji_ = variant_emoji;
+    fields_.variant_emoji_ = std::to_underlying(variant_emoji);
   }
   void SetWordSpacing(const Length& s) { word_spacing_ = s; }
   void SetLetterSpacing(const Length& s) {
@@ -558,7 +557,7 @@ class PLATFORM_EXPORT FontDescription {
 
     uint32_t orientation_ : kFontOrientationBitCount;
 
-    uint32_t width_variant_ : 2;  // FontWidthVariant
+    uint32_t width_variant_ : kFontWidthVariantBitCount;  // FontWidthVariant
 
     uint32_t variant_caps_ : 3;  // FontVariantCaps
     // Whether or not CSS specified an explicit size
@@ -616,10 +615,15 @@ class PLATFORM_EXPORT FontDescription {
 template <>
 struct HashTraits<FontDescription>
     : SimpleClassHashTraits<blink::FontDescription> {
+  static constexpr bool kEmptyValueIsZero = false;
+
   // FontDescription default constructor creates a regular value instead of the
   // empty value.
   static FontDescription EmptyValue() {
     return FontDescription::CreateHashTableEmptyValue();
+  }
+  static bool IsEmptyValue(const FontDescription& value) {
+    return value.IsHashTableEmptyValue();
   }
 };
 

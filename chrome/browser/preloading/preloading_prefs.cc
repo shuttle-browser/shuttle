@@ -38,7 +38,7 @@ PreloadPagesState GetPreloadPagesState(const PrefService& prefs) {
 }
 
 void SetPreloadPagesState(PrefService* prefs, PreloadPagesState state) {
-  DCHECK(prefs);
+  CHECK(prefs, base::NotFatalUntil::M163);
   NetworkPredictionOptions value;
   switch (state) {
     case PreloadPagesState::kExtendedPreloading:

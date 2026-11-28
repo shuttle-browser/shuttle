@@ -25,6 +25,7 @@
 #include "base/sequence_token.h"
 #include "base/strings/stringprintf.h"
 #include "base/task/common/scoped_defer_task_posting.h"
+#include "base/task/common/task_annotator.h"
 #include "base/task/default_delayed_task_handle_delegate.h"
 #include "base/task/sequence_manager/associated_thread_id.h"
 #include "base/task/sequence_manager/delayed_task_handle_delegate.h"
@@ -133,15 +134,19 @@ bool TaskQueueImpl::GuardedTaskPoster::RunOrPostTask(PostedTask task) {
     return false;
   }
 
-  auto sync_work_auth =
-      outer_->sequence_manager_->TryAcquireSyncWorkAuthorization();
-  // The queue may be disabled immediately after checking
-  // `IsQueueEnabledFromAnyThread()`. That won't prevent the task from running.
-  if (sync_work_auth.IsValid() && outer_->IsQueueEnabledFromAnyThread()) {
-    RunTaskSynchronously(outer_->associated_thread_.get(),
-                         outer_->sequence_manager_->GetDefaultTaskRunner(),
-                         std::move(task.callback));
-    return true;
+  if (outer_->associated_thread_->IsBound()) {
+    auto sync_work_auth =
+        outer_->sequence_manager_->TryAcquireSyncWorkAuthorization();
+    // The queue may be disabled or fenced immediately after checking
+    // `IsQueueEnabledAndUnfencedFromAnyThread()`. That won't prevent the task
+    // from running.
+    if (sync_work_auth.IsValid() &&
+        outer_->IsQueueEnabledAndUnfencedFromAnyThread()) {
+      RunTaskSynchronously(outer_->associated_thread_.get(),
+                           outer_->sequence_manager_->GetDefaultTaskRunner(),
+                           std::move(task.callback));
+      return true;
+    }
   }
 
   return PostTask(std::move(task));
@@ -248,7 +253,7 @@ TaskQueueImpl::TaskQueueImpl(SequenceManagerImpl* sequence_manager,
       sequence_manager_(sequence_manager),
       associated_thread_(sequence_manager
                              ? sequence_manager->associated_thread()
-                             : AssociatedThreadId::CreateBound()),
+                             : AssociatedThreadId::CreateUnbound()),
       task_poster_(MakeRefCounted<GuardedTaskPoster>(this)),
       main_thread_only_(this, wake_up_queue),
       empty_queues_to_reload_handle_(
@@ -259,13 +264,10 @@ TaskQueueImpl::TaskQueueImpl(SequenceManagerImpl* sequence_manager,
       should_notify_observers_(spec.should_notify_observers),
       delayed_fence_allowed_(spec.delayed_fence_allowed),
       scoped_execution_fence_allowed_(spec.scoped_execution_fence_allowed),
+      non_waking_(spec.non_waking),
       default_task_runner_(CreateTaskRunner(kTaskTypeNone)) {
   UpdateCrossThreadQueueStateLocked();
-  // SequenceManager can't be set later, so we need to prevent task runners
-  // from posting any tasks.
-  if (sequence_manager_) {
-    task_poster_->StartAcceptingOperations();
-  }
+  task_poster_->StartAcceptingOperations();
 }
 
 TaskQueueImpl::~TaskQueueImpl() {
@@ -309,6 +311,67 @@ const scoped_refptr<SingleThreadTaskRunner>& TaskQueueImpl::task_runner()
   return default_task_runner_;
 }
 
+void TaskQueueImpl::BindToCurrentThread() {
+  SequenceManagerImpl* sequence_manager = SequenceManagerImpl::GetCurrent();
+  CHECK(sequence_manager) << "BindToCurrentThread requires a SequenceManager "
+                             "on the current thread.";
+  DCHECK_CALLED_ON_VALID_THREAD(
+      sequence_manager->associated_thread_->thread_checker);
+  CHECK(!sequence_manager_);
+
+  // `TaskQueueImpl`'s constructor called `CreateTaskRunner()`, which bound
+  // `associated_thread_`'s thread/sequence checkers to the creating thread.
+  // Detach them before touching `main_thread_only()` and `selector` and before
+  // `AssociatedThreadId::BindToCurrentThread()` rebinds them to this thread.
+  DETACH_FROM_THREAD(associated_thread_->thread_checker);
+  DETACH_FROM_SEQUENCE(associated_thread_->sequence_checker);
+
+  AtomicFlagSet::AtomicFlag reload_flag =
+      sequence_manager->GetFlagToRequestReloadForEmptyQueue(this);
+  sequence_manager->RegisterTaskQueueImpl(this);
+
+  bool should_schedule_work = false;
+  {
+    base::internal::CheckedAutoLock lock(any_thread_lock_);
+    empty_queues_to_reload_handle_ = std::move(reload_flag);
+
+    for (Task& task : any_thread_.immediate_incoming_queue) {
+      DCHECK(!task.enqueue_order_set());
+      EnqueueOrder sequence_number = sequence_manager->GetNextSequenceNumber();
+      task.sequence_num = static_cast<int>(sequence_number);
+      task.set_enqueue_order(sequence_number);
+    }
+
+    if (!any_thread_.immediate_incoming_queue.empty()) {
+      empty_queues_to_reload_handle_.SetActive(true);
+      sequence_manager->DidRequestReloadImmediateWorkQueue();
+    }
+
+    sequence_manager_ = sequence_manager;
+    // Share the SequenceManager's "in sequence" state, so that a task running
+    // synchronously via `RunOrPostTask()` on any of its queues is in sequence
+    // with all of them.
+    associated_thread_->BindToCurrentThread(
+        sequence_manager->associated_thread());
+
+    main_thread_only().wake_up_queue =
+        non_waking_ ? sequence_manager->main_thread_only()
+                          .non_waking_wake_up_queue.get()
+                    : sequence_manager->main_thread_only().wake_up_queue.get();
+    UpdateCrossThreadQueueStateLocked();
+    if (!any_thread_.immediate_incoming_queue.empty()) {
+      should_schedule_work =
+          any_thread_.post_immediate_task_should_schedule_work;
+    }
+  }
+
+  CompleteInitializationOnBoundThread();
+
+  if (should_schedule_work) {
+    sequence_manager->ScheduleWork();
+  }
+}
+
 void TaskQueueImpl::UnregisterTaskQueue() {
   TRACE_EVENT0("base", "TaskQueueImpl::UnregisterTaskQueue");
   // Invalidate weak pointers now so no voters reference this in a partially
@@ -333,6 +396,15 @@ void TaskQueueImpl::UnregisterTaskQueue() {
       handler.first->UnregisterTaskQueue();
     }
     any_thread_.on_task_posted_handlers.swap(on_task_posted_handlers);
+  }
+
+  if (!sequence_manager_) {
+    // An unbound queue may be destroyed on a different thread from the one that
+    // created it; detach the checkers (bound to the creating thread by
+    // `CreateTaskRunner()` in the constructor) before accessing
+    // `main_thread_only()` below.
+    DETACH_FROM_THREAD(associated_thread_->thread_checker);
+    DETACH_FROM_SEQUENCE(associated_thread_->sequence_checker);
   }
 
   main_thread_only().unregistered = true;
@@ -422,30 +494,41 @@ void TaskQueueImpl::PostImmediateTaskImpl(PostedTask task,
     // TODO(alexclarke): Maybe add a main thread only immediate_incoming_queue
     // See https://crbug.com/901800
     base::internal::CheckedAutoLock lock(any_thread_lock_);
-    bool add_queue_time_to_tasks = sequence_manager_->GetAddQueueTimeToTasks();
+    bool add_queue_time_to_tasks =
+        sequence_manager_ ? sequence_manager_->GetAddQueueTimeToTasks() : false;
     TimeTicks queue_time;
     bool config_category_enabled = false;
     config_category_enabled =
         TRACE_EVENT_CATEGORY_ENABLED("config.scheduler.record_task_post_time");
     if (config_category_enabled || add_queue_time_to_tasks ||
         delayed_fence_allowed_) {
-      queue_time = sequence_manager_->any_thread_clock()->NowTicks();
+      queue_time = sequence_manager_
+                       ? sequence_manager_->any_thread_clock()->NowTicks()
+                       : TimeTicks::Now();
     }
 
     // The sequence number must be incremented atomically with pushing onto the
     // incoming queue. Otherwise if there are several threads posting task we
     // risk breaking the assumption that sequence numbers increase monotonically
     // within a queue.
-    EnqueueOrder sequence_number = sequence_manager_->GetNextSequenceNumber();
+    EnqueueOrder sequence_number =
+        sequence_manager_ ? sequence_manager_->GetNextSequenceNumber()
+                          : EnqueueOrder();
     bool was_immediate_incoming_queue_empty =
         any_thread_.immediate_incoming_queue.empty();
     any_thread_.immediate_incoming_queue.push_back(
         Task(std::move(task), sequence_number, sequence_number, queue_time));
 
-    sequence_manager_->WillQueueTask(
-        &any_thread_.immediate_incoming_queue.back());
-    MaybeReportIpcTaskQueuedFromAnyThreadLocked(
-        any_thread_.immediate_incoming_queue.back());
+    if (sequence_manager_) {
+      sequence_manager_->WillQueueTask(
+          &any_thread_.immediate_incoming_queue.back());
+      MaybeReportIpcTaskQueuedFromAnyThreadLocked(
+          any_thread_.immediate_incoming_queue.back());
+    } else {
+      TaskAnnotator().WillQueueTask(
+          "SequenceManager PostTask",
+          &any_thread_.immediate_incoming_queue.back());
+    }
 
     for (auto& handler : any_thread_.on_task_posted_handlers) {
       DCHECK(!handler.second.is_null());
@@ -456,10 +539,10 @@ void TaskQueueImpl::PostImmediateTaskImpl(PostedTask task,
     // informed so it can reload the work queue and add us to the
     // TaskQueueSelector which can only be done from the main thread. In
     // addition it may need to schedule a DoWork if this queue isn't blocked.
-    if (was_immediate_incoming_queue_empty &&
+    if (sequence_manager_ && was_immediate_incoming_queue_empty &&
         any_thread_.immediate_work_queue_empty) {
-      sequence_manager_->WillRequestReloadImmediateWorkQueue();
       empty_queues_to_reload_handle_.SetActive(true);
+      sequence_manager_->DidRequestReloadImmediateWorkQueue();
       should_schedule_work =
           any_thread_.post_immediate_task_should_schedule_work;
     }
@@ -497,6 +580,12 @@ void TaskQueueImpl::PostDelayedTaskImpl(PostedTask posted_task,
         std::move(pending_task), &lazy_now,
         /* notify_task_annotator */ true);
   } else {
+    if (!associated_thread_->IsBound()) {
+      base::internal::CheckedAutoLock lock(any_thread_lock_);
+      CHECK(sequence_manager_)
+          << "Delayed tasks cannot be posted to an unbound TaskQueue before "
+             "BindToCurrentThread().";
+    }
     LazyNow lazy_now(sequence_manager_->any_thread_clock());
     PushOntoDelayedIncomingQueue(
         MakeDelayedTask(std::move(posted_task), &lazy_now));
@@ -936,14 +1025,17 @@ void TaskQueueImpl::InsertFenceAt(TimeTicks time) {
          "explicitly in TaskQueue::Spec when creating the queue";
 
   // Task queue can have only one fence, delayed or not.
-  RemoveFence();
-  main_thread_only().delayed_fence = time;
+  ResetFences(/*new_delayed_fence=*/time);
 }
 
 void TaskQueueImpl::RemoveFence() {
+  ResetFences(/*new_delayed_fence=*/std::nullopt);
+}
+
+void TaskQueueImpl::ResetFences(std::optional<TimeTicks> new_delayed_fence) {
   std::optional<Fence> previous_fence = main_thread_only().current_fence;
   main_thread_only().current_fence = std::nullopt;
-  main_thread_only().delayed_fence = std::nullopt;
+  main_thread_only().delayed_fence = new_delayed_fence;
 
   bool front_task_unblocked =
       main_thread_only().immediate_work_queue->RemoveFence();
@@ -1175,6 +1267,8 @@ void TaskQueueImpl::UpdateCrossThreadQueueStateLocked() {
   any_thread_.immediate_work_queue_empty =
       main_thread_only().immediate_work_queue->Empty();
   any_thread_.is_enabled = main_thread_only().is_enabled;
+  any_thread_.has_fence = main_thread_only().current_fence.has_value() ||
+                          main_thread_only().delayed_fence.has_value();
 
   if (main_thread_only().throttler) {
     // If there's a Throttler, always ScheduleWork() when immediate work is
@@ -1376,7 +1470,7 @@ bool TaskQueueImpl::IsUnregistered() const {
 }
 
 WeakPtr<SequenceManagerImpl> TaskQueueImpl::GetSequenceManagerWeakPtr() {
-  return sequence_manager_->GetWeakPtr();
+  return sequence_manager_ ? sequence_manager_->GetWeakPtr() : nullptr;
 }
 
 void TaskQueueImpl::ActivateDelayedFenceIfNeeded(const Task& task) {
@@ -1434,6 +1528,7 @@ bool TaskQueueImpl::ShouldReportIpcTaskQueuedFromAnyThreadLocked(
     return false;
   }
 
+  DCHECK(sequence_manager_);
   *time_since_disabled = sequence_manager_->any_thread_clock()->NowTicks() -
                          any_thread_.tracing_only.disabled_time.value();
   return true;
@@ -1518,48 +1613,18 @@ void TaskQueueImpl::OnQueueUnblocked() {
 std::unique_ptr<TaskQueue::QueueEnabledVoter>
 TaskQueueImpl::CreateQueueEnabledVoter() {
   DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
+  DCHECK(sequence_manager_);
   return WrapUnique(
       new TaskQueue::QueueEnabledVoter(voter_weak_ptr_factory_.GetWeakPtr()));
 }
 
 void TaskQueueImpl::RemoveCancelledTasks() {
-  // TODO(crbug.com/394266102): Remove these crash keys after the bug is
-  // understood and fixed.
-  //
-  // Note: This method is only called from the renderer main thread, so it's
-  // acceptable not to have synchronization around the calls to set these crash
-  // keys (and since this code only exists temporarily to diagnose a bug, it's
-  // not worthwhile to add such synchronization).
-  static auto* pre_remove_cancelled_tasks_immediate_incoming_queue_size =
-      debug::AllocateCrashKeyString("pre_rct_immediate_incoming_queue_size",
-                                    debug::CrashKeySize::Size32);
-  static auto* pre_remove_cancelled_tasks_immediate_work_queue_size =
-      debug::AllocateCrashKeyString("pre_rct_immediate_work_queue_size",
-                                    debug::CrashKeySize::Size32);
-  static auto* pre_remove_cancelled_tasks_delayed_work_queue_size =
-      debug::AllocateCrashKeyString("pre_rct_delayed_work_queue_size",
-                                    debug::CrashKeySize::Size32);
-  static auto* post_remove_cancelled_tasks_immediate_incoming_queue_size =
-      debug::AllocateCrashKeyString("post_rct_immediate_incoming_queue_size",
-                                    debug::CrashKeySize::Size32);
-  static auto* post_remove_cancelled_tasks_immediate_work_queue_size =
-      debug::AllocateCrashKeyString("post_rct_immediate_work_queue_size",
-                                    debug::CrashKeySize::Size32);
-  static auto* post_remove_cancelled_tasks_delayed_work_queue_size =
-      debug::AllocateCrashKeyString("post_rct_delayed_work_queue_size",
-                                    debug::CrashKeySize::Size32);
-
   // Because callback destructors could have a side-effect of posting new tasks,
   // move cancelled callbacks into a temporary container before deleting them.
   // This prevents lock reentrancy or modifying a container while traversing it.
   absl::InlinedVector<base::OnceClosure, 8> tasks_to_delete;
   {
     base::internal::CheckedAutoLock lock(any_thread_lock_);
-
-    debug::SetCrashKeyString(
-        pre_remove_cancelled_tasks_immediate_incoming_queue_size,
-        NumberToString(any_thread_.immediate_incoming_queue.size()));
-
     for (auto& task : any_thread_.immediate_incoming_queue) {
       if (task.task.IsCancelled()) {
         tasks_to_delete.push_back(std::move(task.task));
@@ -1567,33 +1632,12 @@ void TaskQueueImpl::RemoveCancelledTasks() {
     }
     std::erase_if(any_thread_.immediate_incoming_queue,
                   [](const Task& task) { return task.task.is_null(); });
-
-    debug::SetCrashKeyString(
-        post_remove_cancelled_tasks_immediate_incoming_queue_size,
-        NumberToString(any_thread_.immediate_incoming_queue.size()));
   }
-
-  debug::SetCrashKeyString(
-      pre_remove_cancelled_tasks_immediate_work_queue_size,
-      NumberToString(main_thread_only_.immediate_work_queue->Size()));
 
   main_thread_only_.immediate_work_queue->RemoveCancelledTasks(
       WorkQueue::RemoveCancelledTasksPolicy::kAll);
-
-  debug::SetCrashKeyString(
-      post_remove_cancelled_tasks_immediate_work_queue_size,
-      NumberToString(main_thread_only_.immediate_work_queue->Size()));
-
-  debug::SetCrashKeyString(
-      pre_remove_cancelled_tasks_delayed_work_queue_size,
-      NumberToString(main_thread_only_.delayed_work_queue->Size()));
-
   main_thread_only_.delayed_work_queue->RemoveCancelledTasks(
       WorkQueue::RemoveCancelledTasksPolicy::kAll);
-
-  debug::SetCrashKeyString(
-      post_remove_cancelled_tasks_delayed_work_queue_size,
-      NumberToString(main_thread_only_.delayed_work_queue->Size()));
 }
 
 bool TaskQueueImpl::IsBlockedByScopedExecutionFences() {
@@ -1652,9 +1696,9 @@ TaskQueue::QueuePriority TaskQueueImpl::DefaultPriority() const {
   return sequence_manager()->settings().priority_settings.default_priority();
 }
 
-bool TaskQueueImpl::IsQueueEnabledFromAnyThread() const {
+bool TaskQueueImpl::IsQueueEnabledAndUnfencedFromAnyThread() const {
   base::internal::CheckedAutoLock lock(any_thread_lock_);
-  return any_thread_.is_enabled;
+  return any_thread_.is_enabled && !any_thread_.has_fence;
 }
 
 TaskQueueImpl::DelayedIncomingQueue::DelayedIncomingQueue() = default;

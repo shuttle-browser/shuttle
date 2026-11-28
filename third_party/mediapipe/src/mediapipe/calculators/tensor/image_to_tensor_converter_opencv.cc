@@ -17,8 +17,10 @@
 #include <cmath>
 #include <memory>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/calculators/tensor/image_to_tensor_converter.h"
 #include "mediapipe/calculators/tensor/image_to_tensor_utils.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -26,10 +28,8 @@
 #include "mediapipe/framework/formats/image_format.pb.h"
 #include "mediapipe/framework/formats/image_opencv.h"
 #include "mediapipe/framework/formats/tensor.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
-#include "mediapipe/framework/port/statusor.h"
 
 namespace mediapipe {
 
@@ -84,7 +84,7 @@ class ImageToTensorOpenCvConverter : public ImageToTensorConverter {
     RET_CHECK_GE(tensor_buffer_offset, 0)
         << "The input tensor_buffer_offset needs to be non-negative.";
     const auto& output_shape = output_tensor.shape();
-    MP_RETURN_IF_ERROR(ValidateTensorShape(output_shape));
+    ABSL_RETURN_IF_ERROR(ValidateTensorShape(output_shape));
 
     const int output_height = output_shape.dims[1];
     const int output_width = output_shape.dims[2];
@@ -130,7 +130,7 @@ class ImageToTensorOpenCvConverter : public ImageToTensorConverter {
             absl::StrCat("Unsupported tensor type: ", tensor_type_));
     }
 
-    MP_RETURN_IF_ERROR(ValidateRoi(roi));
+    ABSL_RETURN_IF_ERROR(ValidateRoi(roi));
 
     const cv::RotatedRect rotated_rect(cv::Point2f(roi.center_x, roi.center_y),
                                        cv::Size2f(roi.width, roi.height),
@@ -165,7 +165,7 @@ class ImageToTensorOpenCvConverter : public ImageToTensorConverter {
 
     constexpr float kInputImageRangeMin = 0.0f;
     constexpr float kInputImageRangeMax = 255.0f;
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto transform,
         GetValueRangeTransformation(kInputImageRangeMin, kInputImageRangeMax,
                                     range_min, range_max));

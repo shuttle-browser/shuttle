@@ -47,6 +47,8 @@ bool HandleChromeAboutAndChromeSyncRewrite(
   // or
   // 2) blocked (by content::RenderProcessHostImpl::FilterURL applied to
   //    renderer-initiated navigations)
+  // TODO(crbug.com/583121718): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(url->IsAboutBlank() || url->IsAboutSrcdoc() ||
          !url->SchemeIs(url::kAboutScheme));
 

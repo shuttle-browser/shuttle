@@ -79,29 +79,29 @@ void InlineBoxState::ResetStyle(const ComputedStyle& style_ref,
       break;
     case EAlignmentBaseline::kBeforeEdge:
     case EAlignmentBaseline::kTextBeforeEdge:
-      alignment_type = FontBaseline::kTextOverBaseline;
+      alignment_type = FontBaseline::kTextOver;
       break;
     case EAlignmentBaseline::kMiddle:
-      alignment_type = FontBaseline::kXMiddleBaseline;
+      alignment_type = FontBaseline::kXMiddle;
       break;
     case EAlignmentBaseline::kCentral:
-      alignment_type = FontBaseline::kCentralBaseline;
+      alignment_type = FontBaseline::kCentral;
       break;
     case EAlignmentBaseline::kAfterEdge:
     case EAlignmentBaseline::kTextAfterEdge:
-      alignment_type = FontBaseline::kTextUnderBaseline;
+      alignment_type = FontBaseline::kTextUnder;
       break;
     case EAlignmentBaseline::kIdeographic:
-      alignment_type = FontBaseline::kIdeographicUnderBaseline;
+      alignment_type = FontBaseline::kIdeographicUnder;
       break;
     case EAlignmentBaseline::kAlphabetic:
-      alignment_type = FontBaseline::kAlphabeticBaseline;
+      alignment_type = FontBaseline::kAlphabetic;
       break;
     case EAlignmentBaseline::kHanging:
-      alignment_type = FontBaseline::kHangingBaseline;
+      alignment_type = FontBaseline::kHanging;
       break;
     case EAlignmentBaseline::kMathematical:
-      alignment_type = FontBaseline::kMathBaseline;
+      alignment_type = FontBaseline::kMath;
       break;
   }
 }
@@ -266,18 +266,6 @@ LayoutUnit InlineBoxState::TextTop(FontBaseline baseline_type) const {
   if (const SimpleFontData* font_data = font->PrimaryFont())
     return -font_data->GetFontMetrics().FixedAscent(baseline_type);
   NOTREACHED();
-}
-
-bool InlineBoxState::CanAddTextOfStyle(const ComputedStyle& text_style) const {
-  if (text_style.VerticalAlign() != EVerticalAlign::kBaseline)
-    return false;
-  DCHECK(style);
-  if (style == &text_style ||
-      base::ValuesEquivalent(style->GetFont(), text_style.GetFont()) ||
-      style->GetFont()->PrimaryFont() == text_style.GetFont()->PrimaryFont()) {
-    return true;
-  }
-  return false;
 }
 
 void InlineLayoutStateStack::Trace(Visitor* visitor) const {
@@ -580,6 +568,8 @@ void InlineLayoutStateStack::AddBoxData(const ConstraintSpace& space,
       box->fragment_start, fragment_end, box->item, placeholder.Size());
   box_data.borders = box->borders;
   box_data.padding = box->padding;
+  box_data.relative_insets = ComputeRelativeInsets(
+      style, space.GetWritingDirection(), space.AvailableSize());
   box_data.margin_line_over = box->margins.line_over;
   box_data.margin_line_under = box->margins.line_under;
   if (box->has_start_edge) {
@@ -633,8 +623,8 @@ void InlineLayoutStateStack::AddBoxData(const ConstraintSpace& space,
   // An empty box fragment is still flat that we do not have to defer.
   // Also, placeholders cannot be reordred if empty.
   placeholder.rect.offset.inline_offset += box_data.margin_line_left;
-  placeholder.rect.offset +=
-      ComputeRelativeOffsetForInline(space, *box_data.item->Style());
+  placeholder.rect.offset += ComputeRelativeOffsetForInline(
+      box_data.relative_insets, space.GetWritingDirection());
   LayoutUnit advance = box_data.margin_border_padding_line_left +
                        box_data.margin_border_padding_line_right;
   box_data.rect.size.inline_size =
@@ -983,8 +973,8 @@ void InlineLayoutStateStack::ApplyRelativePositioning(
   for (BoxData& box_data : box_data_list_) {
     unsigned start = box_data.fragment_start;
     unsigned end = box_data.fragment_end;
-    const LogicalOffset relative_offset =
-        ComputeRelativeOffsetForInline(space, *box_data.item->Style());
+    const LogicalOffset relative_offset = ComputeRelativeOffsetForInline(
+        box_data.relative_insets, space.GetWritingDirection());
 
     // Move all children for this box.
     for (unsigned index = start; index < end; index++) {
@@ -1104,12 +1094,18 @@ const LayoutResult* InlineLayoutStateStack::BoxData::CreateBoxFragment(
 
     // Propagate any OOF-positioned descendants from any atomic-inlines, etc.
     if (child.layout_result) {
-      const ComputedStyle& child_style = child.GetPhysicalFragment()->Style();
+      const WritingDirectionMode writing_direction =
+          space.GetWritingDirection();
+      const PhysicalBoxStrut& child_relative_insets =
+          To<PhysicalBoxFragment>(*child.GetPhysicalFragment())
+              .UsedPositionInsets();
       box.PropagateFromLayoutResultAndFragment(
           *child.layout_result,
           child.rect.offset - rect.offset -
-              ComputeRelativeOffsetForInline(space, child_style),
-          ComputeRelativeOffsetForOOFInInline(space, child_style));
+              ComputeRelativeOffsetForInline(child_relative_insets,
+                                             writing_direction),
+          ComputeRelativeOffsetForOOFInInline(child_relative_insets,
+                                              writing_direction));
     }
   };
 
@@ -1151,7 +1147,13 @@ const LayoutResult* InlineLayoutStateStack::BoxData::CreateBoxFragment(
   item->GetLayoutObject()->SetShouldDoFullPaintInvalidation();
 
   box.MoveOutOfFlowDescendantCandidatesToDescendants();
-  return box.ToInlineBoxFragment();
+  const LayoutResult* result = box.ToInlineBoxFragment();
+  if (style.GetPosition() == EPosition::kRelative) {
+    To<PhysicalBoxFragment>(result->GetPhysicalFragment())
+        .GetMutableForPositioned()
+        .SetUsedPositionInsets(relative_insets);
+  }
+  return result;
 }
 
 void InlineLayoutStateStack::BoxData::Trace(Visitor* visitor) const {

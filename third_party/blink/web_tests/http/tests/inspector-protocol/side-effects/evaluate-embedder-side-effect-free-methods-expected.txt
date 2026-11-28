@@ -21,6 +21,12 @@ Expression `monitorEvents()`
 has side effect: true, expected: true
 Expression `unmonitorEvents()`
 has side effect: true, expected: true
+Expression `document.getElementById('foo')`
+has side effect: false, expected: false
+Expression `documentFragment.getElementById('foo')`
+has side effect: false, expected: false
+Expression `shadowRoot.getElementById('foo')`
+has side effect: false, expected: false
 Expression `document.getElementsByTagName('div')`
 has side effect: false, expected: false
 Expression `document.getElementsByTagNameNS(namespace, 'div')`
@@ -38,6 +44,12 @@ has side effect: false, expected: false
 Expression `domTokenList.contains({})`
 has side effect: false, expected: false
 Expression `domTokenList.contains()`
+has side effect: false, expected: false
+Expression `bodyStyle.getPropertyValue('display')`
+has side effect: false, expected: false
+Expression `bodyStyle.getPropertyPriority('display')`
+has side effect: false, expected: false
+Expression `global_getComputedStyle(div).getPropertyValue('display')`
 has side effect: false, expected: false
 Expression `div.getAttributeNames()`
 has side effect: false, expected: false
@@ -79,6 +91,12 @@ Expression `divNoAttrs.hasAttributeNS(namespace)`
 has side effect: false, expected: false
 Expression `div.hasAttributes()`
 has side effect: false, expected: false
+Expression `div.matches('div')`
+has side effect: false, expected: false
+Expression `div.webkitMatchesSelector('div')`
+has side effect: false, expected: false
+Expression `spanWithClass.closest('div')`
+has side effect: false, expected: false
 Expression `div.contains(textNode)`
 has side effect: false, expected: false
 Expression `div.contains()`
@@ -117,7 +135,15 @@ Expression `textNode.hasChildNodes()`
 has side effect: false, expected: false
 Expression `performance.now()`
 has side effect: false, expected: false
+Expression `performance.getEntries()`
+has side effect: false, expected: false
+Expression `performance.getEntriesByType('navigation')`
+has side effect: false, expected: false
+Expression `performance.getEntriesByName('foo')`
+has side effect: false, expected: false
 Expression `global_getSelection()`
+has side effect: false, expected: false
+Expression `window.matchMedia('(min-width: 100px)')`
 has side effect: false, expected: false
 Expression `htmlCollection[0]`
 has side effect: false, expected: false
@@ -159,6 +185,14 @@ Expression `namedNodeMap.attr1`
 has side effect: false, expected: false
 Expression `div.getBoundingClientRect()`
 has side effect: false, expected: false
+Expression `div.getBoundingClientRect().toJSON()`
+has side effect: false, expected: false
 Expression `global_getComputedStyle(div)`
+has side effect: false, expected: false
+Expression `div.getClientRects()`
+has side effect: false, expected: false
+Expression `div.checkVisibility()`
+has side effect: false, expected: false
+Expression `div.checkVisibility({checkOpacity: true})`
 has side effect: false, expected: false
 

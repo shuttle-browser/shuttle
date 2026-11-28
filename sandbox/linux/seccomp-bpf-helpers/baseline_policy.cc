@@ -84,7 +84,7 @@ bool IsBaselinePolicyWatched(int sysno) {
          SyscallSets::IsKill(sysno) ||
          SyscallSets::IsMessageQueue(sysno) ||
          SyscallSets::IsMisc(sysno) ||
-#if defined(__x86_64__)
+#if defined(__i386__) || defined(__x86_64__)
          SyscallSets::IsNetworkSocketInformation(sysno) ||
 #endif
          SyscallSets::IsNuma(sysno) ||
@@ -270,6 +270,12 @@ ResultExpr EvaluateSyscallImpl(int fs_denied_errno,
 
   if (sysno == __NR_prctl)
     return RestrictPrctl();
+
+#if defined(__x86_64__)
+  if (sysno == __NR_arch_prctl) {
+    return RestrictArchPrctl();
+  }
+#endif
 
   // (Note that i386 may also use socketcall() for this, handled below.)
   if (sysno == __NR_socketpair) {

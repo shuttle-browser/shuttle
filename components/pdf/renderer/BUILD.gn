@@ -13,6 +13,7 @@ static_library("renderer") {
 
   public = [
     "internal_plugin_renderer_helpers.h",
+    "pdf_accessibility_metrics.h",
     "pdf_accessibility_tree.h",
     "pdf_ax_action_target.h",
     "pdf_view_web_plugin_client.h",
@@ -22,6 +23,8 @@ static_library("renderer") {
     "internal_plugin_renderer_helpers.cc",
     "pdf_accessibility_table_detector.cc",
     "pdf_accessibility_table_detector.h",
+    "pdf_accessibility_text_utils.cc",
+    "pdf_accessibility_text_utils.h",
     "pdf_accessibility_tree.cc",
     "pdf_accessibility_tree_builder.cc",
     "pdf_accessibility_tree_builder.h",
@@ -56,6 +59,7 @@ static_library("renderer") {
     "//third_party/icu",
     "//ui/display",
     "//ui/gfx/geometry",
+    "//ui/gfx/range",
     "//ui/strings:auto_image_annotation_strings",
     "//url",
     "//v8",

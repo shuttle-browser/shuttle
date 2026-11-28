@@ -17,7 +17,6 @@
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
-#include "base/memory/ptr_util.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/sequenced_task_runner.h"
@@ -67,7 +66,7 @@ class COMPONENT_EXPORT(MOJO_CPP_BINDINGS) AssociatedReceiverBase {
   // TODO(dcheng): should probably document this thing.
   void Bind(ScopedInterfaceEndpointHandle handle,
             MessageReceiverWithResponderStatus* receiver,
-            std::unique_ptr<MessageReceiver> payload_validator,
+            MessageValidatorFunc payload_validator,
             base::span<const uint32_t> sync_method_ordinals,
             scoped_refptr<base::SequencedTaskRunner> runner,
             uint32_t interface_version,
@@ -210,18 +209,19 @@ class AssociatedReceiver : public internal::AssociatedReceiverBase {
             scoped_refptr<base::SequencedTaskRunner> task_runner = nullptr) {
     DCHECK(!is_bound()) << "AssociatedReceiver for " << Interface::Name_
                         << " is already bound";
-    if (!pending_receiver) {
-      reset();
-      return;
-    }
-    if (!internal::GetRuntimeFeature_ExpectEnabled<Interface>()) {
-      reset();
-      return;
+    // Note: For non-feature-guarded interfaces, an invalid `pending_receiver`
+    // is handled out-of-line by `AssociatedReceiverBase::Bind()`.
+    if constexpr (internal::kIsRuntimeFeatureGuarded<Interface>) {
+      if (!pending_receiver ||
+          !internal::GetRuntimeFeature_ExpectEnabled<Interface>()) {
+        reset();
+        return;
+      }
     }
 
     AssociatedReceiverBase::Bind(
         pending_receiver.PassHandle(), &stub_,
-        base::WrapUnique(new typename Interface::RequestValidator_()),
+        &Interface::RequestValidator_::Accept,
         internal::SyncMethodTraits<Interface>::GetOrdinals(),
         std::move(task_runner), Interface::Version_, Interface::Name_,
         Interface::MessageToMethodInfo_, Interface::MessageToMethodName_);

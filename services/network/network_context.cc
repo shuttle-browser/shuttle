@@ -5,6 +5,7 @@
 #include "services/network/network_context.h"
 
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <optional>
 #include <string>
@@ -20,6 +21,7 @@
 #include "base/check.h"
 #include "base/check_op.h"
 #include "base/command_line.h"
+#include "base/containers/adapters.h"
 #include "base/containers/extend.h"
 #include "base/containers/flat_set.h"
 #include "base/containers/to_vector.h"
@@ -33,9 +35,11 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/sequence_checker.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/current_thread.h"
@@ -104,20 +108,25 @@
 #include "net/http/http_request_headers.h"
 #include "net/http/http_server_properties.h"
 #include "net/http/http_transaction_factory.h"
+#include "net/http/no_vary_search_cache_storage_file_operations.h"
 #include "net/http/transport_security_state.h"
 #include "net/log/net_log_source_type.h"
 #include "net/net_buildflags.h"
 #include "net/proxy_resolution/configured_proxy_resolution_service.h"
 #include "net/proxy_resolution/proxy_config.h"
 #include "net/shared_dictionary/shared_dictionary_isolation_key.h"
+#include "net/shared_dictionary/shared_dictionary_network_transaction_factory.h"
+#include "net/socket/delayed_client_socket_factory.h"
 #include "net/ssl/ech_mode_getter.h"
 #include "net/ssl/ssl_config_service.h"
 #include "net/storage_access_api/status.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
+#include "net/url_request/isolated_http_network_session.h"
 #include "net/url_request/static_http_user_agent_settings.h"
 #include "net/url_request/url_request.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_context_builder.h"
+#include "net/url_request/url_request_http_transaction_factory_override.h"
 #include "services/network/brokered_client_socket_factory.h"
 #include "services/network/connection_change_observer.h"
 #include "services/network/cookie_manager.h"
@@ -172,6 +181,7 @@
 #include "services/network/ssl_config_service_mojo.h"
 #include "services/network/throttling/network_conditions.h"
 #include "services/network/throttling/throttling_controller.h"
+#include "services/network/throttling/throttling_network_interceptor.h"
 #include "services/network/throttling/throttling_network_transaction_factory.h"
 #include "services/network/trust_tokens/expiry_inspecting_record_expiry_delegate.h"
 #include "services/network/trust_tokens/in_memory_trust_token_persister.h"
@@ -237,6 +247,70 @@
 namespace network {
 
 namespace {
+
+// Validates and normalizes `rules_str` from `kDnsHostMappingExperimentRules`.
+// Only comma-separated `MAP <source_host> <target_host>` clauses where both
+// hosts canonicalize to compliant, non-IP, non-localhost hostnames within the
+// `google.com` registrable domain (without wildcards, ports, or trailing dots)
+// are accepted. Fails closed (`std::nullopt`) if `rules_str` is empty or if any
+// clause is malformed or out of scope.
+std::optional<std::string> ValidateAndNormalizeExperimentHostMappingRules(
+    std::string_view rules_str) {
+  std::string_view trimmed =
+      base::TrimWhitespaceASCII(rules_str, base::TRIM_ALL);
+  if (trimmed.empty()) {
+    return std::nullopt;
+  }
+
+  auto canonicalize_and_validate_host =
+      [](std::string_view raw_host) -> std::optional<std::string> {
+    if (raw_host.empty() ||
+        raw_host.find_first_of("*?\\:[]") != std::string_view::npos) {
+      return std::nullopt;
+    }
+
+    url::CanonHostInfo host_info;
+    std::string canonical_host = net::CanonicalizeHost(raw_host, &host_info);
+    if (canonical_host.empty() || canonical_host.ends_with('.') ||
+        host_info.IsIPAddress() ||
+        !net::IsCanonicalizedHostCompliant(canonical_host) ||
+        net::registry_controlled_domains::GetDomainAndRegistry(
+            canonical_host,
+            net::registry_controlled_domains::INCLUDE_PRIVATE_REGISTRIES) !=
+            "google.com") {
+      return std::nullopt;
+    }
+
+    return canonical_host;
+  };
+
+  std::vector<std::string> normalized_clauses;
+  for (std::string_view clause : base::SplitStringPiece(
+           trimmed, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL)) {
+    if (clause.empty()) {
+      return std::nullopt;
+    }
+    std::vector<std::string_view> tokens = base::SplitStringPiece(
+        clause, " \t", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
+    if (tokens.size() != 3 ||
+        !base::EqualsCaseInsensitiveASCII(tokens[0], "MAP")) {
+      return std::nullopt;
+    }
+
+    std::optional<std::string> source_host =
+        canonicalize_and_validate_host(tokens[1]);
+    std::optional<std::string> target_host =
+        canonicalize_and_validate_host(tokens[2]);
+    if (!source_host || !target_host) {
+      return std::nullopt;
+    }
+
+    normalized_clauses.push_back(
+        base::StrCat({"MAP ", *source_host, " ", *target_host}));
+  }
+
+  return base::JoinString(normalized_clauses, ", ");
+}
 
 net::CertVerifier* g_cert_verifier_for_testing = nullptr;
 
@@ -385,9 +459,9 @@ void CookieOSCryptAsyncDelegate::Init(base::OnceClosure callback) {
 // Predicate function to determine if the given |domain| matches the
 // |filter_type| and |filter_domains| from a |mojom::ClearDataFilter|.
 bool MatchesDomainFilter(mojom::ClearDataFilter_Type filter_type,
-                         std::set<std::string> filter_domains,
+                         const base::flat_set<std::string>& filter_domains,
                          const std::string& domain) {
-  bool found_domain = filter_domains.find(domain) != filter_domains.end();
+  bool found_domain = filter_domains.contains(domain);
   return (filter_type == mojom::ClearDataFilter_Type::DELETE_MATCHES) ==
          found_domain;
 }
@@ -395,7 +469,7 @@ bool MatchesDomainFilter(mojom::ClearDataFilter_Type filter_type,
 // Returns a callback that checks if a domain matches the |filter|. |filter|
 // must contain no origins. A null filter matches everything.
 base::RepeatingCallback<bool(const std::string& host_name)> MakeDomainFilter(
-    mojom::ClearDataFilter* filter) {
+    mojom::ClearDataFilterPtr filter) {
   if (!filter) {
     return base::BindRepeating([](const std::string&) { return true; });
   }
@@ -403,8 +477,7 @@ base::RepeatingCallback<bool(const std::string& host_name)> MakeDomainFilter(
   DCHECK(filter->origins.empty())
       << "Origin filtering not allowed in a domain-only filter";
 
-  std::set<std::string> filter_domains;
-  filter_domains.insert(filter->domains.begin(), filter->domains.end());
+  base::flat_set<std::string> filter_domains(std::move(filter->domains));
   return base::BindRepeating(&MatchesDomainFilter, filter->type,
                              std::move(filter_domains));
 }
@@ -413,18 +486,16 @@ base::RepeatingCallback<bool(const std::string& host_name)> MakeDomainFilter(
 // |filter_type|, |filter_domains| and |filter_origins| from a
 // |mojom::ClearDataFilter|.
 bool MatchesOriginFilter(mojom::ClearDataFilter_Type filter_type,
-                         std::set<std::string> filter_domains,
-                         std::set<url::Origin> filter_origins,
+                         const base::flat_set<std::string>& filter_domains,
+                         const base::flat_set<url::Origin>& filter_origins,
                          const url::Origin& origin) {
   std::string url_registrable_domain =
       net::registry_controlled_domains::GetDomainAndRegistry(
           origin, net::registry_controlled_domains::INCLUDE_PRIVATE_REGISTRIES);
-  bool found_domain =
-      (filter_domains.find(url_registrable_domain != ""
-                               ? url_registrable_domain
-                               : origin.host()) != filter_domains.end());
+  bool found_domain = filter_domains.contains(
+      !url_registrable_domain.empty() ? url_registrable_domain : origin.host());
 
-  bool found_origin = (filter_origins.find(origin) != filter_origins.end());
+  bool found_origin = filter_origins.contains(origin);
 
   return (filter_type == mojom::ClearDataFilter_Type::DELETE_MATCHES) ==
          (found_domain || found_origin);
@@ -438,11 +509,8 @@ base::RepeatingCallback<bool(const url::Origin&)> BuildOriginFilter(
     return base::BindRepeating([](const url::Origin&) { return true; });
   }
 
-  std::set<std::string> filter_domains;
-  filter_domains.insert(filter->domains.begin(), filter->domains.end());
-
-  std::set<url::Origin> filter_origins;
-  filter_origins.insert(filter->origins.begin(), filter->origins.end());
+  base::flat_set<std::string> filter_domains(std::move(filter->domains));
+  base::flat_set<url::Origin> filter_origins(std::move(filter->origins));
 
   return base::BindRepeating(&MatchesOriginFilter, filter->type,
                              std::move(filter_domains),
@@ -656,7 +724,7 @@ bool IsIncognitoFromParams(const mojom::NetworkContextParams& params) {
 
 void RemoveInvalidationFilterCallback(
     base::WeakPtr<NetworkContext> context,
-    net::HttpCache::InvalidationFilter filter) {
+    const net::HttpCache::InvalidationFilter& filter) {
   if (!context) {
     return;
   }
@@ -665,6 +733,7 @@ void RemoveInvalidationFilterCallback(
   if (cache) {
     cache->RemoveInvalidationFilter(filter);
   }
+  context->RemoveInvalidationFilterFromIsolatedCaches(filter);
   context->OnLogicalFilterRemoved(filter);
 }
 
@@ -733,8 +802,7 @@ NetworkContext::NetworkContext(
       http_auth_merged_preferences_(network_service),
       ohttp_handler_(this),
       prefetch_enabled_(
-          base::FeatureList::IsEnabled(features::kNetworkContextPrefetch) &&
-          (params_->bound_network == net::handles::kInvalidNetworkHandle)),
+          base::FeatureList::IsEnabled(features::kNetworkContextPrefetch)),
       cors_non_wildcard_request_headers_support_(base::FeatureList::IsEnabled(
           features::kCorsNonWildcardRequestHeadersSupport)),
       prefetch_cache_(prefetch_enabled_ ? std::make_unique<PrefetchCache>()
@@ -814,8 +882,7 @@ NetworkContext::NetworkContext(
   url_request_context_owner_ = MakeURLRequestContext(
       std::move(url_loader_factory_for_cert_net_fetcher),
       session_cleanup_cookie_store,
-      std::move(on_url_request_context_builder_configured),
-      params_->bound_network);
+      std::move(on_url_request_context_builder_configured));
   url_request_context_ = url_request_context_owner_.url_request_context.get();
 
   cookie_manager_ = std::make_unique<CookieManager>(
@@ -934,20 +1001,19 @@ NetworkContext::NetworkContext(
       is_observing_reporting_service_(false),
 #endif  // BUILDFLAG(ENABLE_REPORTING)
       receiver_(std::in_place_type<Receiver>, this),
-      cookie_manager_(std::make_unique<CookieManager>(
-          url_request_context,
-          nullptr,
-          /*params=*/nullptr)),
+      cookie_manager_(std::make_unique<CookieManager>(url_request_context,
+                                                      nullptr,
+                                                      /*params=*/nullptr)),
       socket_factory_(
           std::make_unique<SocketFactory>(url_request_context_->net_log(),
                                           url_request_context)),
+      cors_exempt_header_list_(cors_exempt_header_list.begin(),
+                               cors_exempt_header_list.end()),
       cors_preflight_controller_(network_service),
       http_auth_merged_preferences_(network_service),
       ohttp_handler_(this),
       prefetch_enabled_(
-          base::FeatureList::IsEnabled(features::kNetworkContextPrefetch) &&
-          (url_request_context_->bound_network() ==
-           net::handles::kInvalidNetworkHandle)),
+          base::FeatureList::IsEnabled(features::kNetworkContextPrefetch)),
       prefetch_cache_(prefetch_enabled_ ? std::make_unique<PrefetchCache>()
                                         : nullptr) {
   TRACE_EVENT0("loading", "NetworkContext::NetworkContext");
@@ -969,10 +1035,6 @@ NetworkContext::NetworkContext(
     network_service_->RegisterNetworkContext(this);
   }
   resource_scheduler_ = std::make_unique<ResourceScheduler>();
-
-  for (const auto& key : cors_exempt_header_list) {
-    cors_exempt_header_list_.insert(key);
-  }
 
   if (prefetch_enabled_) {
     InitializePrefetchURLLoaderFactory();
@@ -996,6 +1058,45 @@ NetworkContext::~NetworkContext() {
   // any in-flight background operations and avoid callback races.
   http_cache_data_removers_.clear();
   http_cache_data_counters_.clear();
+
+#if BUILDFLAG(ENABLE_WEBSOCKETS)
+  // Destroy WebSockets before the isolated throttling sessions: an open
+  // profiled WebSocket holds both a session handle and a socket handed out
+  // by that session's pool, and must release the socket before the session
+  // (whose pool CHECKs all sockets were returned) can be torn down.
+  websocket_factory_.reset();
+#endif  // BUILDFLAG(ENABLE_WEBSOCKETS)
+
+  // Destroy isolated throttling sessions before the URLRequestContext.
+  // These sessions hold raw pointers to context dependencies (host resolver,
+  // SSL config, etc.) that will be destroyed with the context.
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    if (session->factory_handle) {
+      session->factory_handle->Reset();
+      // Break the circular ref (session -> handle -> session) so both are
+      // freed once in-flight requests release their handle refs.
+      session->factory_handle = nullptr;
+    }
+    session->session->CloseAllConnections(net::ERR_ABORTED,
+                                          "NetworkContext shutting down");
+  }
+  // Retired sessions no longer reference their handles; Reset() the ones
+  // in-flight requests still hold via the registry so stragglers see a null
+  // factory instead of touching a dying session.
+  for (auto& [session, handle] : retired_isolated_session_handles_) {
+    handle->Reset();
+  }
+  // Clear via local moves: releasing these references can run handle
+  // destruction callbacks reentrantly (OnIsolatedSessionHandleDestroyed),
+  // which mutate these same containers.
+  retired_isolated_session_handles_.clear();
+  std::map<base::UnguessableToken, scoped_refptr<IsolatedSession>>
+      isolated_sessions = std::move(isolated_sessions_);
+  std::vector<scoped_refptr<IsolatedSession>> retired_isolated_sessions =
+      std::move(retired_isolated_sessions_);
+  isolated_sessions_.clear();
+  retired_isolated_sessions_.clear();
 
   // May be nullptr in tests.
   if (network_service_) {
@@ -1102,14 +1203,6 @@ void NetworkContext::CreateURLLoaderFactoryForCertNetFetcher(
   url_loader_factory_params->process_id = OriginatingProcessId::browser();
   url_loader_factory_params->automatically_assign_isolation_info = true;
   url_loader_factory_params->is_orb_enabled = false;
-  if (url_request_context()->bound_network() !=
-      net::handles::kInvalidNetworkHandle) {
-    // This is done to maintain consistency with network-bound
-    // URLLoaderFactories used by multi-network CCT. See
-    // CorsURLLoaderFactory::IsCorsPreflighLoadOptionAllowed
-    // http://crrev.com/c/5899528.
-    url_loader_factory_params->disable_web_security = true;
-  }
   CreateURLLoaderFactory(std::move(factory_receiver),
                          std::move(url_loader_factory_params));
 }
@@ -1351,10 +1444,18 @@ void NetworkContext::SetTLS13EarlyDataEnabled(bool enabled) {
   url_request_context_->http_transaction_factory()
       ->GetSession()
       ->SetTLS13EarlyDataEnabled(enabled);
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->session->SetTLS13EarlyDataEnabled(enabled);
+  }
 }
 
 void NetworkContext::DisableQuic() {
   url_request_context_->http_transaction_factory()->GetSession()->DisableQuic();
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->session->DisableQuic();
+  }
 }
 
 void NetworkContext::DestroyURLLoaderFactory(
@@ -1487,6 +1588,17 @@ void NetworkContext::ClearNetworkingHistoryBetween(
   }
 
   url_request_context_->http_server_properties()->Clear(barrier);
+  // Isolated throttling sessions (including retired ones) have their own
+  // HttpServerProperties. These are memory-only (no pref delegate), so
+  // Clear() completes synchronously; they don't participate in `barrier`,
+  // whose lifetime would otherwise have to outlive session pruning.
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->http_server_properties->Clear(base::OnceClosure());
+  }
+  // The primary HttpServerProperties just lost its QUIC hints too, so stop
+  // replaying them into future isolated sessions.
+  quic_hints_.Clear();
 }
 
 void NetworkContext::ClearHttpCache(base::Time start_time,
@@ -1539,6 +1651,15 @@ void NetworkContext::ClearHttpCacheInternal(base::Time start_time,
       filter_for_callback = invalidation_filter;
 
       cache->AddInvalidationFilter(std::move(invalidation_filter));
+      // Isolated throttling sessions' caches must honour logical clearing
+      // too: an in-flight profiled response could otherwise finish writing
+      // during the physical purge window and be served afterwards.
+      for (const scoped_refptr<IsolatedSession>& session :
+           GetAllIsolatedSessions()) {
+        if (session->cache) {
+          session->cache->AddInvalidationFilter(filter_for_callback);
+        }
+      }
       // Queue the filter for disk persistence and invoke `callback` once
       // LogicalInvalidationStore::Save() finishes saving to disk.
       OnLogicalFilterAdded(filter_for_callback, std::move(callback));
@@ -1573,6 +1694,10 @@ void NetworkContext::ComputeHttpCacheSize(
     base::Time start_time,
     base::Time end_time,
     ComputeHttpCacheSizeCallback callback) {
+  // Only the primary cache is measured: the caches of isolated throttling
+  // sessions are in-memory, so they don't use the disk space this reports
+  // (and clearing them would not free any).
+  //
   // It's safe to use Unretained below as the HttpCacheDataCounter is owned by
   // |this| and guarantees it won't call its callback if deleted.
   http_cache_data_counters_.push_back(HttpCacheDataCounter::CreateAndStart(
@@ -1628,7 +1753,7 @@ void NetworkContext::ClearHostCache(mojom::ClearDataFilterPtr filter,
   net::HostCache* host_cache =
       url_request_context_->host_resolver()->GetHostCache();
   DCHECK(host_cache);
-  host_cache->ClearForHosts(MakeDomainFilter(filter.get()));
+  host_cache->ClearForHosts(MakeDomainFilter(std::move(filter)));
   std::move(callback).Run();
 }
 
@@ -1640,11 +1765,24 @@ void NetworkContext::ClearHttpAuthCache(base::Time start_time,
       url_request_context_->http_transaction_factory()->GetSession();
   DCHECK(http_session);
 
+  base::RepeatingCallback<bool(const GURL&)> url_filter =
+      BuildUrlFilter(std::move(filter));
   if (http_session->http_auth_cache()->ClearEntriesAddedBetween(
-          start_time, end_time, BuildUrlFilter(std::move(filter)))) {
+          start_time, end_time, url_filter)) {
     // TODO(mmenke): Use another error code for this, as ERR_ABORTED has
     // somewhat magical handling with respect to navigations.
     http_session->CloseAllConnections(net::ERR_ABORTED, "Clearing auth cache");
+  }
+  // Isolated throttling sessions (including retired ones still serving
+  // in-flight requests) have their own auth caches; clearing credentials
+  // must reach them too.
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    if (session->session->http_auth_cache()->ClearEntriesAddedBetween(
+            start_time, end_time, url_filter)) {
+      session->session->CloseAllConnections(net::ERR_ABORTED,
+                                            "Clearing auth cache");
+    }
   }
 
   std::move(callback).Run();
@@ -1967,6 +2105,11 @@ void NetworkContext::CloseAllConnections(CloseAllConnectionsCallback callback) {
   // magical handling with respect to navigations.
   http_session->CloseAllConnections(net::ERR_ABORTED,
                                     "Embedder closing all connections");
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->session->CloseAllConnections(net::ERR_ABORTED,
+                                          "Embedder closing all connections");
+  }
 
   std::move(callback).Run();
 }
@@ -1978,6 +2121,10 @@ void NetworkContext::CloseIdleConnections(
   DCHECK(http_session);
 
   http_session->CloseIdleConnections("Embedder closing idle connections");
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->session->CloseIdleConnections("Embedder closing idle connections");
+  }
 
   std::move(callback).Run();
 }
@@ -2002,6 +2149,253 @@ void NetworkContext::SetNetworkConditions(
   ThrottlingController::SetConditions(throttling_profile_id,
                                       throttling_client_id,
                                       std::move(network_conditions));
+
+  // A WebTransport tears down synchronously but posts its removal from this
+  // collection, so the iteration remains valid.
+  for (const auto& web_transport : web_transports_) {
+    web_transport->NetworkConditionsUpdated(throttling_profile_id);
+  }
+}
+
+NetworkContext::IsolatedSession::IsolatedSession() = default;
+NetworkContext::IsolatedSession::~IsolatedSession() = default;
+
+namespace {
+
+// Converts a validated (finite) throughput in bytes/sec to the socket
+// config representation. Values <= 0 mean the direction is unconstrained
+// (no bandwidth shaping). Positive sub-byte rates clamp up to 1 byte/sec -
+// the slowest expressible constraint - rather than truncating to zero
+// (which BandwidthThrottle rejects with a CHECK); huge values saturate
+// instead of invoking undefined float->int conversion behavior.
+std::optional<uint64_t> ThroughputToBytesPerSec(double bytes_per_second) {
+  if (bytes_per_second <= 0) {
+    return std::nullopt;
+  }
+  return std::max<uint64_t>(1,
+                            base::saturated_cast<uint64_t>(bytes_per_second));
+}
+
+}  // namespace
+
+void NetworkContext::SetSocketLayerNetworkConditions(
+    const base::UnguessableToken& throttling_profile_id,
+    base::TimeDelta latency,
+    double download_throughput_bytes_per_second,
+    double upload_throughput_bytes_per_second) {
+  // Reject nonsensical inputs up front rather than crash deeper in the
+  // stack (the delayed sockets CHECK a non-negative latency and a positive
+  // throttle byte rate). Per the mojom contract, invalid calls are ignored
+  // and leave any existing conditions unchanged.
+  if (latency.is_negative() || latency.is_max() ||
+      !std::isfinite(download_throughput_bytes_per_second) ||
+      !std::isfinite(upload_throughput_bytes_per_second)) {
+    return;
+  }
+
+  net::DelayedSocketConfig config{
+      .rtt = latency,
+      .download_throughput_bytes_per_sec =
+          ThroughputToBytesPerSec(download_throughput_bytes_per_second),
+      .upload_throughput_bytes_per_sec =
+          ThroughputToBytesPerSec(upload_throughput_bytes_per_second),
+  };
+
+  // If a session already exists for this profile, retire it: requests keep
+  // the conditions captured when they started, so the old handle stays
+  // functional (it is NOT Reset) and the old session lives on - kept alive
+  // by in-flight requests' handle refs and tracked in
+  // `retired_isolated_sessions_` - until they drain. New requests pick up
+  // the replacement session below.
+  auto existing = isolated_sessions_.find(throttling_profile_id);
+  if (existing != isolated_sessions_.end()) {
+    RetireIsolatedSession(existing);
+  }
+
+  // Get the inner socket factory from the existing session. On Windows,
+  // this may be a BrokeredClientSocketFactory required for sandboxing.
+  // Using GetDefaultFactory() would bypass the broker and fail.
+  net::ClientSocketFactory* inner_factory =
+      url_request_context_->http_transaction_factory()
+          ->GetSession()
+          ->context()
+          .client_socket_factory;
+  // `params_` is null for NetworkContexts wrapping an externally-owned
+  // URLRequestContext; treat those conservatively (no shared dictionaries,
+  // no cache).
+  const bool shared_dictionary_enabled =
+      params_ && params_->shared_dictionary_enabled;
+  const bool http_cache_enabled = params_ && params_->http_cache_enabled;
+  auto session = base::MakeRefCounted<IsolatedSession>();
+  session->socket_factory =
+      std::make_unique<net::DelayedClientSocketFactory>(inner_factory, config);
+  // In-memory instance (no pref delegate): each throttling session starts
+  // with fresh alternative-service/QUIC knowledge, like a cold client, and
+  // its learnings die with it.
+  session->http_server_properties =
+      std::make_unique<net::HttpServerProperties>();
+  session->session = net::CreateIsolatedHttpNetworkSession(
+      url_request_context_, session->socket_factory.get(),
+      session->http_server_properties.get());
+  // Mirror the primary context's transaction-factory wrapper stack
+  // (HttpNetworkLayer -> ThrottlingNetworkTransactionFactory ->
+  // SharedDictionaryNetworkTransactionFactory -> HttpCache) so isolated
+  // sessions keep legacy-throttling semantics (a passthrough unless legacy
+  // conditions are configured) and Compression Dictionary Transport.
+  std::unique_ptr<net::HttpTransactionFactory> transaction_factory =
+      std::make_unique<ThrottlingNetworkTransactionFactory>(
+          std::make_unique<net::HttpNetworkLayer>(session->session.get()));
+  if (shared_dictionary_enabled) {
+    transaction_factory =
+        std::make_unique<net::SharedDictionaryNetworkTransactionFactory>(
+            std::move(transaction_factory), /*enable_shared_zstd=*/true);
+  }
+  net::HttpTransactionFactory* factory_for_handle = nullptr;
+  if (http_cache_enabled) {
+    session->cache = std::make_unique<net::HttpCache>(
+        std::move(transaction_factory),
+        net::HttpCache::DefaultBackend::InMemory(0),
+        /*file_operations=*/
+        std::unique_ptr<net::NoVarySearchCacheStorageFileOperations>());
+    factory_for_handle = session->cache.get();
+  } else {
+    // Contexts configured without an HTTP cache must not gain one through
+    // throttling.
+    session->transaction_factory = std::move(transaction_factory);
+    factory_for_handle = session->transaction_factory.get();
+  }
+  // Mirror the primary session's runtime auth-cache partitioning setting
+  // (session params are copied at creation, but this setting can change at
+  // runtime), then seed browser-pushed proxy credentials so throttled
+  // requests don't re-prompt for proxy auth the primary session already
+  // has. (Server credentials are deliberately per-session, like the socket
+  // pools.)
+  net::HttpAuthCache* primary_auth_cache =
+      url_request_context_->http_transaction_factory()
+          ->GetSession()
+          ->http_auth_cache();
+  session->session->http_auth_cache()
+      ->SetKeyServerEntriesByNetworkAnonymizationKey(
+          primary_auth_cache
+              ->key_server_entries_by_network_anonymization_key());
+  session->session->http_auth_cache()->CopyProxyEntriesFrom(
+      *primary_auth_cache);
+  // Replay QUIC hints configured before this session existed (e.g. pushed
+  // at startup, long before DevTools enabled throttling). Replay the least
+  // recently used first, so the new session's HttpServerProperties ends up
+  // with the same recency order.
+  for (const auto& [origin, network_anonymization_key] :
+       base::Reversed(quic_hints_)) {
+    session->http_server_properties->SetQuicAlternativeService(
+        origin, network_anonymization_key,
+        net::AlternativeService(net::NextProto::kProtoQUIC, "", origin.port()),
+        base::Time::Max(), quic::ParsedQuicVersionVector());
+  }
+  // The handle's destruction callback holds a scoped_refptr<IsolatedSession>
+  // so in-flight requests keep the session alive even after it is removed
+  // from the map, and notifies us when the last reference drains so retired
+  // sessions are reclaimed promptly.
+  session->factory_handle =
+      base::MakeRefCounted<net::HttpTransactionFactoryHandle>(
+          factory_for_handle,
+          base::BindOnce(&NetworkContext::OnIsolatedSessionHandleDestroyed,
+                         weak_factory_.GetWeakPtr(),
+                         scoped_refptr<IsolatedSession>(session)),
+          /*disables_network_quality_estimation=*/true);
+
+  isolated_sessions_.emplace(throttling_profile_id, std::move(session));
+}
+
+void NetworkContext::RemoveInvalidationFilterFromIsolatedCaches(
+    const net::HttpCache::InvalidationFilter& filter) {
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    if (session->cache) {
+      session->cache->RemoveInvalidationFilter(filter);
+    }
+  }
+}
+
+std::vector<scoped_refptr<NetworkContext::IsolatedSession>>
+NetworkContext::GetAllIsolatedSessions() {
+  std::vector<scoped_refptr<IsolatedSession>> sessions;
+  sessions.reserve(isolated_sessions_.size() +
+                   retired_isolated_sessions_.size());
+  for (const auto& [token, session] : isolated_sessions_) {
+    sessions.push_back(session);
+  }
+  for (const auto& session : retired_isolated_sessions_) {
+    sessions.push_back(session);
+  }
+  return sessions;
+}
+
+void NetworkContext::RetireIsolatedSession(
+    std::map<base::UnguessableToken, scoped_refptr<IsolatedSession>>::iterator
+        it) {
+  scoped_refptr<IsolatedSession> session = std::move(it->second);
+  isolated_sessions_.erase(it);
+  // Merge proxy credentials the retiring session learned back into the
+  // primary cache, so they reach both unthrottled requests and the next
+  // generation of isolated sessions (which seed from the primary) instead
+  // of being lost on every profile update. Proxy credentials are
+  // profile-wide in Chromium; server credentials stay per-session.
+  //
+  // TODO(crbug.com/496616821): This bulk copy is not conflict-aware: an
+  // entry updated in the primary cache by an unthrottled request while this
+  // session was running is overwritten by this session's older copy. Making
+  // it conflict-aware needs a net/ API, since HttpAuthCache keeps its
+  // entries private and offers no enumeration - e.g. a CopyProxyEntriesFrom
+  // variant that skips keys already present in the destination. Low impact
+  // for DevTools throttling (proxy credentials rarely change mid-session).
+  url_request_context_->http_transaction_factory()
+      ->GetSession()
+      ->http_auth_cache()
+      ->CopyProxyEntriesFrom(*session->session->http_auth_cache());
+  retired_isolated_sessions_.push_back(session);
+  retired_isolated_session_handles_[session.get()] =
+      session->factory_handle.get();
+  // Drop the session's own handle reference. From here the handle is kept
+  // alive only by in-flight requests; when the last of those drains, the
+  // handle's destruction callback (OnIsolatedSessionHandleDestroyed) removes
+  // the session from the retired trackers, freeing it. If nothing is in
+  // flight, that happens synchronously on the next line.
+  session->factory_handle = nullptr;
+}
+
+void NetworkContext::OnIsolatedSessionHandleDestroyed(
+    scoped_refptr<IsolatedSession> session) {
+  retired_isolated_session_handles_.erase(session.get());
+  std::erase(retired_isolated_sessions_, session);
+  // `session` (the final reference once trackers are cleared) is released
+  // when this callback is destroyed.
+}
+
+void NetworkContext::ClearSocketLayerNetworkConditions(
+    const base::UnguessableToken& throttling_profile_id) {
+  auto it = isolated_sessions_.find(throttling_profile_id);
+  if (it != isolated_sessions_.end()) {
+    // Requests keep the conditions captured when they started: the handle
+    // is NOT Reset, so in-flight requests continue on the retired session
+    // (kept alive by their handle refs and tracked in
+    // `retired_isolated_sessions_`) rather than silently falling back to
+    // the unthrottled primary factory mid-request. Requests started after
+    // this call use the primary factory.
+    RetireIsolatedSession(it);
+  }
+}
+
+scoped_refptr<net::HttpTransactionFactoryHandle>
+NetworkContext::GetIsolatedTransactionFactory(
+    const base::UnguessableToken& throttling_profile_id,
+    const GURL& url) {
+  // This profile has a single session serving every URL, so `url` is not
+  // consulted; URL-scoped sessions select on it.
+  auto it = isolated_sessions_.find(throttling_profile_id);
+  if (it == isolated_sessions_.end()) {
+    return nullptr;
+  }
+  return it->second->factory_handle;
 }
 
 void NetworkContext::SetAcceptLanguage(const std::string& new_accept_language) {
@@ -2236,6 +2630,7 @@ void NetworkContext::CreateWebTransport(
     std::optional<uint16_t>
         anticipated_concurrent_incoming_bidirectional_streams,
     std::vector<net::HttpRequestHeaders::HeaderKeyValuePair> additional_headers,
+    const std::optional<base::UnguessableToken>& throttling_profile_id,
     mojo::PendingRemote<mojom::WebTransportHandshakeClient>
         pending_handshake_client,
     mojo::PendingRemote<mojom::URLLoaderNetworkServiceObserver>
@@ -2250,11 +2645,23 @@ void NetworkContext::CreateWebTransport(
         net::WebTransportError(net::ERR_NETWORK_ACCESS_REVOKED));
     return;
   }
+  if (throttling_profile_id) {
+    auto* interceptor = ThrottlingController::GetInterceptorForProfile(
+        *throttling_profile_id, url);
+    if (interceptor && interceptor->IsOffline()) {
+      mojo::Remote<mojom::WebTransportHandshakeClient> remote_handshake_client(
+          std::move(pending_handshake_client));
+      remote_handshake_client->OnHandshakeFailed(
+          net::WebTransportError(net::ERR_INTERNET_DISCONNECTED));
+      return;
+    }
+  }
   web_transports_.insert(std::make_unique<WebTransport>(
       url, origin, key, fingerprints, application_protocols, congestion_control,
       anticipated_concurrent_incoming_unidirectional_streams,
       anticipated_concurrent_incoming_bidirectional_streams,
-      std::move(additional_headers), this, std::move(pending_handshake_client),
+      std::move(additional_headers), throttling_profile_id, this,
+      std::move(pending_handshake_client),
       std::move(url_loader_network_observer),
       std::move(client_security_state)));
 }
@@ -2510,7 +2917,7 @@ void NetworkContext::GetHSTSState(const std::string& domain,
                    static_sts_state.last_observed.InSecondsFSinceUnixEpoch());
         result.Set("static_sts_expiry",
                    static_sts_state.expiry.InSecondsFSinceUnixEpoch());
-        result.Set("static_sts_domain", static_sts_state.domain);
+        result.Set("static_sts_domain", std::move(static_sts_state.domain));
       }
 
       net::TransportSecurityState::STSState dynamic_sts_state;
@@ -2526,7 +2933,7 @@ void NetworkContext::GetHSTSState(const std::string& domain,
                    dynamic_sts_state.last_observed.InSecondsFSinceUnixEpoch());
         result.Set("dynamic_sts_expiry",
                    dynamic_sts_state.expiry.InSecondsFSinceUnixEpoch());
-        result.Set("dynamic_sts_domain", dynamic_sts_state.domain);
+        result.Set("dynamic_sts_domain", std::move(dynamic_sts_state.domain));
       }
 
       result.Set("result", found_sts_static || found_sts_dynamic);
@@ -2635,10 +3042,10 @@ void NetworkContext::PreconnectSockets(
         url_request_context_->http_user_agent_settings()->GetUserAgent();
   }
   net::HttpRequestInfo request_info;
-  request_info.url = url;
+  request_info.url = std::move(url);
   request_info.method = net::HttpRequestHeaders::kGetMethod;
   request_info.extra_headers.SetHeader(net::HttpRequestHeaders::kUserAgent,
-                                       user_agent);
+                                       std::move(user_agent));
   request_info.traffic_annotation = traffic_annotation;
 
   if (keepalive_config.has_value() ||
@@ -2749,6 +3156,12 @@ void NetworkContext::SetSplitAuthCacheByNetworkAnonymizationKey(
       ->http_auth_cache()
       ->SetKeyServerEntriesByNetworkAnonymizationKey(
           split_auth_cache_by_network_anonymization_key);
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->session->http_auth_cache()
+        ->SetKeyServerEntriesByNetworkAnonymizationKey(
+            split_auth_cache_by_network_anonymization_key);
+  }
 }
 
 void NetworkContext::SaveHttpAuthCacheProxyEntries(
@@ -2772,6 +3185,16 @@ void NetworkContext::LoadHttpAuthCacheProxyEntries(
           ->http_auth_cache();
   network_service_->http_auth_cache_proxy_copier()->LoadHttpAuthCache(
       cache_key, http_auth_cache);
+  // LoadHttpAuthCache() is single-use: it erases `cache_key` from the copier
+  // as soon as it is consumed. Calling it again per isolated session would
+  // therefore find nothing, log "Unknown HttpAuthCache key", and leave every
+  // existing isolated session's auth cache empty. Fan out from the primary
+  // cache we just populated instead - the same way GetOrCreateIsolatedSession
+  // seeds a newly created session.
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->session->http_auth_cache()->CopyProxyEntriesFrom(*http_auth_cache);
+  }
   std::move(callback).Run();
 }
 
@@ -2791,6 +3214,19 @@ void NetworkContext::AddAuthCacheEntry(
                        net::HttpAuth::StringToScheme(challenge.scheme),
                        network_anonymization_key, challenge.challenge,
                        credentials, challenge.path);
+  // Isolated throttling sessions (including retired ones) have their own
+  // auth caches; propagate browser-pushed credentials so throttled requests
+  // don't re-prompt.
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->session->http_auth_cache()->Add(
+        challenge.challenger,
+        challenge.is_proxy ? net::HttpAuth::AUTH_PROXY
+                           : net::HttpAuth::AUTH_SERVER,
+        challenge.realm, net::HttpAuth::StringToScheme(challenge.scheme),
+        network_anonymization_key, challenge.challenge, credentials,
+        challenge.path);
+  }
   std::move(callback).Run();
 }
 
@@ -2821,10 +3257,10 @@ void NetworkContext::LookupProxyAuthCredentials(
           ->http_auth_cache();
   // TODO(crbug.com/40704785): Mapping proxy addresses to URLs is a
   // lossy conversion, shouldn't do this.
-  const char* scheme =
+  std::string_view scheme =
       proxy_server.is_secure_http_like() ? "https://" : "http://";
   url::SchemeHostPort scheme_host_port(
-      GURL(scheme + proxy_server.host_port_pair().ToString()));
+      GURL(base::StrCat({scheme, proxy_server.host_port_pair().ToString()})));
   if (!scheme_host_port.IsValid()) {
     std::move(callback).Run(std::nullopt);
     return;
@@ -2854,14 +3290,6 @@ size_t NetworkContext::NumOpenWebTransports() const {
 WebTransport* NetworkContext::GetWebTransportForTesting() {
   CHECK_EQ(web_transports_.size(), 1u);
   return web_transports_.begin()->get();
-}
-
-size_t NetworkContext::CountURLLoaderFactoriesBoundToNetworkForTesting(
-    net::handles::NetworkHandle target_network) const {
-  return std::ranges::count_if(
-      url_loader_factories_, [target_network](const auto& factory) {
-        return factory->GetBoundNetworkForTesting() == target_network;
-      });
 }
 
 void NetworkContext::OnHttpAuthDynamicParamsChanged(
@@ -2920,16 +3348,10 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
         url_loader_factory_for_cert_net_fetcher,
     scoped_refptr<SessionCleanupCookieStore> session_cleanup_cookie_store,
     OnURLRequestContextBuilderConfiguredCallback
-        on_url_request_context_builder_configured,
-    net::handles::NetworkHandle bound_network) {
+        on_url_request_context_builder_configured) {
   URLRequestContextBuilderMojo builder;
   const base::CommandLine* command_line =
       base::CommandLine::ForCurrentProcess();
-
-  bool is_network_bound = bound_network != net::handles::kInvalidNetworkHandle;
-  if (is_network_bound) {
-    builder.BindToNetwork(bound_network);
-  }
 
   std::unique_ptr<net::CertVerifier> cert_verifier;
   if (g_cert_verifier_for_testing) {
@@ -2985,15 +3407,10 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
   if (network_service_) {
     net_log = network_service_->net_log();
     builder.set_net_log(net_log);
-    if (!is_network_bound) {
-      // Network bound URLRequestContexts build and configure their own special
-      // HostResolverManager and HostResolver. So, don't inject the
-      // NetworkService one even if NetworkService is enabled.
-      builder.set_host_resolver_manager(
-          network_service_->host_resolver_manager());
-      builder.set_host_resolver_factory(
-          network_service_->host_resolver_factory());
-    }
+    builder.set_host_resolver_manager(
+        network_service_->host_resolver_manager());
+    builder.set_host_resolver_factory(
+        network_service_->host_resolver_factory());
     builder.SetHttpAuthHandlerFactory(
         network_service_->CreateHttpAuthHandlerFactory(this));
     builder.set_network_quality_estimator(
@@ -3057,9 +3474,6 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
       cache_params.type =
           net::URLRequestContextBuilder::HttpCacheParams::IN_MEMORY;
     } else {
-      // Network-bound NetworkContexts should not persist state on disk.
-      CHECK(!is_network_bound);
-
       cache_params.path = params_->file_paths->http_cache_directory->path();
       if (params_->file_paths->no_vary_search_directory) {
         cache_params.no_vary_search_path =
@@ -3150,8 +3564,6 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
                           &network::mojom::NetworkContextFilePaths::
                               http_server_properties_file_name,
                           http_server_properties_file_name)) {
-    // Network-bound NetworkContexts should not persist state on disk.
-    CHECK(!is_network_bound);
     scoped_refptr<JsonPrefStore> json_pref_store(new JsonPrefStore(
         http_server_properties_file_name, nullptr,
         base::ThreadPool::CreateSequencedTaskRunner(
@@ -3197,8 +3609,6 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
                           &network::mojom::NetworkContextFilePaths::
                               transport_security_persister_file_name,
                           transport_security_persister_file_name)) {
-    // Network-bound NetworkContexts should not persist state on disk.
-    CHECK(!is_network_bound);
     builder.set_transport_security_persister_file_path(
         transport_security_persister_file_name);
   }
@@ -3229,8 +3639,6 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
                               reporting_and_nel_store_database_name,
                           reporting_and_nel_store_database_name) &&
       (reporting_enabled || nel_enabled)) {
-    // Network-bound NetworkContexts should not persist state on disk.
-    CHECK(!is_network_bound);
     scoped_refptr<base::SequencedTaskRunner> client_task_runner =
         base::SingleThreadTaskRunner::GetCurrentDefault();
     scoped_refptr<base::SequencedTaskRunner> background_task_runner =
@@ -3311,6 +3719,24 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
            "hostname.";
     builder.set_host_mapping_rules(
         command_line->GetSwitchValueASCII(switches::kHostRules));
+  } else if (base::FeatureList::IsEnabled(
+                 features::kDnsHostMappingExperiment)) {
+    std::optional<std::string> validated_rules =
+        ValidateAndNormalizeExperimentHostMappingRules(
+            features::kDnsHostMappingExperimentRules.Get());
+    const bool rules_applied = validated_rules.has_value();
+    if (rules_applied) {
+      // Note: MappedHostResolver rewrites the hostname before
+      // ContextHostResolver, so HostCache::Key stores the mapped subdomain
+      // (recording into unsuffixed Net.DNS.HostCache.* rather than
+      // Net.DNS.HostCache.*.GoogleHost, unlike upper-layer .GoogleHost metrics
+      // which inspect the unmapped URL host). Experiments comparing HostCache
+      // or recursive cache behavior should also map the control arm to a
+      // dedicated control subdomain.
+      builder.set_host_mapping_rules(*validated_rules);
+    }
+    base::UmaHistogramBoolean("Net.DNS.HostMappingExperiment.RulesApplied",
+                              rules_applied);
   }
 
 #if BUILDFLAG(IS_WIN)
@@ -3375,8 +3801,6 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
                             &network::mojom::NetworkContextFilePaths::
                                 device_bound_sessions_database_name,
                             device_bound_sessions_file_path)) {
-      // Network-bound NetworkContexts should not persist state on disk.
-      CHECK(!is_network_bound);
       builder.set_device_bound_sessions_file_path(
           device_bound_sessions_file_path);
     }
@@ -3547,7 +3971,7 @@ GURL NetworkContext::GetHSTSRedirectForPreconnect(const GURL& original_url) {
   // top-level navigation so we need to disallow HSTS upgrades for every
   // preconnect.
   if (!url_request_context_->transport_security_state()->ShouldUpgradeToSSL(
-          original_url.GetHost(), /*is_top_level_nav=*/false)) {
+          original_url.host(), /*is_top_level_nav=*/false)) {
     RecordHSTSPreconnectUpgradeReason(
         HSTSRedirectUpgradeReason::kNotUpgradedNoHSTSPin);
     return original_url;
@@ -3564,6 +3988,10 @@ GURL NetworkContext::GetHSTSRedirectForPreconnect(const GURL& original_url) {
 void NetworkContext::DestroySocketManager(P2PSocketManager* socket_manager) {
   auto iter = socket_managers_.find(socket_manager);
   CHECK(iter != socket_managers_.end());
+  // Move out of `socket_managers_` before erasing so `~P2PSocketManager()`
+  // never runs while `flat_map::erase()` is mutating the container.
+  std::unique_ptr<P2PSocketManager> owned_socket_manager =
+      std::move(iter->second);
   socket_managers_.erase(iter);
 }
 #endif  // BUILDFLAG(IS_P2P_ENABLED)
@@ -3644,9 +4072,8 @@ void NetworkContext::InitializeCorsParams() {
     cors_origin_access_list_.SetBlockListForOrigin(pattern->source_origin,
                                                    pattern->block_patterns);
   }
-  for (const auto& key : params_->cors_exempt_header_list) {
-    cors_exempt_header_list_.insert(key);
-  }
+  cors_exempt_header_list_ =
+      base::flat_set<std::string>(std::move(params_->cors_exempt_header_list));
 
   acam_preflight_spec_conformant_ = params_->acam_preflight_spec_conformant;
 }
@@ -3833,6 +4260,14 @@ void NetworkContext::FlushCachedClientCertIfNeeded(
     http_session->ssl_client_context()->ClearClientCertificateIfNeeded(
         host, certificate);
   }
+  // Isolated throttling sessions (including retired ones) have their own
+  // SSLClientContexts; a stale client-certificate selection must be
+  // invalidated there too.
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->session->ssl_client_context()->ClearClientCertificateIfNeeded(
+        host, certificate);
+  }
 }
 
 void NetworkContext::FlushMatchingCachedClientCert(
@@ -3844,6 +4279,11 @@ void NetworkContext::FlushMatchingCachedClientCert(
     http_session->ssl_client_context()->ClearMatchingClientCertificate(
         certificate);
   }
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->session->ssl_client_context()->ClearMatchingClientCertificate(
+        certificate);
+  }
 }
 
 void NetworkContext::FlushClientCertCache() {
@@ -3852,6 +4292,10 @@ void NetworkContext::FlushClientCertCache() {
   DCHECK(http_session);
   if (http_session->ssl_client_context()) {
     http_session->ssl_client_context()->OnClientCertStoreChanged();
+  }
+  for (const scoped_refptr<IsolatedSession>& session :
+       GetAllIsolatedSessions()) {
+    session->session->ssl_client_context()->OnClientCertStoreChanged();
   }
 }
 
@@ -3868,7 +4312,7 @@ void NetworkContext::RestrictNetworkForIds(
         if (!source) {
           return;
         }
-        dest_endpoint = source->reporting_endpoint;
+        dest_endpoint = std::move(source->reporting_endpoint);
         dest_redirect_behavior = source->redirect_behavior;
         dest_patterns.emplace();
         for (const std::string& pattern : source->allowlist) {
@@ -3896,7 +4340,7 @@ void NetworkContext::RestrictNetworkForIds(
     // revocation.
     NetworkRestriction& restriction =
         network_restrictions_ids_[network_restrictions_id];
-    restriction.response_url = entry->allowlists.response_url;
+    restriction.response_url = std::move(entry->allowlists.response_url);
     restriction.reporting_source = entry->allowlists.reporting_source;
 
     parse_allowlist(entry->allowlists.enforced,
@@ -3980,6 +4424,11 @@ void NetworkContext::AddQuicHints(
     const net::NetworkAnonymizationKey& network_anonymization_key) {
   CHECK(url_request_context_);
 
+  // The set of isolated sessions cannot change while this loop runs, so
+  // collect it once instead of rebuilding the vector for every origin.
+  const std::vector<scoped_refptr<IsolatedSession>> isolated_sessions =
+      GetAllIsolatedSessions();
+
   for (const auto& origin : origins) {
     url::CanonHostInfo host_info;
     std::string canonical_host(
@@ -4000,6 +4449,16 @@ void NetworkContext::AddQuicHints(
     url_request_context_->http_server_properties()->SetQuicAlternativeService(
         canonical_origin, network_anonymization_key, alternative_service,
         base::Time::Max(), quic::ParsedQuicVersionVector());
+    for (const scoped_refptr<IsolatedSession>& session : isolated_sessions) {
+      session->http_server_properties->SetQuicAlternativeService(
+          canonical_origin, network_anonymization_key, alternative_service,
+          base::Time::Max(), quic::ParsedQuicVersionVector());
+    }
+    // Remember the hint for isolated sessions created later. Re-adding a
+    // known hint touched its entry in the primary HttpServerProperties' LRU,
+    // and Put() promotes it here too, so a hint that callers keep refreshing
+    // (e.g. WebView) is not the one evicted.
+    quic_hints_.Put({canonical_origin, network_anonymization_key});
   }
 }
 
@@ -4158,9 +4617,9 @@ bool NetworkContext::IsHostResolutionForNetworkRestrictionsIdAndHostAllowed(
     return true;
   }
 
-  std::string host_fragment = host.is_host_port_pair()
-                                  ? host.get_host_port_pair().host()
-                                  : host.get_scheme_host_port().host();
+  std::string_view host_fragment = host.is_host_port_pair()
+                                       ? host.get_host_port_pair().host()
+                                       : host.get_scheme_host_port().host();
   GURL synthetic_url = GURL(base::StrCat(
       {url::kHttpsScheme, url::kStandardSchemeSeparator, host_fragment}));
   if (!synthetic_url.is_valid()) {
@@ -4331,10 +4790,35 @@ void NetworkContext::StartHttpCacheDataRemover(
     base::Time start_time,
     base::Time end_time,
     base::OnceClosure done_callback) {
+  // Clear the primary cache and every isolated throttling session's
+  // in-memory cache: those serve responses for requests carrying the
+  // corresponding throttling profile, so "Clear browsing data" must reach
+  // them too.
+  std::vector<scoped_refptr<IsolatedSession>> all_isolated_sessions =
+      GetAllIsolatedSessions();
+  base::RepeatingClosure barrier = base::BarrierClosure(
+      1 + all_isolated_sessions.size(), std::move(done_callback));
+  for (const scoped_refptr<IsolatedSession>& session : all_isolated_sessions) {
+    // Keep the session alive until its remover finishes: the remover does
+    // asynchronous work against the session's cache backend and holds a
+    // raw_ptr to it, while the profile may be updated or cleared in the
+    // meantime (which would otherwise free the backend under it).
+    //
+    // `session->cache` is null for cache-disabled contexts; the remover
+    // completes immediately in that case.
+    base::OnceClosure session_done = base::BindOnce(
+        [](base::RepeatingClosure barrier,
+           scoped_refptr<IsolatedSession> /*keep_alive*/) { barrier.Run(); },
+        barrier, session);
+    http_cache_data_removers_.push_back(HttpCacheDataRemover::CreateAndStart(
+        session->cache.get(), filter.Clone(), start_time, end_time,
+        base::BindOnce(&NetworkContext::OnHttpCacheCleared,
+                       base::Unretained(this), std::move(session_done))));
+  }
   http_cache_data_removers_.push_back(HttpCacheDataRemover::CreateAndStart(
       url_request_context_, std::move(filter), start_time, end_time,
       base::BindOnce(&NetworkContext::OnHttpCacheCleared,
-                     base::Unretained(this), std::move(done_callback))));
+                     base::Unretained(this), std::move(barrier))));
 }
 
 void NetworkContext::UpdatePersistenceQueueOrSave(

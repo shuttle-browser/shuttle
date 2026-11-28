@@ -20,7 +20,7 @@ namespace ui {
 
 LinuxUiDelegateWayland::LinuxUiDelegateWayland(WaylandConnection* connection)
     : connection_(connection) {
-  DCHECK(connection_);
+  CHECK(connection_, base::NotFatalUntil::M163);
 }
 
 LinuxUiDelegateWayland::~LinuxUiDelegateWayland() = default;
@@ -44,10 +44,11 @@ void LinuxUiDelegateWayland::ExportWindowHandle(
     return;
   }
 
-  DCHECK_EQ(toplevel_parent->type(), PlatformWindowType::kWindow);
+  CHECK_EQ(toplevel_parent->type(), PlatformWindowType::kWindow,
+           base::NotFatalUntil::M163);
 
   foreign->ExportSurfaceToForeign(
-      toplevel_parent,
+      toplevel_parent->AsWaylandToplevelWindow(),
       base::BindOnce(&LinuxUiDelegateWayland::OnHandleForward,
                      weak_factory_.GetWeakPtr(), std::move(callback)));
 }
@@ -55,6 +56,12 @@ void LinuxUiDelegateWayland::ExportWindowHandle(
 void LinuxUiDelegateWayland::OnHandleForward(
     base::OnceCallback<void(std::string)> callback,
     const std::string& handle) {
+  // An empty handle means export failed; return it as-is instead of a
+  // "wayland:" prefix with no handle.
+  if (handle.empty()) {
+    std::move(callback).Run(std::string());
+    return;
+  }
   std::move(callback).Run("wayland:" + handle);
 }
 

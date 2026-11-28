@@ -18,7 +18,11 @@ source_set("omnibox") {
     "omnibox_mouse_enter_exit_handler.h",
     "omnibox_placeholder_util.h",
     "omnibox_popup_closer.h",
+    "omnibox_popup_content_config.h",
+    "omnibox_popup_content_delegate.h",
     "omnibox_popup_full_presenter.h",
+    "omnibox_popup_host.h",
+    "omnibox_popup_location_bar_host.h",
     "omnibox_popup_presenter.h",
     "omnibox_popup_presenter_base.h",
     "omnibox_popup_presenter_delegate.h",
@@ -29,6 +33,9 @@ source_set("omnibox") {
     "omnibox_popup_view_webui.h",
     "omnibox_popup_webui_base_content.h",
     "omnibox_popup_webui_content.h",
+    "omnibox_popup_webui_pool.h",
+    "omnibox_popup_webui_pool_client.h",
+    "omnibox_popup_webui_pool_factory.h",
     "omnibox_result_view.h",
     "omnibox_row_grouped_view.h",
     "omnibox_row_view.h",
@@ -92,7 +99,9 @@ source_set("impl") {
     "omnibox_mouse_enter_exit_handler.cc",
     "omnibox_placeholder_util.cc",
     "omnibox_popup_closer.cc",
+    "omnibox_popup_content_config.cc",
     "omnibox_popup_full_presenter.cc",
+    "omnibox_popup_location_bar_host.cc",
     "omnibox_popup_presenter.cc",
     "omnibox_popup_presenter_base.cc",
     "omnibox_popup_tab_selection_listener.cc",
@@ -102,6 +111,9 @@ source_set("impl") {
     "omnibox_popup_view_webui.cc",
     "omnibox_popup_webui_base_content.cc",
     "omnibox_popup_webui_content.cc",
+    "omnibox_popup_webui_pool.cc",
+    "omnibox_popup_webui_pool_client.cc",
+    "omnibox_popup_webui_pool_factory.cc",
     "omnibox_result_view.cc",
     "omnibox_row_grouped_view.cc",
     "omnibox_row_view.cc",
@@ -164,6 +176,10 @@ source_set("impl") {
     "//ui/content_accelerators",
     "//ui/strings:ui_strings_grit",
   ]
+
+  if (is_chromeos) {
+    deps += [ "//ash" ]
+  }
 
   if (is_mac) {
     deps += [ ":native_widget_mac" ]

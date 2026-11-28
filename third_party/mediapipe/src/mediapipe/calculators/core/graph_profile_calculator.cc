@@ -14,6 +14,8 @@
 
 #include <memory>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/core/graph_profile_calculator.pb.h"
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/api2/packet.h"
@@ -21,7 +23,6 @@
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_profile.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 
 namespace mediapipe {
 namespace api2 {
@@ -60,7 +61,7 @@ class GraphProfileCalculator : public Node {
         cc->InputTimestamp() - prev_profile_ts_ >= options.profile_interval()) {
       prev_profile_ts_ = cc->InputTimestamp();
       GraphProfile result;
-      MP_RETURN_IF_ERROR(cc->GetProfilingContext()->CaptureProfile(
+      ABSL_RETURN_IF_ERROR(cc->GetProfilingContext()->CaptureProfile(
           &result, first_profile ? PopulateGraphConfig::kFull
                                  : PopulateGraphConfig::kNo));
       kProfileOut(cc).Send(result);

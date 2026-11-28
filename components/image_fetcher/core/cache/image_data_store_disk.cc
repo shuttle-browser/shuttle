@@ -38,7 +38,6 @@ bool IsStoragePathLink(const FilePath& storage_path) {
 }
 
 InitializationStatus InitializeImpl(FilePath storage_path) {
-  // TODO(wylieb): Report errors if they occur.
   File::Error error;
   // CreateDirectoryAndGetError() succeeds if `storage_path` is a symlink to an
   // existing directory, so check for links after it runs.

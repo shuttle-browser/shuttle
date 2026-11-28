@@ -4,6 +4,8 @@
 
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 
+#include <stdint.h>
+
 #include <memory>
 #include <optional>
 
@@ -74,6 +76,7 @@
 #include "chrome/browser/net/qwac_web_contents_observer.h"
 #include "chrome/browser/preloading/prefetch/no_state_prefetch/no_state_prefetch_tab_helper.h"
 #include "chrome/browser/preloading/prefetch/zero_suggest_prefetch/zero_suggest_prefetch_tab_helper.h"
+#include "chrome/browser/preloading/prerender/prewarm_tab_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_key.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
@@ -178,13 +181,13 @@
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "chrome/browser/safe_browsing/chrome_safe_browsing_tab_observer_delegate.h"
-#include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
+#include "chrome/browser/safe_browsing/navigation_observer/safe_browsing_navigation_observer_manager_factory.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
-#include "chrome/browser/safe_browsing/trigger_creator.h"
-#include "components/safe_browsing/content/browser/async_check_tracker.h"
-#include "components/safe_browsing/content/browser/safe_browsing_navigation_observer.h"
+#include "chrome/browser/safe_browsing/triggers/trigger_creator.h"
+#include "components/safe_browsing/content/browser/interstitials/ui_manager.h"
+#include "components/safe_browsing/content/browser/navigation_observer/safe_browsing_navigation_observer.h"
 #include "components/safe_browsing/content/browser/safe_browsing_tab_observer.h"
-#include "components/safe_browsing/content/browser/ui_manager.h"
+#include "components/safe_browsing/content/browser/url_checker/async_check_tracker.h"
 #endif
 
 namespace tabs {
@@ -249,12 +252,14 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
           .CreateInstance<FileSystemAccessPermissionRequestManager>(tab, tab);
   if (page_action_controller_->ActionExists(kActionShowFileSystemAccess)) {
     file_system_access_page_action_controller_ =
-        std::make_unique<FileSystemAccessPageActionController>(tab);
+        GetUserDataFactory()
+            .CreateInstance<FileSystemAccessPageActionController>(tab, tab);
   }
 
   if (page_action_controller_->ActionExists(kActionShowZoomBubble)) {
-    zoom_view_controller_ = std::make_unique<zoom::ZoomViewController>(
-        tab, *page_action_controller_);
+    zoom_view_controller_ =
+        GetUserDataFactory().CreateInstance<zoom::ZoomViewController>(
+            tab, tab, *page_action_controller_);
   }
 
   tab_dialogs_ = TabDialogs::Create(tab, tab.GetContents());
@@ -269,20 +274,23 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
   if (page_action_controller_->ActionExists(kActionShowJsOptimizationsIcon)) {
     js_optimizations_page_action_controller_ =
-        std::make_unique<JsOptimizationsPageActionController>(
-            tab, *page_action_controller_);
+        GetUserDataFactory()
+            .CreateInstance<JsOptimizationsPageActionController>(
+                tab, tab, *page_action_controller_);
   }
 
   // Features that are only enabled for normal browser windows. By default most
   // features should be instantiated in this block.
   if (tab.IsInNormalWindow()) {
     permission_indicators_tab_data_ =
-        std::make_unique<permissions::PermissionIndicatorsTabData>(
-            tab.GetContents());
+        GetUserDataFactory()
+            .CreateInstance<permissions::PermissionIndicatorsTabData>(
+                tab, tab, tab.GetContents());
 
   }  // IsInNormalWindow() end.
 
-  tab_dialog_manager_ = std::make_unique<TabDialogManager>(&tab);
+  tab_dialog_manager_ =
+      GetUserDataFactory().CreateInstance<TabDialogManager>(tab, &tab);
 
   // Create the HttpAuthCacheStatus to start observing resource load
   // completions.
@@ -308,6 +316,8 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
   zero_suggest_prefetch_tab_helper_ =
       std::make_unique<ZeroSuggestPrefetchTabHelper>(tab.GetContents());
+
+  prewarm_tab_helper_ = PrewarmTabHelper::MaybeCreate(tab.GetContents());
 
   if (base::FeatureList::IsEnabled(features::kTabHoverCardImages)) {
     thumbnail_tab_helper_ =
@@ -340,7 +350,8 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
   inactive_window_mouse_event_controller_ =
-      std::make_unique<InactiveWindowMouseEventController>();
+      GetUserDataFactory().CreateInstance<InactiveWindowMouseEventController>(
+          tab, tab);
 
 
 #endif
@@ -467,9 +478,7 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   if (g_browser_process->safe_browsing_service()) {
     safe_browsing::AsyncCheckTracker::CreateForWebContents(
         tab.GetContents(),
-        g_browser_process->safe_browsing_service()->ui_manager(),
-        safe_browsing::AsyncCheckTracker::
-            IsPlatformEligibleForSyncCheckerCheckAllowlist());
+        g_browser_process->safe_browsing_service()->ui_manager());
   }
   // Shuttle: no autofill client, so not gated on ContentAutofillClient.
   safe_browsing_tab_observer_ =
@@ -579,10 +588,11 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
 
   if (site_engagement::SiteEngagementService::IsEnabled()) {
     site_engagement_helper_ =
-        std::make_unique<site_engagement::SiteEngagementService::Helper>(
-            tab.GetContents(),
-            prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
-                profile));
+        GetUserDataFactory()
+            .CreateInstance<site_engagement::SiteEngagementService::Helper>(
+                tab, tab, tab.GetContents(),
+                prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
+                    profile));
   }
 
   SafetyTipWebContentsObserver::CreateForWebContents(tab.GetContents());
@@ -685,6 +695,8 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
   zero_suggest_prefetch_tab_helper_ =
       std::make_unique<ZeroSuggestPrefetchTabHelper>(new_contents);
 
+  prewarm_tab_helper_ = PrewarmTabHelper::MaybeCreate(new_contents);
+
   security_state_event_observer_ =
       std::make_unique<SecurityStateEventObserver>(new_contents);
 
@@ -715,9 +727,13 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
       FromGWSNavigationAndKeepAliveRequestObserver::MaybeCreate(new_contents);
 
   if (permission_indicators_tab_data_) {
+    // Reset first so the old instance unregisters from `UnownedUserDataHost`
+    // before the replacement registers under the same key.
+    permission_indicators_tab_data_.reset();
     permission_indicators_tab_data_ =
-        std::make_unique<permissions::PermissionIndicatorsTabData>(
-            new_contents);
+        GetUserDataFactory()
+            .CreateInstance<permissions::PermissionIndicatorsTabData>(
+                *tab, *tab, new_contents);
   }
 
   uma_browsing_activity_tab_helper_ =
@@ -802,9 +818,7 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
       /*is_referrer_chain_needed_for_enterprise=*/false);
   if (g_browser_process->safe_browsing_service()) {
     safe_browsing::AsyncCheckTracker::CreateForWebContents(
-        new_contents, g_browser_process->safe_browsing_service()->ui_manager(),
-        safe_browsing::AsyncCheckTracker::
-            IsPlatformEligibleForSyncCheckerCheckAllowlist());
+        new_contents, g_browser_process->safe_browsing_service()->ui_manager());
   }
   safe_browsing_tab_observer_.reset();
   safe_browsing_tab_observer_ =
@@ -927,10 +941,11 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
   site_engagement_helper_.reset();
   if (site_engagement::SiteEngagementService::IsEnabled()) {
     site_engagement_helper_ =
-        std::make_unique<site_engagement::SiteEngagementService::Helper>(
-            new_contents,
-            prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
-                profile));
+        GetUserDataFactory()
+            .CreateInstance<site_engagement::SiteEngagementService::Helper>(
+                *tab, *tab, new_contents,
+                prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
+                    profile));
   }
 
   SafetyTipWebContentsObserver::CreateForWebContents(new_contents);

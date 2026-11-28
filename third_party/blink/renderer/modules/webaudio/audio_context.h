@@ -73,12 +73,8 @@ class MODULES_EXPORT AudioContext final
   enum class ResumeError {
     // The context is closed; resume is not possible.
     kClosed,
-    // The frame visibility is unknown; the resume decision is deferred.
-    kUnknownFrameVisibility,
     // The context is interrupted; resume is rejected.
     kInterrupted,
-    // The context is already running; no action needed.
-    kAlreadyRunning,
   };
 
   // SetSinkIdResolver is a helper class that manages the asynchronous operation
@@ -145,6 +141,8 @@ class MODULES_EXPORT AudioContext final
   void Trace(Visitor*) const override;
 
   // For ContextLifeCycleObserver
+  void ContextLifecycleStateChanged(
+      mojom::blink::FrameLifecycleState state) override;
   void ContextDestroyed() override;
   bool HasPendingActivity() const override;
 
@@ -343,6 +341,10 @@ class MODULES_EXPORT AudioContext final
   void Uninitialize() override;
   void DetachPendingResolvers() override;
 
+  // Uninitializes a context that Create() rejects after construction. Script
+  // never observes such a context, so it must not report autoplay metrics.
+  void UninitializeRejectedContext();
+
   // Returns the AutoplayPolicy currently applying to this instance.
   AutoplayPolicy::Type GetAutoplayPolicy() const;
 
@@ -371,6 +373,15 @@ class MODULES_EXPORT AudioContext final
 
   // Performs the async transition of the context state to "suspended".
   void PerformTransitionToSuspended(ScriptPromiseResolver<IDLUndefined>*);
+
+  // With AudioContextAsyncStateTransitions enabled, runs the remaining steps
+  // of resume() for resolvers in order. Keeps them pending if the context is
+  // not allowed to start, otherwise starts rendering and queues a transition
+  // to "running" for each of them.
+  void ScheduleTransitionsToRunning(
+      const HeapVector<Member<ScriptPromiseResolver<IDLUndefined>>>& resolvers);
+  // Performs the async transition of the context state to "running".
+  void PerformTransitionToRunning(ScriptPromiseResolver<IDLUndefined>*);
 
   // Starts rendering via AudioDestinationNode. This sets the self-referencing
   // pointer to this object.
@@ -422,13 +433,19 @@ class MODULES_EXPORT AudioContext final
   // prerendering.
   void ResumeOnPrerenderActivation();
 
-  // Performs the state-checking logic for resuming the AudioContext. Returns
-  // std::nullopt on success, or a ResumeError indicating the failure reason.
-  std::optional<ResumeError> ResumeInternal();
+  // Starts an interruption if the frame is hidden and the context has to be
+  // interrupted while the frame is hidden.
+  void StartContextInterruptionWhenFrameHiddenIfNeeded();
+  // If an interruption started while the context was suspended, moves the
+  // context to the "interrupted" state and marks it to become "running" when
+  // the interruption ends.
+  void TransitionToInterruptedIfTriggeredWhileSuspended();
+  // Starts the rendering if the context is allowed to start, returning true
+  // when it started.
+  bool StartRenderingIfAllowed();
 
-  // Processes deferred resume() calls that were made while frame visibility was
-  // unknown. Calls ResumeInternal() to check if the context can be resumed and
-  // rejects or resolves the deferred promises accordingly.
+  // Processes the resume() calls that were made while the frame visibility
+  // was unknown, running the remaining steps of resume() for them.
   void ProcessDeferredResume();
 
   void HandleRenderError()
@@ -464,6 +481,7 @@ class MODULES_EXPORT AudioContext final
   void AddPendingResumeResolver(ScriptPromiseResolver<IDLUndefined>*);
   void ResolvePendingResumeResolvers();
   void RejectPendingResumeResolversWithException(const String& message);
+  void RejectDeferredResumeResolversWithException(const String& message);
 
   // https://webaudio.github.io/web-audio-api/#dom-audiocontext-suspended-by-user-slot
   bool suspended_by_user_ = false;

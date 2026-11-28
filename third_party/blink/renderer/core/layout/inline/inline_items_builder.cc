@@ -4,12 +4,12 @@
 
 #include "third_party/blink/renderer/core/layout/inline/inline_items_builder.h"
 
+#include <algorithm>
 #include <ranges>
 #include <type_traits>
 
 #include "base/compiler_specific.h"
 #include "third_party/blink/renderer/core/core_export.h"
-#include "third_party/blink/renderer/core/html/html_area_element.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_item_span.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_node.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_node_data.h"
@@ -23,7 +23,6 @@
 #include "third_party/blink/renderer/platform/wtf/text/text_offset_map.h"
 
 namespace blink {
-class HTMLAreaElement;
 
 template <typename MappingBuilder>
 InlineItemsBuilderTemplate<MappingBuilder>::InlineItemsBuilderTemplate(
@@ -215,8 +214,14 @@ InlineItem* LastItemToCollapseWith(InlineItems* items) {
   return nullptr;
 }
 
+// TODO(crbug.com/340606789): Rename this. It is not only for ORC now.
 inline bool IsNonOrc16BitCharacter(UChar ch) {
-  return ch >= 0x100 && ch != uchar::kObjectReplacementCharacter;
+  // Latin Extended-A/B letters and General Punctuation such as dashes, quotes
+  // and ellipsis segment the same way as Latin-1 characters.
+  if (ch < 0x250 || (ch >= 0x2010 && ch <= 0x2027)) {
+    return false;
+  }
+  return ch != uchar::kObjectReplacementCharacter;
 }
 
 // text-transform: full-width collapses spaces into ideographic space (U+3000).
@@ -732,7 +737,13 @@ template <typename MappingBuilder>
 void InlineItemsBuilderTemplate<MappingBuilder>::AppendTransformedString(
     const TransformedString& transformed,
     const LayoutText& layout_text) {
-  has_non_orc_16bit_ = has_non_orc_16bit_ || !transformed.View().Is8Bit();
+  if (!has_non_orc_16bit_ && !transformed.View().Is8Bit()) {
+    has_non_orc_16bit_ =
+        !RuntimeEnabledFeatures::
+            LayoutSegmentationFastPathForLatinAndPunctuationEnabled() ||
+        std::ranges::any_of(transformed.View().Span16(),
+                            IsNonOrc16BitCharacter);
+  }
   text_.Append(transformed.View());
   if (!transformed.HasLengthMap()) {
     mapping_builder_.AppendIdentityMapping(transformed.View().length());
@@ -1672,9 +1683,7 @@ void InlineItemsBuilderTemplate<MappingBuilder>::ExitInline(
         InlineItem& item = *(*items_)[i];
         if (i == open_item_index) {
           DCHECK_EQ(i, current_box->item_index);
-          // TODO(kojii): <area> element fails to hit-test when we don't cull.
-          if (!IsA<HTMLAreaElement>(item.GetLayoutObject()->GetNode()))
-            item.SetShouldCreateBoxFragment();
+          item.SetShouldCreateBoxFragment();
           break;
         }
         DCHECK_GT(i, current_box->item_index);

@@ -71,6 +71,7 @@
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/editing/forward.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context_lifecycle_observer.h"
+#include "third_party/blink/renderer/core/exported/web_input_method_controller_impl.h"
 #include "third_party/blink/renderer/core/exported/web_page_popup_impl.h"
 #include "third_party/blink/renderer/core/frame/animation_frame_timing_monitor.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
@@ -316,7 +317,8 @@ class CORE_EXPORT WebFrameWidgetImpl
                       int selection_start,
                       int selection_end,
                       mojom::blink::ImeState ime_state,
-                      DOMNodeIdType target_dom_node_id) override;
+                      DOMNodeIdType target_dom_node_id,
+                      gfx::Range& composition_range) override;
   void CommitText(const String& text,
                   const Vector<ui::ImeTextSpan>& ime_text_spans,
                   const gfx::Range& replacement_range,
@@ -376,11 +378,13 @@ class CORE_EXPORT WebFrameWidgetImpl
       base::TimeTicks) override;
   void OnFirstContentfulPaint() override;
   void MarkConditional(const AtomicString& name,
-                       base::TimeTicks start_time) override;
+                       base::TimeTicks start_time,
+                       LocalDOMWindow* window) override;
   void MeasureConditional(const AtomicString& name,
                           const AtomicString& start_mark,
                           const AtomicString& end_mark,
-                          base::TimeTicks end_time) override;
+                          base::TimeTicks end_time,
+                          LocalDOMWindow* window) override;
   // TODO(https://crbug.com/515098190): Below are not FrameWidget overrides.
 
   void SetVirtualKeyboardResizeHeightForTesting(int);
@@ -398,7 +402,8 @@ class CORE_EXPORT WebFrameWidgetImpl
   // WebFrameWidget overrides.
   void InitializeNonCompositing(WebNonCompositedWidgetClient* client) override;
   WebLocalFrame* LocalRoot() const override;
-  WebInputMethodController* GetActiveWebInputMethodController() const override;
+  WebInputMethodControllerImpl* GetActiveWebInputMethodController()
+      const override;
   void DisableDragAndDrop() override;
   WebLocalFrameImpl* FocusedWebLocalFrameInWidget() const override;
   bool ScrollFocusedEditableElementIntoView() override;
@@ -433,6 +438,9 @@ class CORE_EXPORT WebFrameWidgetImpl
   FrameWidgetTestHelper* GetFrameWidgetTestHelperForTesting() override;
   void PrepareForFinalLifecyclUpdateForTesting() override;
   void ApplyLocalSurfaceIdUpdate(const viz::LocalSurfaceId& id) override;
+  const display::ScreenInfo& GetScreenInfo() override;
+  const display::ScreenInfos& GetScreenInfos() override;
+  float GetOriginalDeviceScaleFactor() override;
 
   // Called when a drag-n-drop operation should begin.
   virtual void StartDragging(LocalFrame* source_frame,
@@ -496,10 +504,6 @@ class CORE_EXPORT WebFrameWidgetImpl
       const VisualProperties& visual_properties) override;
   bool PinchGestureActiveInMainFrame() override;
   float PageScaleInMainFrame() override;
-  const display::ScreenInfo& GetScreenInfo() override;
-  const display::ScreenInfos& GetScreenInfos() override;
-  const display::ScreenInfo& GetOriginalScreenInfo() override;
-  const display::ScreenInfos& GetOriginalScreenInfos() override;
   gfx::Rect WindowRect() override;
   gfx::Rect ViewRect() override;
   void SetScreenRects(const gfx::Rect& widget_screen_rect,
@@ -523,6 +527,7 @@ class CORE_EXPORT WebFrameWidgetImpl
   void BindInputTargetClient(
       mojo::PendingReceiver<viz::mojom::blink::InputTargetClient> receiver)
       override;
+  const display::ScreenInfos& GetOriginalScreenInfos() override;
 
   // mojom::blink::FrameWidget overrides:
   void SetViewportIntersection(
@@ -817,8 +822,6 @@ class CORE_EXPORT WebFrameWidgetImpl
   // compositor submits a frame.
   void PropagateHistorySequenceNumberToCompositor();
 
-  // Ask compositor to create the shared memory for dropped frames ukm region.
-  base::ReadOnlySharedMemoryRegion CreateSharedMemoryForDroppedFramesUkm();
 #if BUILDFLAG(IS_ANDROID)
   // Calculate and cache the most up to date line bounding boxes in the document
   // coordinate space.
@@ -941,7 +944,8 @@ class CORE_EXPORT WebFrameWidgetImpl
                          const gfx::Rect& window_screen_rect) override;
   void OrientationChanged() override;
   void DidUpdateSurfaceAndScreen(
-      const display::ScreenInfos& previous_original_screen_infos) override;
+      const display::ScreenInfos& previous_original_screen_infos,
+      const display::ScreenInfos& previous_effective_screen_infos) override;
   gfx::Rect ViewportVisibleRect() override;
   std::optional<display::mojom::blink::ScreenOrientation>
   ScreenOrientationOverride() override;
@@ -1166,9 +1170,6 @@ class CORE_EXPORT WebFrameWidgetImpl
   // change the fullscreen state (e.g. on/off or current display).
   bool DidChangeFullscreenState(
       const VisualProperties& visual_properties) const;
-
-  // Satisfy the render blocking condition for cross-document view transitions.
-  void NotifyViewTransitionRenderingHasBegun();
 
   // True when `this` should ignore input events.
   bool ShouldIgnoreInputEvents();

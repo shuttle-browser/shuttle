@@ -19,13 +19,18 @@ VIEWS_EXPORT BASE_DECLARE_FEATURE(kEnableInputProtection);
 VIEWS_EXPORT BASE_DECLARE_FEATURE(kEnableTouchDragCursorSync);
 VIEWS_EXPORT BASE_DECLARE_FEATURE(kKeyboardAccessibleTooltipInViews);
 VIEWS_EXPORT BASE_DECLARE_FEATURE(kLabelDefaultTooltipFastPath);
-VIEWS_EXPORT BASE_DECLARE_FEATURE(kNativeViewHostManagesLayers);
+VIEWS_EXPORT BASE_DECLARE_FEATURE(kSkipRedundantSetNativeThemeUpdate);
 #if BUILDFLAG(IS_MAC)
 VIEWS_EXPORT BASE_DECLARE_FEATURE(kMacActivateWidgetOnFocusRequest);
 VIEWS_EXPORT BASE_DECLARE_FEATURE(kNotifyCompositorOfSpaceVisibilityOnMacOs);
 VIEWS_EXPORT BASE_DECLARE_FEATURE(kNotifyCompositorOfWindowOcclusionOnMacOs);
 VIEWS_EXPORT BASE_DECLARE_FEATURE(kNotifyCompositorOfWindowVisibilityOnMacOs);
 #endif
+#if BUILDFLAG(IS_WIN)
+VIEWS_EXPORT BASE_DECLARE_FEATURE(kSkipRedundantMaximizedFrameChange);
+VIEWS_EXPORT BASE_DECLARE_FEATURE(kSkipRedundantSendFrameChanged);
+VIEWS_EXPORT BASE_DECLARE_FEATURE(kSkipRedundantWindowActivation);
+#endif  // BUILDFLAG(IS_WIN)
 
 }  // namespace views::features
 

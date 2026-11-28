@@ -66,8 +66,11 @@
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/layout/grid/layout_grid.h"
 #include "third_party/blink/renderer/core/layout/grid_lanes/layout_grid_lanes.h"
+#include "third_party/blink/renderer/core/layout/inline/inline_cursor.h"
 #include "third_party/blink/renderer/core/layout/layout_block.h"
 #include "third_party/blink/renderer/core/layout/layout_box.h"
+#include "third_party/blink/renderer/core/layout/layout_inline.h"
+#include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/svg/transform_helper.h"
 #include "third_party/blink/renderer/core/page/scrolling/sticky_position_scrolling_constraints.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
@@ -768,32 +771,20 @@ CSSValue* ComputedStyleUtils::ValueForPositionOffset(
     const CSSProperty& property,
     const LayoutObject* layout_object,
     CSSValuePhase value_phase) {
-  std::pair<const Length*, const Length*> positions;
-  bool is_horizontal_property;
-  switch (property.PropertyID()) {
-    case CSSPropertyID::kLeft:
-      positions = std::make_pair(&style.Left(), &style.Right());
-      is_horizontal_property = true;
-      break;
-    case CSSPropertyID::kRight:
-      positions = std::make_pair(&style.Right(), &style.Left());
-      is_horizontal_property = true;
-      break;
-    case CSSPropertyID::kTop:
-      positions = std::make_pair(&style.Top(), &style.Bottom());
-      is_horizontal_property = false;
-      break;
-    case CSSPropertyID::kBottom:
-      positions = std::make_pair(&style.Bottom(), &style.Top());
-      is_horizontal_property = false;
-      break;
-    default:
-      NOTREACHED();
-  }
-  DCHECK(positions.first && positions.second);
-
-  const Length& offset = *positions.first;
-  const Length& opposite = *positions.second;
+  const Length& offset = ([&]() {
+    switch (property.PropertyID()) {
+      case CSSPropertyID::kLeft:
+        return style.Left();
+      case CSSPropertyID::kRight:
+        return style.Right();
+      case CSSPropertyID::kTop:
+        return style.Top();
+      case CSSPropertyID::kBottom:
+        return style.Bottom();
+      default:
+        NOTREACHED();
+    }
+  })();
 
   // Just return the computed-value if:
   //  - We don't have a layout-object.
@@ -809,42 +800,7 @@ CSSValue* ComputedStyleUtils::ValueForPositionOffset(
     return ZoomAdjustedPixelValueForLength(offset, style);
   }
 
-  auto& document = layout_object->GetDocument();
-  const auto* box = DynamicTo<LayoutBox>(layout_object);
-  if (layout_object->IsOutOfFlowPositioned()) {
-    // LayoutBox::OutOfFlowInsetsForGetComputedStyle() requires there to be
-    // layout results to get the right insets. If there are none, return early
-    // as this is considered an error case.
-    CHECK(box);
-    if (!box->PhysicalFragmentCount()) {
-      return ZoomAdjustedPixelValueForLength(offset, style);
-    }
-
-    // LayoutBox::OutOfFlowInsetsForGetComputedStyle() are relative to the
-    // container's writing direction. Convert it to physical.
-    const PhysicalBoxStrut& insets =
-        box->OutOfFlowInsetsForGetComputedStyle().ConvertToPhysical(
-            box->ContainingBlock()->Style().GetWritingDirection());
-    LayoutUnit inset;
-    switch (property.PropertyID()) {
-      case CSSPropertyID::kLeft:
-        inset = insets.left;
-        break;
-      case CSSPropertyID::kTop:
-        inset = insets.top;
-        break;
-      case CSSPropertyID::kRight:
-        inset = insets.right;
-        break;
-      case CSSPropertyID::kBottom:
-        inset = insets.bottom;
-        break;
-      default:
-        NOTREACHED();
-    }
-    return ZoomAdjustedPixelValue(inset, style);
-  }
-
+  // Used sticky insets are stored on the sticky-constraints object.
   if (layout_object->IsStickyPositioned()) {
     const auto sticky_constraints =
         To<LayoutBoxModelObject>(layout_object)->StickyConstraints();
@@ -870,12 +826,74 @@ CSSValue* ComputedStyleUtils::ValueForPositionOffset(
     return ZoomAdjustedPixelValueForLength(offset, style);
   }
 
+  DCHECK(layout_object->IsOutOfFlowPositioned() ||
+         layout_object->IsRelPositioned());
+  if (layout_object->IsOutOfFlowPositioned() ||
+      RuntimeEnabledFeatures::UsedPositionRelativeInsetsEnabled()) {
+    const auto* box_fragment = ([&]() -> const PhysicalBoxFragment* {
+      if (const auto* box = DynamicTo<LayoutBox>(layout_object)) {
+        if (box->PhysicalFragmentCount()) {
+          return box->GetPhysicalFragment(0);
+        }
+      } else if (const auto* layout_inline =
+                     DynamicTo<LayoutInline>(layout_object)) {
+        InlineCursor cursor;
+        cursor.MoveTo(*layout_inline);
+        if (cursor) {
+          return cursor.Current().BoxFragment();
+        }
+      }
+      return nullptr;
+    })();
+
+    if (box_fragment) {
+      const LayoutUnit inset = ([&]() {
+        const PhysicalBoxStrut insets = box_fragment->UsedPositionInsets();
+        switch (property.PropertyID()) {
+          case CSSPropertyID::kLeft:
+            return insets.left;
+          case CSSPropertyID::kTop:
+            return insets.top;
+          case CSSPropertyID::kRight:
+            return insets.right;
+          case CSSPropertyID::kBottom:
+            return insets.bottom;
+          default:
+            NOTREACHED();
+        }
+      })();
+      return ZoomAdjustedPixelValue(inset, style);
+    }
+
+    return ZoomAdjustedPixelValueForLength(offset, style);
+  }
+
   DCHECK(layout_object->IsRelPositioned());
+
+  auto& document = layout_object->GetDocument();
+  const auto* box = DynamicTo<LayoutBox>(layout_object);
+  const bool is_horizontal_property =
+      property.PropertyID() == CSSPropertyID::kLeft ||
+      property.PropertyID() == CSSPropertyID::kRight;
+  const Length& opposite = ([&]() {
+    switch (property.PropertyID()) {
+      case CSSPropertyID::kLeft:
+        return style.Right();
+      case CSSPropertyID::kRight:
+        return style.Left();
+      case CSSPropertyID::kTop:
+        return style.Bottom();
+      case CSSPropertyID::kBottom:
+        return style.Top();
+      default:
+        NOTREACHED();
+    }
+  })();
 
   if ((offset.IsPercent() || offset.IsCalculated()) && box) {
     const LayoutUnit containing_block_size =
         is_horizontal_property ==
-                box->ContainingBlock()->IsHorizontalWritingMode()
+                box->ContainingBox()->IsHorizontalWritingMode()
             ? box->ContainingBlockLogicalWidthForContent()
             : box->ContainingBlockLogicalHeightForRelPositioned();
     UseCounter::Count(box->GetDocument(),
@@ -898,7 +916,7 @@ CSSValue* ComputedStyleUtils::ValueForPositionOffset(
       if (box) {
         LayoutUnit containing_block_size =
             is_horizontal_property ==
-                    layout_object->ContainingBlock()->IsHorizontalWritingMode()
+                    layout_object->ContainingBox()->IsHorizontalWritingMode()
                 ? box->ContainingBlockLogicalWidthForContent()
                 : box->ContainingBlockLogicalHeightForRelPositioned();
         return ZoomAdjustedPixelValue(
@@ -1380,9 +1398,9 @@ CSSIdentifierValue* ComputedStyleUtils::ValueForFontOpticalSizing(
     const ComputedStyle& style) {
   OpticalSizing optical_sizing = style.GetFontDescription().FontOpticalSizing();
   switch (optical_sizing) {
-    case kAutoOpticalSizing:
+    case OpticalSizing::kAuto:
       return CSSIdentifierValue::Create(CSSValueID::kAuto);
-    case kNoneOpticalSizing:
+    case OpticalSizing::kNone:
       return CSSIdentifierValue::Create(CSSValueID::kNone);
     default:
       return CSSIdentifierValue::Create(CSSValueID::kAuto);
@@ -1599,11 +1617,11 @@ CSSValue* ComputedStyleUtils::ValueForFont(const ComputedStyle& style) {
   OpticalSizing optical_sizing = style.GetFontDescription().FontOpticalSizing();
 
   if (kerning != FontDescription::kAutoKerning ||
-      optical_sizing != kAutoOpticalSizing ||
+      optical_sizing != OpticalSizing::kAuto ||
       (RuntimeEnabledFeatures::CSSFontSizeAdjustEnabled() &&
        style.GetFontDescription().HasSizeAdjust()) ||
       variant_position != FontDescription::kNormalVariantPosition ||
-      (variant_emoji != kNormalVariantEmoji)) {
+      (variant_emoji != FontVariantEmoji::kNormal)) {
     return nullptr;
   }
 
@@ -2292,11 +2310,11 @@ CSSValue* ComputedStyleUtils::ValueForGridPosition(
     // Do not include the numeric value of 1 if followed by a line name.
     if (position.SpanPosition() != 1 || !has_named_line) {
       list->Append(*CSSNumericLiteralValue::Create(
-          position.SpanPosition(), CSSPrimitiveValue::UnitType::kNumber));
+          position.SpanPosition(), CSSPrimitiveValue::UnitType::kInteger));
     }
   } else {
     list->Append(*CSSNumericLiteralValue::Create(
-        position.IntegerPosition(), CSSPrimitiveValue::UnitType::kNumber));
+        position.IntegerPosition(), CSSPrimitiveValue::UnitType::kInteger));
   }
 
   if (has_named_line) {
@@ -2928,17 +2946,6 @@ CSSValue* ComputedStyleUtils::SingleValueForTimelineShorthand(
     list->Append(*ValueForTimelineInset(inset.value(), style));
   }
   return list;
-}
-
-CSSValue* ComputedStyleUtils::ValueForAnimationTriggerBehavior(
-    const EAnimationTriggerBehavior trigger_behavior) {
-  return CSSIdentifierValue::Create(PlatformEnumToCSSValueID(trigger_behavior));
-}
-
-CSSValue* ComputedStyleUtils::ValueForAnimationTriggerBehaviorList(
-    const Vector<EAnimationTriggerBehavior>& behavior_list) {
-  return CreateAnimationValueList(behavior_list,
-                                  &ValueForAnimationTriggerBehavior);
 }
 
 CSSValue* ComputedStyleUtils::ValueForTimelineTriggerActivationRangeStartList(

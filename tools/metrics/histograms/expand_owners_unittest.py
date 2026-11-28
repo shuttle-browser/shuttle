@@ -4,6 +4,8 @@
 
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
@@ -62,8 +64,6 @@ def _MakeOwnersFile(filename: str, directory: str) -> str:
   Returns:
     The temporary file's absolute path.
   """
-  if not directory:
-    directory = str(path_util.METRICS_TOOLS_PATH / 'histograms')
   owners_file = tempfile.NamedTemporaryFile(suffix=filename, dir=directory)
   return os.path.abspath(owners_file.name)
 
@@ -71,25 +71,55 @@ def _MakeOwnersFile(filename: str, directory: str) -> str:
 class ExpandOwnersTest(unittest.TestCase):
   def setUp(self):
     super(ExpandOwnersTest, self).setUp()
-    self.temp_dir = tempfile.mkdtemp(
-      dir=str(path_util.METRICS_TOOLS_PATH / 'histograms')
-    )
+    # Use a fake `src` directory outside of the Chromium checkout. Creating
+    # files in the checkout interferes with other tests and presubmit checks
+    # that scan the checkout in parallel.
+    temp_root = tempfile.mkdtemp()
+    self.addCleanup(shutil.rmtree, temp_root)
+    fake_src = Path(temp_root) / 'src'
+    src_patcher = mock.patch.object(path_util, 'CHROMIUM_SRC_PATH', fake_src)
+    src_patcher.start()
+    self.addCleanup(src_patcher.stop)
+    self.temp_dir = str(fake_src / 'tools' / 'metrics' / 'histograms')
+    os.makedirs(self.temp_dir)
 
-    # The below construction is used rather than __file__.endswith() because
-    # the file extension could be .py or .pyc.
-    assert (
-      os.sep.join(
-        ['tools', 'metrics', 'histograms', 'expand_owners_unittest.py']
+  @unittest.skipIf(sys.platform == 'win32', 'Fake dirmd is a shell script.')
+  def testExtractComponentViaDirmdWithLargeOutput(self):
+    """Checks that dirmd output larger than the OS pipe buffer is handled."""
+    fake_src = str(path_util.CHROMIUM_SRC_PATH)
+    depot_tools = os.path.join(fake_src, 'third_party', 'depot_tools')
+    os.makedirs(depot_tools)
+    fake_dirmd = os.path.join(depot_tools, 'dirmd')
+    # Prints ~200 KB of JSON, well above the default pipe buffer size.
+    with open(fake_dirmd, 'w') as f:
+      f.write(
+        '\n'.join(
+          [
+            '#!/bin/sh',
+            'printf \'{"dirs": {"large": {"buganizerPublic": '
+            '{"componentId": "12345"}}}, "padding": "\'',
+            "head -c 200000 /dev/zero | tr '\\0' x",
+            "printf '\"}\\n'",
+            '',
+          ]
+        )
       )
-      in __file__
-    )
+    os.chmod(fake_dirmd, 0o755)
 
-  def tearDown(self):
-    super(ExpandOwnersTest, self).tearDown()
-    shutil.rmtree(self.temp_dir)
+    with mock.patch.object(
+      expand_owners, '_DEPOT_TOOLS_PATH', Path(depot_tools)
+    ):
+      self.assertEqual(
+        expand_owners.ExtractComponentViaDirmd(os.path.join(fake_src, 'large')),
+        '12345',
+      )
 
   def testExpandOwnersUsesMetadataOverOwners(self):
     """Checks that DIR_METADATA is used if available"""
+    # dirmd requires the root directory to be a git repository.
+    subprocess.run(
+      ['git', 'init', '--quiet', str(path_util.CHROMIUM_SRC_PATH)], check=True
+    )
     with open(os.path.join(self.temp_dir, 'DIR_METADATA'), 'w+') as md:
       md.write(
         '\n'.join(
@@ -689,16 +719,13 @@ class ExpandOwnersTest(unittest.TestCase):
 
     Also, checks that there isn't a recursive loop.
     """
+    src_owners_path = str(path_util.CHROMIUM_SRC_PATH / 'OWNERS')
+    Path(src_owners_path).touch()
+
     path = expand_owners._GetOwnersFilePath('src/banana/chocolate/OWNERS')
     result = expand_owners._GetHigherLevelOwnersFilePath(path)
 
-    # The condition is true when the tools directory's parent directory is src,
-    # which is generally the case locally. However, the parent directory is not
-    # always src, e.g. on various testing bots.
-    if os.path.basename(str(path_util.CHROMIUM_SRC_PATH)) == 'src':
-      self.assertRegex(result, r'.*OWNERS')
-    else:
-      self.assertEqual(result, '')
+    self.assertEqual(result, src_owners_path)
 
 
 if __name__ == '__main__':

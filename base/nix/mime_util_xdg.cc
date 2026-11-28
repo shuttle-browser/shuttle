@@ -6,10 +6,13 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 #include <utility>
+#include <vector>
 
 #include "base/byte_size.h"
 #include "base/check.h"
+#include "base/containers/span.h"
 #include "base/containers/stack.h"
 #include "base/environment.h"
 #include "base/files/file_path.h"
@@ -19,6 +22,7 @@
 #include "base/no_destructor.h"
 #include "base/numerics/byte_conversions.h"
 #include "base/strings/string_util.h"
+#include "base/strings/string_view_util.h"
 #include "base/strings/utf_string_conversion_utils.h"
 #include "build/build_config.h"
 
@@ -37,8 +41,14 @@ constexpr ByteSize kMaxMimeTypesFileSize = MiB(10);
 constexpr size_t kMaxNodes = 30000;
 // Maximum file extension size.
 constexpr size_t kMaxExtSize = 100;
-// Header size in mime.cache file.
-constexpr size_t kHeaderSize = 40;
+// Header sizes in mime.cache files: v1.1 headers are 40 bytes (ending at
+// GENERIC_ICONS_LIST_OFFSET); v1.2 headers add TYPES_LIST_OFFSET at offset 40,
+// making the header 44 bytes.
+constexpr uint32_t kHeaderSizeV1_1 = 40;
+constexpr uint32_t kHeaderSizeV1_2 = 44;
+constexpr uint16_t kSupportedMajorVersion = 1;
+constexpr uint16_t kMinSupportedMinorVersion = 1;
+constexpr uint16_t kMaxSupportedMinorVersion = 2;
 // Largest valid unicode code point is U+10ffff.
 constexpr uint32_t kMaxUnicode = 0x10ffff;
 // Default mime glob weight is 50, max is 100.
@@ -62,11 +72,11 @@ void LoadAllMimeCacheFiles(MimeTypeMap& map, std::vector<FileInfo>& files) {
   }
 }
 
-// Read 4 bytes from string `buf` at `offset` as network order uint32_t.
+// Read 4 bytes from `buf` at `offset` as network order uint32_t.
 // Returns false if `offset > buf.size() - 4` or `offset` is not aligned to a
 // 4-byte word boundary, or `*result` is not between `min_result` and
 // `max_result`. `field_name` is used in error message.
-bool ReadInt(const std::string& buf,
+bool ReadInt(span<const uint8_t> buf,
              uint32_t offset,
              const std::string& field_name,
              uint32_t min_result,
@@ -74,11 +84,10 @@ bool ReadInt(const std::string& buf,
              uint32_t* result) {
   if (offset > buf.size() - 4 || (offset & 0x3)) {
     LOG(ERROR) << "Invalid offset=" << offset << " for " << field_name
-               << ", string size=" << buf.size();
+               << ", size=" << buf.size();
     return false;
   }
-  auto bytes = base::as_byte_span(buf);
-  *result = base::U32FromBigEndian(bytes.subspan(offset).first<4u>());
+  *result = U32FromBigEndian(buf.subspan(offset).first<4u>());
   if (*result < min_result || *result > max_result) {
     LOG(ERROR) << "Invalid " << field_name << "=" << *result
                << " not between min_result=" << min_result
@@ -95,15 +104,21 @@ bool ParseMimeTypes(const FilePath& file_path, MimeTypeMap& out_mime_types) {
   // https://specifications.freedesktop.org/shared-mime-info-spec/shared-mime-info-spec-0.21.html#idm46070612075440
   // Header:
   // 2      CARD16    MAJOR_VERSION  1
-  // 2      CARD16    MINOR_VERSION  2
+  // 2      CARD16    MINOR_VERSION  1 or 2
   // 4      CARD32    ALIAS_LIST_OFFSET
   // 4      CARD32    PARENT_LIST_OFFSET
   // 4      CARD32    LITERAL_LIST_OFFSET
   // 4      CARD32    REVERSE_SUFFIX_TREE_OFFSET
+  // 4      CARD32    GLOB_LIST_OFFSET
+  // 4      CARD32    MAGIC_LIST_OFFSET
+  // 4      CARD32    NAMESPACE_LIST_OFFSET
+  // 4      CARD32    ICONS_LIST_OFFSET
+  // 4      CARD32    GENERIC_ICONS_LIST_OFFSET
+  // 4      CARD32    TYPES_LIST_OFFSET (v1.2 only)
   // ...
   // ReverseSuffixTree:
   // 4      CARD32    N_ROOTS
-  // 4       CARD32    FIRST_ROOT_OFFSET
+  // 4      CARD32    FIRST_ROOT_OFFSET
   // ReverseSuffixTreeNode:
   // 4      CARD32    CHARACTER
   // 4      CARD32    N_CHILDREN
@@ -115,27 +130,48 @@ bool ParseMimeTypes(const FilePath& file_path, MimeTypeMap& out_mime_types) {
   //                  FLAGS in rest:
   //                  0x100 = case-sensitive
 
-  std::string buf;
-  if (!ReadFileToStringWithMaxSize(file_path, &buf,
-                                   kMaxMimeTypesFileSize.InBytes())) {
+  std::optional<std::vector<uint8_t>> optional_buf =
+      ReadFileToBytesWithMaxSize(file_path, kMaxMimeTypesFileSize.InBytes());
+  if (!optional_buf.has_value()) {
     LOG(ERROR) << "Failed reading in mime.cache file: " << file_path;
     return false;
   }
 
-  if (buf.size() < kHeaderSize) {
+  span<const uint8_t> buf(optional_buf.value());
+  if (buf.size() < kHeaderSizeV1_1) {
     LOG(ERROR) << "Invalid mime.cache file size=" << buf.size();
     return false;
   }
 
-  // Validate file[ALIAS_LIST_OFFSET - 1] is null to ensure that any
-  // null-terminated strings dereferenced at addresses below ALIAS_LIST_OFFSET
-  // will not overflow.
+  const uint16_t major_version = U16FromBigEndian(buf.first<2u>());
+  const uint16_t minor_version = U16FromBigEndian(buf.subspan<2u, 2u>());
+  if (major_version != kSupportedMajorVersion ||
+      minor_version < kMinSupportedMinorVersion ||
+      minor_version > kMaxSupportedMinorVersion) {
+    LOG(ERROR) << "Invalid mime.cache version=" << major_version << "."
+               << minor_version;
+    return false;
+  }
+  const uint32_t header_size =
+      minor_version == 1 ? kHeaderSizeV1_1 : kHeaderSizeV1_2;
+  if (buf.size() < header_size) {
+    LOG(ERROR) << "Invalid mime.cache file size=" << buf.size();
+    return false;
+  }
+
+  // Strings are stored between `header_size` and `ALIAS_LIST_OFFSET`. When the
+  // string table is non-empty (`alias_list_offset > header_size`), validate
+  // `buf[alias_list_offset - 1]` is null to ensure that any null-terminated
+  // strings dereferenced at addresses in `[header_size, alias_list_offset - 1]`
+  // will not overflow. Valid empty mime.cache files have no string table
+  // entries (`alias_list_offset == header_size`), and any leaf node attempting
+  // to read a mime type offset in that empty range will fail `ReadInt` below.
   uint32_t alias_list_offset = 0;
-  if (!ReadInt(buf, 4, "ALIAS_LIST_OFFSET", kHeaderSize, buf.size(),
+  if (!ReadInt(buf, 4, "ALIAS_LIST_OFFSET", header_size, buf.size(),
                &alias_list_offset)) {
     return false;
   }
-  if (buf[alias_list_offset - 1] != 0) {
+  if (alias_list_offset > header_size && buf[alias_list_offset - 1] != 0) {
     LOG(ERROR) << "Invalid mime.cache file does not contain null prior to "
                   "ALIAS_LIST_OFFSET="
                << alias_list_offset;
@@ -145,7 +181,7 @@ bool ParseMimeTypes(const FilePath& file_path, MimeTypeMap& out_mime_types) {
   // Parse ReverseSuffixTree. Read all nodes and place them on `stack`,
   // allowing max of kMaxNodes and max extension of kMaxExtSize.
   uint32_t tree_offset = 0;
-  if (!ReadInt(buf, 16, "REVERSE_SUFFIX_TREE_OFFSET", kHeaderSize, buf.size(),
+  if (!ReadInt(buf, 16, "REVERSE_SUFFIX_TREE_OFFSET", header_size, buf.size(),
                &tree_offset)) {
     return false;
   }
@@ -184,14 +220,14 @@ bool ParseMimeTypes(const FilePath& file_path, MimeTypeMap& out_mime_types) {
       // Leaf node, add mime type if it is highest weight.
       if (c == 0) {
         uint32_t mime_type_offset = 0;
-        if (!ReadInt(buf, p, "mime type offset", kHeaderSize,
+        if (!ReadInt(buf, p, "mime type offset", header_size,
                      alias_list_offset - 1, &mime_type_offset)) {
           return false;
         }
         p += 4;
         uint8_t weight = kDefaultGlobWeight;
         if ((p + 3) < buf.size()) {
-          weight = static_cast<uint8_t>(buf[p + 3]);
+          weight = buf[p + 3];
         }
         p += 4;
         if (n.ext.size() > 0 && n.ext[0] == '.') {
@@ -199,7 +235,7 @@ bool ParseMimeTypes(const FilePath& file_path, MimeTypeMap& out_mime_types) {
           auto it = out_mime_types.find(ext);
           if (it == out_mime_types.end() || weight > it->second.weight) {
             // Use the mime type string from `buf` up to the first NUL.
-            auto mime_type = std::string_view(buf).substr(mime_type_offset);
+            auto mime_type = as_string_view(buf.subspan(mime_type_offset));
             mime_type = mime_type.substr(0u, mime_type.find('\0'));
             out_mime_types[std::string(ext)] = {std::string(mime_type), weight};
           }

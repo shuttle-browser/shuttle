@@ -54,12 +54,14 @@ import {getHtml} from './a11y_page.html.js';
  * Must be kept in sync with the C++ enum of the same name in
  * chrome/browser/ui/toasts/toast_metrics.h.
  */
+// LINT.IfChange(ToastAlertLevel)
 export enum ToastAlertLevel {
   ALL = 0,
   ACTIONABLE = 1,
   // Must be last.
-  COUNT = 1,
+  COUNT = 2,
 }
+// LINT.ThenChange(//chrome/browser/ui/toasts/toast_metrics.h:ToastAlertLevel)
 
 // <if expr="not is_chromeos">
 /**
@@ -104,8 +106,10 @@ export class SettingsA11yPageElement extends SettingsA11yPageElementBase {
 
   static override get properties() {
     return {
-      // <if expr="not is_chromeos">
+      // <if expr="is_macosx or is_win">
       enableLiveCaption_: {type: Boolean},
+      // </if>
+      // <if expr="not is_chromeos">
       numericUncheckedToastAlertValues_: {type: Array},
       showPageColors_: {type: Boolean},
       requestedA11yPageColorsPref_: {type: Object},
@@ -135,14 +139,16 @@ export class SettingsA11yPageElement extends SettingsA11yPageElementBase {
   private browserProxy_: AccessibilityBrowserProxy =
       AccessibilityBrowserProxyImpl.getInstance();
 
-  // <if expr="not is_chromeos">
+  // <if expr="is_macosx or is_win">
   protected accessor enableLiveCaption_: boolean =
       loadTimeData.getBoolean('enableLiveCaption');
+  // </if>
+  // <if expr="not is_chromeos">
   protected accessor numericUncheckedToastAlertValues_: ToastAlertLevel[] =
       [ToastAlertLevel.ACTIONABLE];
   protected accessor showPageColors_: boolean =
       loadTimeData.getBoolean('pageColorsSettingsEnabled');
-  protected accessor requestedA11yPageColorsPref_:
+  private accessor requestedA11yPageColorsPref_:
       chrome.settingsPrivate.PrefObject<PageColors>|undefined;
   protected accessor pageColorsOptions_: DropdownMenuOptionList = [
     {

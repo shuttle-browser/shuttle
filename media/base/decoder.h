@@ -16,6 +16,7 @@ namespace media {
 
 // List of known AudioDecoder implementations; recorded to UKM, always add new
 // values to the end and do not reorder or delete values from this list.
+// LINT.IfChange(AudioDecoderType)
 enum class AudioDecoderType : int {
   kUnknown = 0,          // Decoder name string is not recognized or n/a.
   kFFmpeg = 1,           // FFmpegAudioDecoder
@@ -34,9 +35,11 @@ enum class AudioDecoderType : int {
   // Keep this at the end and equal to the last entry.
   kMaxValue = kIamf,
 };
+// LINT.ThenChange(//tools/metrics/histograms/enums.xml:AudioDecoderType)
 
 // List of known VideoDecoder implementations; recorded to UKM, always add new
 // values to the end and do not reorder or delete values from this list.
+// LINT.IfChange(VideoDecoderType)
 enum class VideoDecoderType : int {
   kUnknown = 0,  // Decoder name string is not recognized or n/a.
   // kGpu = 1,      // GpuVideoDecoder (DEPRECATED)
@@ -59,10 +62,12 @@ enum class VideoDecoderType : int {
   kTesting = 17,       // Never send this to UKM, for tests only.
   kOutOfProcess = 18,  // OOPVideoDecoder (Linux and ChromeOS)
   kVideoToolbox = 19,  // VideoToolboxVideoDecoder (Mac)
+  kDav2d = 20,         // Dav2dVideoDecoder
 
   // Keep this at the end and equal to the last entry.
-  kMaxValue = kVideoToolbox
+  kMaxValue = kDav2d
 };
+// LINT.ThenChange(//tools/metrics/histograms/enums.xml:VideoDecoderType)
 
 MEDIA_EXPORT const char* GetDecoderName(AudioDecoderType type);
 MEDIA_EXPORT const char* GetDecoderName(VideoDecoderType type);

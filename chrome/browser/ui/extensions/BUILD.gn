@@ -86,6 +86,7 @@ source_set("extensions") {
     "//ui/base/unowned_user_data",
     "//ui/gfx",
     "//ui/gfx/geometry",
+    "//url",
   ]
 
   if (enable_extensions) {
@@ -115,7 +116,6 @@ source_set("extensions") {
       "//ui/base/mojom:ui_base_types",
       "//ui/gfx",
       "//ui/gfx/geometry",
-      "//url",
     ]
   }
 }
@@ -194,6 +194,7 @@ source_set("impl") {
     "//chrome/common/extensions",
     "//components/google/core/common",
     "//components/image_fetcher/core",
+    "//components/regional_capabilities",
     "//components/search_engines",
     "//components/sessions",
     "//components/strings:components_strings",

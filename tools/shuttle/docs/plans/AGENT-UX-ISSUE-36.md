@@ -56,9 +56,12 @@ Scope: persistent agents (throwaway agents expire on their own).
 
 ## 4. New tab in an agent (their d73cf0ba06, fixed)
 
-- "+" while an agent's tab is shown opens a tab for that agent (its storage, its latest session, in its group).
-  Ctrl/Cmd+T stays a plain new tab. Right-click on "+": "New tab" + "New tab in <agent>" for agents with open
-  sessions (shown agent first), the rest under "New tab in another agent".
+- "+" while an agent's tab is shown opens a tab for that agent (its storage, its latest session, in its group). Both tab
+  strips: the shared one in `shared::NewTabButton::NotifyClick`, the classic one in
+  `BrowserTabStripController::CreateNewTab` (fork 64, their 0b6bcad046). `kActionNewTab` is upstream again: Cmd/Ctrl+T,
+  File > New Tab and the menus' "New tab" run it (`IDC_NEW_TAB` maps to it) and stay a plain user tab (Toby,
+  2026-11-22). Right-click on "+": "New tab" + "New tab in <agent>" for agents with open sessions (shown agent first),
+  the rest under "New tab in another agent".
 - **S2 fix**: no interception in the generic `AddAndReturnTabAt`. Instead the two group commands of the tab context
   menu ("New tab to the right", "New tab in group") check for an agent group in their own handlers and call
   `ShuttleService::OpenNewTabInAgent(agent_id, {browser, index, foreground})`, which returns the created

@@ -2,15 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://new-tab-page/new_tab_page.js';
+import 'chrome://resources/cr_components/searchbox/searchbox_icon.js';
+import 'chrome://webui-test/strings.m.js';
 
-import {SearchboxBrowserProxy} from 'chrome://new-tab-page/new_tab_page.js';
-import type {SearchboxIconElement} from 'chrome://new-tab-page/new_tab_page.js';
-import {createAutocompleteMatch} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
+import {createAutocompleteMatch, SearchboxBrowserProxy} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
+import type {SearchboxIconElement} from 'chrome://resources/cr_components/searchbox/searchbox_icon.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {eventToPromise, isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
 
+import {assertIconMaskImageUrl} from './searchbox_test_utils.js';
 import {TestSearchboxBrowserProxy} from './test_searchbox_browser_proxy.js';
 
 const HISTORY_URL: string = 'history-url';
@@ -61,6 +62,14 @@ suite('CrComponentsSearchboxIconTest', () => {
     assertEquals('', icon.$.image.getAttribute('alt'));
     assertEquals('', icon.$.faviconImage.getAttribute('alt'));
     assertEquals('', icon.$.iconImg.getAttribute('alt'));
+  });
+
+  test('icon and images are not user-selectable', () => {
+    assertEquals('none', window.getComputedStyle(icon).userSelect);
+    assertEquals('none', window.getComputedStyle(icon.$.image).userSelect);
+    assertEquals(
+        'none', window.getComputedStyle(icon.$.faviconImage).userSelect);
+    assertEquals('none', window.getComputedStyle(icon.$.iconImg).userSelect);
   });
 
   test('entity image shown on load', async () => {
@@ -173,9 +182,7 @@ suite('CrComponentsSearchboxIconTest', () => {
     await microtasksFinished();
 
     const vectorIcon = icon.$.icon;
-    assertEquals(
-        window.getComputedStyle(vectorIcon).webkitMaskImage,
-        `url("chrome://new-tab-page/${match.iconPath}")`);
+    assertIconMaskImageUrl(icon, match.iconPath);
 
     const faviconImage = icon.$.faviconImage;
     const src = faviconImage.getAttribute('src');
@@ -206,9 +213,7 @@ suite('CrComponentsSearchboxIconTest', () => {
     await microtasksFinished();
 
     const vectorIcon = icon.$.icon;
-    assertEquals(
-        window.getComputedStyle(vectorIcon).webkitMaskImage,
-        `url("chrome://new-tab-page/${match.iconPath}")`);
+    assertIconMaskImageUrl(icon, match.iconPath);
 
     const faviconImage = icon.$.faviconImage;
     const src = faviconImage.getAttribute('src');
@@ -340,9 +345,7 @@ suite('CrComponentsSearchboxIconTest', () => {
 
       assertTrue(isVisible(vectorIcon));
       assertFalse(isVisible(faviconImage));
-      assertEquals(
-          window.getComputedStyle(vectorIcon).webkitMaskImage,
-          `url("chrome://new-tab-page/${match.iconPath}")`);
+      assertIconMaskImageUrl(icon, match.iconPath);
     });
 
     test('renders mask icon for search match', async () => {
@@ -358,9 +361,7 @@ suite('CrComponentsSearchboxIconTest', () => {
       const faviconImage = icon.$.faviconImage;
       assertTrue(isVisible(vectorIcon));
       assertFalse(isVisible(faviconImage));
-      assertEquals(
-          window.getComputedStyle(vectorIcon).webkitMaskImage,
-          `url("chrome://new-tab-page/${match.iconPath}")`);
+      assertIconMaskImageUrl(icon, match.iconPath);
     });
 
     test('renders themed icon for document match', async () => {
@@ -431,6 +432,39 @@ suite('CrComponentsSearchboxIconTest', () => {
           await icon.updateComplete;
 
           assertTrue(isVisible(faviconImage));
+        });
+
+    test(
+        'renders monochrome Google G mask when defaultIcon is google_g_cr23',
+        async () => {
+          const googleGCr23 =
+              '//resources/cr_components/searchbox/icons/google_g_cr23.svg';
+          icon.defaultIcon = googleGCr23;
+          await microtasksFinished();
+
+          assertFalse(isVisible(icon.$.faviconImage));
+          assertTrue(isVisible(icon.$.icon));
+          assertEquals(icon.maskImage, `url(${googleGCr23})`);
+        });
+
+    test(
+        'renders monochrome Google G mask for search match when ' +
+            'defaultIcon is google_g_cr23',
+        async () => {
+          const googleGCr23 =
+              '//resources/cr_components/searchbox/icons/google_g_cr23.svg';
+          icon.defaultIcon = googleGCr23;
+          const match = createAutocompleteMatch();
+          match.isSearchType = true;
+          match.type = 'search-what-you-typed';
+          match.iconPath = 'search_cr23.svg';
+          icon.match = match;
+
+          await microtasksFinished();
+
+          assertFalse(isVisible(icon.$.faviconImage));
+          assertTrue(isVisible(icon.$.icon));
+          assertEquals(icon.maskImage, `url(${googleGCr23})`);
         });
 
     for (const isTopChromeSearchbox of [true, false]) {

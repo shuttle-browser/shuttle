@@ -20,14 +20,14 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/strings/str_cat.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_options.pb.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/tool/container_util.h"
 #include "mediapipe/framework/tool/name_util.h"
 #include "mediapipe/framework/tool/subgraph_expansion.h"
@@ -257,7 +257,7 @@ absl::StatusOr<CalculatorGraphConfig> SwitchContainer::GetConfig(
 
   // Parse all input and output tags from the container node.
   auto container_node = Subgraph::GetNode(options);
-  MP_RETURN_IF_ERROR(ValidateContract(container_node, options));
+  ABSL_RETURN_IF_ERROR(ValidateContract(container_node, options));
   CalculatorGraphConfig::Node container_streams;
   GetContainerNodeStreams(container_node, &container_streams);
   std::map<TagIndex, std::string> input_tags, output_tags;

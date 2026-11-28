@@ -15,6 +15,10 @@
 
 namespace webui {
 
+bool ShouldUseTopChromeWebUIProfile() {
+  return false;
+}
+
 void CreateTopChromeWebUIProfile() {}
 
 void DestroyTopChromeWebUIProfile() {}
@@ -26,6 +30,10 @@ Profile* GetTopChromeWebUIProfile() {
 Profile& GetProfileForTopChromeWebUIContents(Profile* user_profile) {
   CHECK(user_profile);
   return *user_profile;
+}
+
+bool IsWebUIDataSourceShared(content::WebUI* web_ui) {
+  return Profile::FromWebUI(web_ui)->IsTopChromeWebUIProfile();
 }
 
 ScopedTopChromeWebUIProfileForTesting::ScopedTopChromeWebUIProfileForTesting() {

@@ -21,6 +21,7 @@ import {assert} from 'chrome://resources/js/assert.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
 import type {MetricsBrowserProxy} from '../metrics_browser_proxy.js';
+import {loadTimeData} from '../i18n_setup.js';
 import {MetricsBrowserProxyImpl} from '../metrics_browser_proxy.js';
 import {pageVisibility} from '../page_visibility.js';
 import type {PageVisibility} from '../page_visibility.js';
@@ -36,20 +37,6 @@ export interface SettingsMenuElement {
   };
 }
 
-const pathToActionMap: Map<string, string> = new Map([
-  ['/privacy', 'SettingsMenu_PrivacyClicked'],
-  ['/performance', 'SettingsMenu_PerformanceClicked'],
-  ['/appearance', 'SettingsMenu_AppearanceClicked'],
-  ['/search', 'SettingsMenu_SearchClicked'],
-  ['/defaultBrowser', 'SettingsMenu_DefaultBrowserClicked'],
-  ['/onStartup', 'SettingsMenu_OnStartupClicked'],
-  ['/languages', 'SettingsMenu_LanguagesClicked'],
-  ['/downloads', 'SettingsMenu_DownloadsClicked'],
-  ['/accessibility', 'SettingsMenu_AccessibilityClicked'],
-  ['/system', 'SettingsMenu_SystemClicked'],
-  ['/reset', 'SettingsMenu_ResetClicked'],
-  ['/help', 'SettingsMenu_AboutClicked'],
-]);
 
 const SettingsMenuElementBase = RouteObserverMixinLit(CrLitElement);
 
@@ -73,6 +60,8 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
         reflect: true,
       },
 
+      settingsRefresh2026Enabled_: {type: Boolean},
+
       /**
        * Dictionary defining page visibility.
        */
@@ -81,10 +70,36 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
   }
 
   accessor collapsed: boolean = false;
+  protected accessor settingsRefresh2026Enabled_: boolean =
+      loadTimeData.getString('settingsRefresh2026') !== '';
   protected accessor pageVisibility_: PageVisibility|undefined = pageVisibility;
+  private pathToActionMap_: Map<string, string>;
 
   private metricsBrowserProxy_: MetricsBrowserProxy =
       MetricsBrowserProxyImpl.getInstance();
+
+  constructor() {
+    super();
+
+    this.pathToActionMap_ = new Map([
+      ['/privacy', 'SettingsMenu_PrivacyClicked'],
+      ['/performance', 'SettingsMenu_PerformanceClicked'],
+      ['/appearance', 'SettingsMenu_AppearanceClicked'],
+      ['/search', 'SettingsMenu_SearchClicked'],
+      ['/defaultBrowser', 'SettingsMenu_DefaultBrowserClicked'],
+      ['/onStartup', 'SettingsMenu_OnStartupClicked'],
+      ['/languages', 'SettingsMenu_LanguagesClicked'],
+      ['/downloads', 'SettingsMenu_DownloadsClicked'],
+      ['/accessibility', 'SettingsMenu_AccessibilityClicked'],
+      ['/system', 'SettingsMenu_SystemClicked'],
+      ['/reset', 'SettingsMenu_ResetClicked'],
+      ['/help', 'SettingsMenu_AboutClicked'],
+    ]);
+    if (this.settingsRefresh2026Enabled_) {
+      this.pathToActionMap_.set('/', 'SettingsMenu_HomeClicked');
+      this.pathToActionMap_.set('/general', 'SettingsMenu_GeneralClicked');
+    }
+  }
 
   protected shouldHideMenuItem_(visibility: boolean|object|undefined): boolean {
     return visibility === false;
@@ -138,7 +153,7 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
     this.setSelectedPath_(path);
     this.metricsBrowserProxy_.recordSettingsNavCategoryClicked();
 
-    const action = pathToActionMap.get(path);
+    const action = this.pathToActionMap_.get(path);
     if (action) {
       this.metricsBrowserProxy_.recordAction(action);
     }

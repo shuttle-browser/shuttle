@@ -237,6 +237,18 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//components/signin/internal/identity_manager/mutable_profile_oauth2_token_service_delegate.h:AccountMoveDecision) -->
 
+<!-- LINT.IfChange(AccountPreviewAsyncPreferredAccountResult) -->
+
+<enum name="AccountPreviewAsyncPreferredAccountResult">
+  <int value="0" label="Cached"/>
+  <int value="1" label="FetchedWithResult"/>
+  <int value="2" label="FetchedWithoutResult"/>
+  <int value="3" label="Timeout"/>
+  <int value="4" label="Cancelled"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/signin/core/browser/account_preview_data_service_impl.h:AsyncPreferredAccountResult) -->
+
 <!-- LINT.IfChange(AccountPreviewDataFetchState) -->
 
 <enum name="AccountPreviewDataFetchState">
@@ -270,7 +282,7 @@ chromium-metrics-reviews@google.com.
   <int value="4" label="ExternalAppAccountUpdated"/>
   <int value="5" label="PrimaryAccountSet"/>
   <int value="6" label="PrimaryAccountCleared"/>
-  <int value="7" label="PreferredAccountMissingForFRE"/>
+  <int value="7" label="PreferredAccountMissingForAsyncFetch"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/signin/core/browser/account_preview_data_service_impl.h:FetchTriggerCause) -->
@@ -297,14 +309,6 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(//ios/chrome/browser/signin/model/account_profile_mapper.mm:AccountProfileStartupState) -->
-
-<enum name="AccountReauthenticationEvent">
-  <int value="0" label="STARTED"/>
-  <int value="1" label="SUCCESS"/>
-  <int value="2" label="SUCCESS_RECENT_AUTHENTICATION"/>
-  <int value="3" label="REJECTED"/>
-  <int value="4" label="ERROR"/>
-</enum>
 
 <enum name="AccountRelation">
   <int value="0" label="Empty cookie jar"/>
@@ -546,6 +550,33 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//components/signin/core/browser/account_reconcilor.h:CookieBindingUpgradeStatus) -->
 
+<!-- LINT.IfChange(CrossDeviceSigninPromoEntryPoint) -->
+
+<enum name="CrossDeviceSigninPromoEntryPoint">
+  <int value="0" label="ProfileMenu"/>
+  <int value="1" label="HistoryPage"/>
+  <int value="2" label="SendTabToSelf"/>
+  <int value="3" label="WhatsNewPage"/>
+  <int value="4" label="ForeignTabs"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/signin/cross_device_signin_promo_manager.h:CrossDeviceSigninPromoEntryPoint) -->
+
+<!-- LINT.IfChange(CrossDeviceSigninPromoShouldShowResult) -->
+
+<enum name="CrossDeviceSigninPromoShouldShowResult">
+  <int value="0" label="CanShow"/>
+  <int value="1" label="NotSignedIn"/>
+  <int value="2" label="HasMobileDevice"/>
+  <int value="3" label="DataTypeNotEnabled"/>
+  <int value="4" label="ShownLimitReached"/>
+  <int value="5" label="CooldownActive"/>
+  <int value="6" label="AlreadyShownAfterDismissalLimitReached"/>
+  <int value="7" label="ProfileTypeNotEligible"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/signin/cross_device_signin_promo_manager.h:CrossDeviceSigninPromoShouldShowResult) -->
+
 <!-- LINT.IfChange(DeviceBoundSessionCreateSessionsResult) -->
 
 <enum name="DeviceBoundSessionCreateSessionsResult">
@@ -570,6 +601,17 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(//components/signin/core/browser/dice_header_helper.h:DiceLinkedAccountsMetaHeaderStatus) -->
+
+<!-- LINT.IfChange(DiceLinkedAccountsNewProfileOAuthMultiLoginResult) -->
+
+<enum name="DiceLinkedAccountsNewProfileOAuthMultiLoginResult">
+  <int value="0" label="Success"/>
+  <int value="1" label="TransientError"/>
+  <int value="2" label="PersistentError"/>
+  <int value="3" label="TimedOut"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/signin/dice_intercepted_session_startup_helper.h:DiceLinkedAccountsNewProfileOAuthMultiLoginResult) -->
 
 <!-- LINT.IfChange(DiceTokenBindingOutcome) -->
 
@@ -724,6 +766,33 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(//ios/chrome/browser/authentication/account_menu/public/account_menu_constants.h:AccountMenuAccessPoint) -->
+
+<!-- LINT.IfChange(IOSAccountProfileMappingCleanupAction) -->
+
+<enum name="IOSAccountProfileMappingCleanupAction">
+  <int value="0"
+      label="Cohort A1/A2: Deleted first Managed profile (uninitialized)"/>
+  <int value="1"
+      label="Cohort A3: Abandoned first Managed profile (initialized, older)"/>
+  <int value="2"
+      label="Cohort A3: Abandoned second Managed profile (initialized, older)"/>
+  <int value="3"
+      label="Cohort B1/B2: Deleted second Managed profile (uninitialized)"/>
+  <int value="4"
+      label="Cohort C1: Detached from uninitialized Personal profile"/>
+  <int value="5"
+      label="Cohort C2: Detached from initialized Personal profile (not
+             primary)"/>
+  <int value="6"
+      label="Cohort C3: Detached from initialized Personal profile (was
+             primary)"/>
+  <int value="7"
+      label="Both uninitialized: Deleted second Managed profile (unexpected)"/>
+  <int value="8" label="Attached to 3 or more profiles: Skipped (unexpected)"/>
+  <int value="9" label="Multiple corrupted accounts: Skipped (unexpected)"/>
+</enum>
+
+<!-- LINT.ThenChange(//ios/chrome/browser/signin/model/account_profile_mapper.h:IOSAccountProfileMappingCleanupAction) -->
 
 <!-- LINT.IfChange(IOSAccountProfileMappingStartupState) -->
 
@@ -909,6 +978,9 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="Account not on device"/>
   <int value="1" label="Account in persistent error state"/>
   <int value="2" label="Account recently added"/>
+  <int value="3"
+      label="Target account on device, primary account in persistent error
+             state"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/signin/chrome_signin_helper.h:MirrorHeaderEvent) -->
@@ -1151,6 +1223,7 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="Account settings"/>
   <int value="2" label="Recent tabs"/>
   <int value="3" label="Reauth info bar"/>
+  <int value="4" label="Enterprise proxy"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/signin/public/base/signin_metrics.h:ReauthAccessPoint) -->
@@ -1161,7 +1234,10 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="Proceed to challenge (account in cookies)"/>
   <int value="1"
       label="Proceed to challenge without cookies (shows identifier page)"/>
-  <int value="2" label="Fallback to AddSession"/>
+  <int value="2"
+      label="(Obsolete) Fallback to AddSession. Split into 3 and 4 in 2026/11"/>
+  <int value="3" label="Fallback to AddSession (stale cookies)"/>
+  <int value="4" label="Fallback to AddSession (valid Gaia session)"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/signin/signin_promo.h:ReauthProceedToChallengeResult) -->
@@ -1319,6 +1395,7 @@ chromium-metrics-reviews@google.com.
   <int value="112" label="App Switcher AI Summarization (iOS only)"/>
   <int value="113" label="Gemini External App Store Event (iOS only)"/>
   <int value="114" label="Password Manager card (Desktop only)"/>
+  <int value="115" label="Enterprise proxy (iOS only)"/>
 </enum>
 
 <enum name="SigninAccountReconcilorState">
@@ -1355,6 +1432,18 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//ios/chrome/browser/authentication/add_account_signin/add_account_signin_manager.h:SigninAddAccountToDeviceResult) -->
 
+<!-- LINT.IfChange(SigninAndroidAddAccountRestrictionState) -->
+
+<enum name="SigninAndroidAddAccountRestrictionState">
+  <int value="0" label="Allowed, no accounts"/>
+  <int value="1" label="Allowed, at least one account"/>
+  <int value="2" label="Blocked (DISALLOW_MODIFY_ACCOUNTS), no accounts"/>
+  <int value="3"
+      label="Blocked (DISALLOW_MODIFY_ACCOUNTS), at least one account"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/signin/public/android/java/src/org/chromium/components/signin/AccountManagerFacadeImpl.java:AddAccountRestrictionState) -->
+
 <enum name="SigninAndroidAddAccountState">
   <int value="0" label="Requested"/>
   <int value="1" label="Started"/>
@@ -1365,6 +1454,18 @@ chromium-metrics-reviews@google.com.
   <int value="6" label="Returned after sign-in activity destroyed"/>
   <int value="7" label="Returned and sign-in activity was not destroyed"/>
 </enum>
+
+<!-- LINT.IfChange(SigninAndroidCreateAddAccountIntentResult) -->
+
+<enum name="SigninAndroidCreateAddAccountIntentResult">
+  <int value="0" label="No intent, none of the known blockers active"/>
+  <int value="1" label="Intent created"/>
+  <int value="2" label="No intent, DISALLOW_MODIFY_ACCOUNTS restriction"/>
+  <int value="3"
+      label="No intent, Google account management disabled by device policy"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/signin/public/android/java/src/org/chromium/components/signin/AccountManagerFacadeImpl.java:CreateAddAccountIntentResult) -->
 
 <!-- LINT.IfChange(SigninCrossDeviceInitialState) -->
 
@@ -1403,6 +1504,16 @@ chromium-metrics-reviews@google.com.
 <enum name="SigninFunnelEvent">
   <int value="0" label="PromoShownWithAccount"/>
   <int value="1" label="PromoShownNoAccount"/>
+  <int value="2" label="ChooseOtherAccountClicked"/>
+  <int value="3" label="SigninButtonClicked"/>
+  <int value="4" label="SigninDeclinedButtonClicked"/>
+  <int value="5" label="AddAccountClicked"/>
+  <int value="6" label="AccountPickerAddAccountClicked"/>
+  <int value="7" label="AccountPickerShown"/>
+  <int value="8" label="NonDefaultAccountSelected"/>
+  <int value="9" label="DefaultAccountSelected"/>
+  <int value="10" label="AccountPickerDismissed"/>
+  <int value="11" label="AccountAdded"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/signin/public/base/signin_metrics.h:SigninFunnelEvent) -->
@@ -1647,16 +1758,21 @@ chromium-metrics-reviews@google.com.
   <int value="21" label="User clicked signout from clear browsing data page">
     User clicked sign-out in the clear browsing data page.
   </int>
-  <int value="22" label="AccountReconcilor GaiaCookiesUpdated">
+  <int value="22"
+      label="(Obsolete) AccountReconcilor GaiaCookiesUpdated. Deprecated as of
+             11/2026.">
     The reconcilor cleared the signin primary account on a Gaia cookie update.
   </int>
-  <int value="23" label="AccountReconcilor Reconcile">
+  <int value="23"
+      label="(Obsolete) AccountReconcilor Reconcile. Deprecated as of 11/2026.">
     The reconcilor cleared the signin primary account during reconcilation.
   </int>
   <int value="24" label="SigninManager UpdateUnconsentedPrimaryAccount">
     SigninManager decides to clear the prrimary (includes web sign out).
   </int>
-  <int value="25" label="User deleted account cookies">
+  <int value="25"
+      label="(Obsolete) User deleted account cookies. Deprecated as of
+             11/2026.">
     User cleared account cookies when there's no sync consent, which has caused
     sign out.
   </int>

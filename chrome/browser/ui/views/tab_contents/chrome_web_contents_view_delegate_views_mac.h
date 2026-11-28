@@ -5,6 +5,8 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_TAB_CONTENTS_CHROME_WEB_CONTENTS_VIEW_DELEGATE_VIEWS_MAC_H_
 #define CHROME_BROWSER_UI_VIEWS_TAB_CONTENTS_CHROME_WEB_CONTENTS_VIEW_DELEGATE_VIEWS_MAC_H_
 
+#include <stdint.h>
+
 #include <memory>
 #include <optional>
 #include <vector>
@@ -70,6 +72,7 @@ class ChromeWebContentsViewDelegateViewsMac
 
  private:
   void OnReadAvailableTypes(
+      uint64_t request_id,
       content::GlobalRenderFrameHostId render_frame_host_id,
       const content::ContextMenuParams& params,
       std::optional<ui::DataTransferEndpoint> data_dst,
@@ -78,10 +81,12 @@ class ChromeWebContentsViewDelegateViewsMac
       std::vector<std::u16string> types);
 
   void OnGetAllAvailableFormats(
+      uint64_t request_id,
       content::GlobalRenderFrameHostId render_frame_host_id,
       const content::ContextMenuParams& params,
       base::OnceCallback<void(std::unique_ptr<RenderViewContextMenuBase>)>
           callback,
+      bool is_paste_enabled,
       base::flat_set<ui::ClipboardFormatType> formats);
 
   content::RenderWidgetHostView* GetActiveRenderWidgetHostView() const;
@@ -93,6 +98,9 @@ class ChromeWebContentsViewDelegateViewsMac
   // The context menu. Callbacks are asynchronous so we need to keep it around.
   std::unique_ptr<RenderViewContextMenuBase> context_menu_;
 
+  uint64_t context_menu_request_id_ = 0;
+
+  // Clipboard state from the last completed request, for BuildMenu().
   bool is_paste_enabled_ = false;
   bool is_paste_and_match_style_enabled_ = false;
 

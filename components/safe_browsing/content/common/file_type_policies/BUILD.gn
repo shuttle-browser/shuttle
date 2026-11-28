@@ -1,0 +1,33 @@
+# Copyright 2026 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//components/safe_browsing/buildflags.gni")
+
+if (safe_browsing_mode != 0) {
+  source_set("file_type_policies") {
+    sources = [
+      "file_type_policies.cc",
+      "file_type_policies.h",
+      "file_type_policies_policy_util.cc",
+      "file_type_policies_policy_util.h",
+      "file_type_policies_prefs.cc",
+      "file_type_policies_prefs.h",
+    ]
+
+    public_deps = [
+      "//base",
+      "//components/safe_browsing/content/common/file_type_policies/proto:download_file_types_proto",
+      "//url",
+    ]
+
+    deps = [
+      "//components/policy/core/browser",
+      "//components/prefs",
+      "//components/resources:components_resources",
+      "//components/url_matcher",
+      "//ui/base",
+    ]
+  }
+
+}

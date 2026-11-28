@@ -213,6 +213,9 @@ void EndpointFetcher::PerformHttpRequest(
   resource_request->method = GetHttpMethodString(request_params_.http_method());
   resource_request->url = request_params_.url();
   resource_request->credentials_mode = GetCredentialsMode();
+  if (request_params_.redirect_mode.has_value()) {
+    resource_request->redirect_mode = *request_params_.redirect_mode;
+  }
 
   if (GetSetSiteForCookies()) {
     resource_request->site_for_cookies =
@@ -290,11 +293,9 @@ void EndpointFetcher::OnResponseFetched(
     EndpointFetcherCallback endpoint_fetcher_callback,
     std::optional<std::string> response_body) {
   auto response = std::make_unique<EndpointResponse>();
-  std::string mime_type;
   if (const auto* response_info = simple_url_loader_->ResponseInfo();
       response_info && response_info->headers) {
     response->http_status_code = response_info->headers->response_code();
-    mime_type = response_info->mime_type;
     response->headers = base::MakeRefCounted<net::HttpResponseHeaders>(
         response_info->headers->raw_headers());
   }

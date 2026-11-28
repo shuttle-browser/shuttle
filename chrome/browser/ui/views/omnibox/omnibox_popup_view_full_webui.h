@@ -5,10 +5,13 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_VIEW_FULL_WEBUI_H_
 #define CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_VIEW_FULL_WEBUI_H_
 
+#include <memory>
 #include <optional>
 
 #include "base/functional/callback.h"
+#include "base/functional/function_ref.h"
 #include "chrome/browser/ui/omnibox/omnibox_popup_view.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_host.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_view_webui.h"
 #include "chrome/browser/ui/webui/omnibox_popup/mojom/omnibox_popup.mojom-forward.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -21,18 +24,18 @@ class NavigationHandle;
 class LocationBar;
 class OmniboxController;
 class OmniboxView;
-class OmniboxPopupPresenterDelegate;
 class OmniboxPopupHandler;
 
 class OmniboxPopupViewFullWebUI : public OmniboxPopupViewWebUI,
                                   public content::WebContentsObserver {
  public:
+  // `on_ready_callback` runs when the WebUI's page handler first connects.
   OmniboxPopupViewFullWebUI(
       OmniboxView* omnibox_view,
       OmniboxController* controller,
       LocationBar* location_bar,
-      OmniboxPopupPresenterDelegate& presenter_delegate,
-      base::OnceClosure on_ready_callback = base::OnceClosure());
+      std::unique_ptr<OmniboxPopupHost> popup_host,
+      base::RepeatingClosure on_ready_callback = base::RepeatingClosure());
   OmniboxPopupViewFullWebUI(const OmniboxPopupViewFullWebUI&) = delete;
   OmniboxPopupViewFullWebUI& operator=(const OmniboxPopupViewFullWebUI&) =
       delete;
@@ -52,10 +55,13 @@ class OmniboxPopupViewFullWebUI : public OmniboxPopupViewWebUI,
   // Called when the active tab changes.
   void OnTabChanged(content::WebContents* contents) override;
   void ReshowPopup() override;
+  void Blur() override;
   // Called when the native omnibox gains focus. If the popup state changed,
   // synchronizes full input state (`SyncNativeStateToWebUI()`). If the popup
   // was already open, sends a dedicated `SetFocus(true)` Mojo IPC to ensure
   // DOM input focus in the WebUI is restored without resetting input state.
+  // If a modal dialog blurred the omnibox and closed the popup, restores the
+  // selection the omnibox had instead.
   void OnFocus(bool query_zps, bool select_all, bool show_full_url) override;
   void FocusSearchWithDefaultSearchEngineKeywordMode() override;
   // Called when the native omnibox loses focus. Sends a dedicated
@@ -81,6 +87,17 @@ class OmniboxPopupViewFullWebUI : public OmniboxPopupViewWebUI,
   // messy.
   bool is_focused() const { return focused_; }
 
+  // The Full popup's blur sequence: accepts any temporary text while user
+  // input is in progress as the user's draft, reverts unedited text (see
+  // `OmniboxEditModel::RevertUneditedText()`), tells the WebUI it lost focus
+  // (`edit_model->popup_view()->OnBlur()`, when the popup view is still
+  // registered), runs `move_focus` (the host's own focus change, e.g. clearing
+  // views focus or focusing the page), blurs the edit model, and closes the
+  // popup unless the edit model holds a draft. Static so a host can still run
+  // the rest of the sequence while the popup view is tearing down.
+  static void BlurOmnibox(OmniboxController& controller,
+                          base::FunctionRef<void()> move_focus);
+
   const OmniboxPopupHandler* popup_handler_for_testing() {
     return GetPopupHandler();
   }
@@ -92,10 +109,14 @@ class OmniboxPopupViewFullWebUI : public OmniboxPopupViewWebUI,
   // Implements `SyncNativeStateToWebUI()` and
   // `SyncNativeStateToWebUIPreservingMatches()`. For
   // `MatchesUpdate::kPreserveMatches`, the input state is sent even if
-  // unchanged, so that WebUI stops any in-flight query.
+  // unchanged, so that WebUI stops any in-flight query. If set, and its text is
+  // the text sent, `focus_state_to_restore` overrides the selection sent. See
+  // `OnFocus()`.
   void SyncNativeStateToWebUIImpl(
       omnibox_popup::mojom::MatchesUpdate matches_update,
-      bool show_full_url);
+      bool show_full_url,
+      std::optional<OmniboxPopupHost::FocusStateToRestore>
+          focus_state_to_restore);
 
   // Caches the last text string sent to the WebUI to avoid redundant IPCs.
   // Null after a state reset (e.g., tab switch).
@@ -114,9 +135,10 @@ class OmniboxPopupViewFullWebUI : public OmniboxPopupViewWebUI,
   bool has_completed_first_tab_changed_ = false;
   bool is_reverting_ = false;
   bool focused_ = false;
-  // Invoked when the WebUI Mojo handler connects to trigger one-time focus
-  // handoff from `OmniboxViewViews` to `OmniboxPopupViewFullWebUI`.
-  base::OnceClosure on_ready_callback_;
+  // Invoked when the WebUI Mojo handler connects, or when this window adopts a
+  // page whose handler is connected, to hand focus off from `OmniboxViewViews`
+  // to `OmniboxPopupViewFullWebUI`.
+  base::RepeatingClosure on_ready_callback_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_VIEW_FULL_WEBUI_H_

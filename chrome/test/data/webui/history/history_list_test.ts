@@ -1134,25 +1134,15 @@ suite('HistoryListTest', function() {
       return (await a11yMessagesEventPromise).detail.messages[0];
     }
 
-    let singleResultMessage =
+    const singleResultMessage =
         await getMessagesForResults('some query', [TEST_HISTORY_RESULTS[0]!]);
     assertEquals(
         'Found 1 search result for \'some query\'', singleResultMessage);
 
-    let multipleResultsMessage =
+    const multipleResultsMessage =
         await getMessagesForResults('new query', TEST_HISTORY_RESULTS);
     assertEquals(
         'Found 4 search results for \'new query\'', multipleResultsMessage);
-
-    loadTimeData.overrideValues({enableHistoryEmbeddings: true});
-    singleResultMessage =
-        await getMessagesForResults('some query', [TEST_HISTORY_RESULTS[0]!]);
-    assertEquals('Found 1 exact match for \'some query\'', singleResultMessage);
-
-    multipleResultsMessage =
-        await getMessagesForResults('new query', TEST_HISTORY_RESULTS);
-    assertEquals(
-        'Found 4 exact matches for \'new query\'', multipleResultsMessage);
   });
 
   test('ScrollingLoadsMore', async () => {
@@ -1312,6 +1302,67 @@ suite('HistoryListTest', function() {
     await microtasksFinished();
     assertFalse(menu.open);
   });
+
+  test('RowsKnowWhenSearching', async () => {
+    await finishSetup(TEST_HISTORY_RESULTS);
+    let items = element.shadowRoot.querySelectorAll('history-item');
+    assertTrue(items.length > 0);
+    for (const item of items) {
+      assertFalse(item.hasAttribute('is-search'));
+    }
+
+    testProxy.handler.resetResolver('queryHistory');
+    testProxy.handler.setResultFor('queryHistory', Promise.resolve({
+      results: {info: createHistoryInfo('cat'), value: TEST_HISTORY_RESULTS},
+    }));
+    app.fire('change-query', {search: 'cat'});
+    await testProxy.handler.whenCalled('queryHistory');
+    await microtasksFinished();
+    items = element.shadowRoot.querySelectorAll('history-item');
+    assertTrue(items.length > 0);
+    for (const item of items) {
+      assertTrue(item.hasAttribute('is-search'));
+    }
+  });
+
+  // <if expr="is_android">
+  test('EmptyStateIllustrationAndroid', async () => {
+    loadTimeData.overrideValues({
+      isBrowsingHistoryFilterByActorEnabled: false,
+      isBrowsingHistoryFilterByDeviceEnabled: false,
+    });
+    await finishSetup([]);
+    assertFalse(element.$.noResults.hidden);
+    const svg = element.$.noResults.querySelector('svg');
+    assertTrue(!!svg);
+    assertEquals('true', svg.getAttribute('aria-hidden'));
+    assertEquals(
+        loadTimeData.getString('noResults'),
+        element.$.noResults.textContent.trim());
+
+    testProxy.handler.resetResolver('queryHistory');
+    testProxy.handler.setResultFor('queryHistory', Promise.resolve({
+      results: {info: createHistoryInfo('foo'), value: []},
+    }));
+    app.fire('change-query', {search: 'foo'});
+    await testProxy.handler.whenCalled('queryHistory');
+    await microtasksFinished();
+    assertEquals('foo', element.searchedTerm);
+    assertFalse(element.$.noResults.hidden);
+    assertEquals(
+        loadTimeData.getString('noSearchResults'),
+        element.$.noResults.textContent.trim());
+    assertTrue(!!element.$.noResults.querySelector('svg'));
+  });
+  // </if>
+
+  // <if expr="not is_android">
+  test('EmptyStateNonAndroid', async () => {
+    await finishSetup([]);
+    assertFalse(element.$.noResults.hidden);
+    assertEquals(null, element.$.noResults.querySelector('svg'));
+  });
+  // </if>
 
   teardown(function() {
     app.fire('change-query', {search: ''});

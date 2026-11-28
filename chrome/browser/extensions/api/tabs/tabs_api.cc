@@ -13,6 +13,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/thread_pool.h"
+#include "base/time/time.h"
 #include "base/types/expected.h"
 #include "base/types/expected_macros.h"
 #include "base/types/optional_util.h"
@@ -39,6 +40,7 @@
 #include "chrome/browser/ui/tabs/tab_muted_utils.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
+#include "components/enterprise/buildflags/buildflags.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/safe_browsing/buildflags.h"
 #include "components/sessions/content/session_tab_helper.h"
@@ -85,6 +87,10 @@
 #include "chrome/common/chrome_features.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
+
+#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
+#include "chrome/browser/enterprise/connectors/reporting/extension_actor_tracker.h"
+#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
@@ -588,13 +594,22 @@ base::ListValue TabsQueryFunction::BuildTabList(
     }
 
     TabListInterface* tab_list = TabListInterface::From(browser);
+    // On Android the tab list can be gone while the window is still
+    // enumerable (crbug.com/578132340), and a tab slot can be null when the
+    // native tab was destroyed while still referenced by the Java tab model
+    // (crbug.com/578128713). Skip both instead of crashing.
+    if (!tab_list) {
+      continue;
+    }
     for (int i = 0; i < tab_list->GetTabCount(); ++i) {
       if (tab_index > -1 && i != tab_index) {
         continue;
       }
 
       ::tabs::TabInterface* tab = tab_list->GetTab(i);
-      CHECK(tab);
+      if (!tab) {
+        continue;
+      }
 
       if (!MatchesTab(tab, url_patterns)) {
         continue;
@@ -1026,13 +1041,15 @@ ExtensionFunction::ResponseAction TabsCreateFunction::Run() {
 
   BrowserWindowCreateParams create_params(BrowserWindowInterface::TYPE_NORMAL,
                                           *profile_to_use, user_gesture());
+  const base::TimeTicks now = base::TimeTicks::Now();
   CreateBrowserWindow(
       std::move(create_params),
-      base::BindOnce(&TabsCreateFunction::OnBrowserWindowCreated, this));
+      base::BindOnce(&TabsCreateFunction::OnBrowserWindowCreated, this, now));
   return RespondLater();
 }
 
 void TabsCreateFunction::OnBrowserWindowCreated(
+    [[maybe_unused]] base::TimeTicks creation_time,
     BrowserWindowInterface* browser) {
   if (!browser) {
     Respond(Error(ExtensionTabUtil::kBrowserWindowNotAllowed));
@@ -1620,6 +1637,13 @@ bool TabsUpdateFunction::UpdateURL(content::WebContents* web_contents,
   // Marking the navigation as initiated via an API means that the focus
   // will stay in the omnibox - see https://crbug.com/40693812.
   load_params.transition_type = ui::PAGE_TRANSITION_FROM_API;
+
+#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
+  if (extension()) {
+    enterprise_connectors::ExtensionActorTracker::SetActiveActor(
+        web_contents, extension_id(), static_function_name());
+  }
+#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
 
   base::WeakPtr<content::NavigationHandle> navigation_handle =
       web_contents->GetController().LoadURLWithParams(load_params);
@@ -2940,6 +2964,13 @@ ExtensionFunction::ResponseAction TabsGoForwardFunction::Run() {
     return RespondNow(Error(tabs_constants::kNotFoundNextPageError));
   }
 
+#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
+  if (extension()) {
+    enterprise_connectors::ExtensionActorTracker::SetActiveActor(
+        web_contents, extension_id(), static_function_name());
+  }
+#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
+
   controller.GoForward();
   return RespondNow(NoArguments());
 }
@@ -2961,6 +2992,13 @@ ExtensionFunction::ResponseAction TabsGoBackFunction::Run() {
   if (!controller.CanGoBack()) {
     return RespondNow(Error(tabs_constants::kNotFoundNextPageError));
   }
+
+#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
+  if (extension()) {
+    enterprise_connectors::ExtensionActorTracker::SetActiveActor(
+        web_contents, extension_id(), static_function_name());
+  }
+#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
 
   controller.GoBack();
   return RespondNow(NoArguments());

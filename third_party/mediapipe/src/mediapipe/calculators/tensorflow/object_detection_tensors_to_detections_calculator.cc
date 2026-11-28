@@ -18,18 +18,18 @@
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensorflow/object_detection_tensors_to_detections_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/detection.pb.h"
 #include "mediapipe/framework/formats/location.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/framework/port/source_location.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/status_builder.h"
 #include "mediapipe/util/tensor_to_detection.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor.h"        // from @org_tensorflow
+#include "tensorflow/core/framework/tensor_shape.h"  // from @org_tensorflow
 
 namespace mediapipe {
 class CalculatorOptions;
@@ -151,7 +151,7 @@ class ObjectDetectionTensorsToDetectionsCalculator : public CalculatorBase {
     tf::Tensor input_num_detections_tensor =
         tf::Tensor(tf::DT_FLOAT, tf::TensorShape({0}));
     if (cc->Inputs().HasTag(kClasses)) {
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           input_num_detections_tensor,
           MaybeSqueezeDims(kNumDetections,
                            cc->Inputs().Tag(kNumDetections).Get<tf::Tensor>()));
@@ -160,12 +160,12 @@ class ObjectDetectionTensorsToDetectionsCalculator : public CalculatorBase {
       RET_CHECK_EQ(input_num_detections_tensor.dtype(), tf::DT_FLOAT);
     }
 
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto input_boxes_tensor,
         MaybeSqueezeDims(kBoxes, cc->Inputs().Tag(kBoxes).Get<tf::Tensor>()));
     RET_CHECK_EQ(input_boxes_tensor.dtype(), tf::DT_FLOAT);
 
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto input_scores_tensor,
         MaybeSqueezeDims(kScores, cc->Inputs().Tag(kScores).Get<tf::Tensor>()));
     RET_CHECK_EQ(input_scores_tensor.dtype(), tf::DT_FLOAT);
@@ -173,14 +173,14 @@ class ObjectDetectionTensorsToDetectionsCalculator : public CalculatorBase {
     tf::Tensor input_classes_tensor =
         tf::Tensor(tf::DT_FLOAT, tf::TensorShape({0}));
     if (cc->Inputs().HasTag(kClasses)) {
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           input_classes_tensor,
           MaybeSqueezeDims(kClasses,
                            cc->Inputs().Tag(kClasses).Get<tf::Tensor>()));
     }
     RET_CHECK_EQ(input_classes_tensor.dtype(), tf::DT_FLOAT);
 
-    auto output_detections = absl::make_unique<std::vector<Detection>>();
+    auto output_detections = std::make_unique<std::vector<Detection>>();
 
     const tf::Tensor& input_keypoints_tensor =
         cc->Inputs().HasTag(kKeypoints)

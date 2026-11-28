@@ -12,5 +12,10 @@
     Print Compositor Service
   </message>
 
+  <if expr="is_linux">
+    <message name="IDS_PRINT_DIALOG_TITLE" desc="The title of the system print dialog.">
+      Print
+    </message>
+  </if>
 
 </grit-part>

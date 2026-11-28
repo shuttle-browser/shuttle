@@ -364,7 +364,7 @@ bool LayoutBlock::HasLineIfEmpty() const {
     if (IsRootEditableElement(*GetNode()))
       return true;
   }
-  return FirstLineStyleRef().HasLineIfEmpty();
+  return FirstLineStyle().HasLineIfEmpty();
 }
 
 const LayoutBlock* LayoutBlock::FirstLineStyleParentBlock() const {
@@ -534,21 +534,6 @@ LayoutBlock* LayoutBlock::CreateAnonymousWithParentAndDisplay(
   layout_block->SetDocumentForAnonymous(parent->GetDocument());
   layout_block->SetStyle(new_style);
   return layout_block;
-}
-
-void LayoutBlock::RecalcVisualOverflow() {
-  NOT_DESTROYED();
-  if (!PhysicalFragmentCount()) {
-    ClearVisualOverflow();
-    return;
-  }
-
-  DCHECK(CanUseFragmentsForVisualOverflow());
-  DCHECK(!DisplayLockUtilities::LockedAncestorPreventingPrePaint(*this));
-  for (const PhysicalBoxFragment& fragment : PhysicalFragments()) {
-    DCHECK(fragment.CanUseFragmentsForInkOverflow());
-    fragment.GetMutableForPainting().RecalcInkOverflow();
-  }
 }
 
 }  // namespace blink

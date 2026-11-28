@@ -4,6 +4,7 @@
 
 import("//components/compose/features.gni")
 import("//ui/base/ui_features.gni")
+import("//ui/webui/webui_features.gni")
 
 assert(!is_ios, "Chromium/iOS shouldn't use anything in //chrome")
 
@@ -58,8 +59,13 @@ source_set("mixers") {
     "//components/search",
     "//ui/base:buildflags",
     "//ui/color",
+    "//ui/color:color_provider_utils_internal",
     "//ui/color:mixers",
   ]
+
+  if (is_android) {
+    sources += [ "android/native_chrome_color_mixer_android.cc" ]
+  }
 
   if (is_chromeos) {
     sources += [ "chromeos/native_chrome_color_mixer_chromeos.cc" ]

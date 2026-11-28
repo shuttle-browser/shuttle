@@ -6,19 +6,18 @@
 #include <cstring>
 #include <memory>
 
-#include "absl/status/status.h"
-#include "absl/strings/str_format.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
 #include "mediapipe/calculators/tensor/image_to_tensor_converter.h"
 #include "mediapipe/calculators/tensor/image_to_tensor_utils.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/tensor.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/gpu/gpu_buffer.h"
 #include "mediapipe/gpu/webgpu/webgpu_headers.h"
 #include "mediapipe/gpu/webgpu/webgpu_service.h"
 #include "mediapipe/gpu/webgpu/webgpu_texture_view.h"
 #include "mediapipe/gpu/webgpu/webgpu_utils.h"
-
 namespace mediapipe {
 namespace {
 
@@ -158,8 +157,8 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
                 .constants = nullptr,
             },
     };
-    pipeline_ =
-        WebGpuCreateComputePipelineAsync(service_.device(), &pipeline_desc);
+    pipeline_ = WebGpuCreateComputePipelineAsync(
+        service_.instance(), service_.device(), &pipeline_desc);
 
     // Create a uniform buffer for the parameters.
     wgpu::BufferDescriptor buffer_desc = {
@@ -182,7 +181,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
     RET_CHECK_EQ(tensor_buffer_offset, 0)
         << "The non-zero tensor_buffer_offset input is not supported yet.";
     const auto& output_shape = output_tensor.shape();
-    MP_RETURN_IF_ERROR(ValidateTensorShape(output_shape));
+    ABSL_RETURN_IF_ERROR(ValidateTensorShape(output_shape));
 
     const int output_height = output_shape.dims[1];
     const int output_width = output_shape.dims[2];
@@ -210,8 +209,8 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
         params.transform_matrix);
     params.output_width = output_width;
     params.output_height = output_height;
-    MP_ASSIGN_OR_RETURN(auto transform, GetValueRangeTransformation(
-                                            0.f, 1.f, range_min, range_max));
+    ABSL_ASSIGN_OR_RETURN(auto transform, GetValueRangeTransformation(
+                                              0.f, 1.f, range_min, range_max));
     params.value_transform_scale = transform.scale;
     params.value_transform_offset = transform.offset;
 
@@ -245,7 +244,7 @@ fn main(@builtin(global_invocation_id) gid : vec3<u32>) {
             .size = sizeof(Parameters),
         },
     };
-    MP_ASSIGN_OR_RETURN(wgpu::ComputePipeline * pipeline, pipeline_.Get());
+    ABSL_ASSIGN_OR_RETURN(wgpu::ComputePipeline * pipeline, pipeline_.Get());
     wgpu::BindGroupDescriptor bind_group_desc = {
         .layout = pipeline->GetBindGroupLayout(0),
         .entryCount = sizeof(entries) / sizeof(entries[0]),

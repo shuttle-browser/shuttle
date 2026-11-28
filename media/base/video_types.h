@@ -25,6 +25,7 @@ namespace media {
 //
 // WARNING: Do not add pixel formats with more than 8 bytes per pixel or the
 // total size of the frame can overflow on 32-bit platforms.
+// LINT.IfChange(VideoPixelFormat)
 enum VideoPixelFormat {
   PIXEL_FORMAT_UNKNOWN = 0,  // Unknown or unspecified format value.
   PIXEL_FORMAT_I420 =
@@ -107,10 +108,16 @@ enum VideoPixelFormat {
   // data in the high bits, zeros in the low bits, little-endian.
   PIXEL_FORMAT_P410LE = 43,
 
+  // 32bpp packed 10-bit 4:4:4 YUV with 2 bits of alpha, 1 plane. The 32-bit
+  // word layout is U:Y:V:A in bits 0-9:10-19:20-29:30-31, little-endian.
+  // Equivalent to DXGI_FORMAT_Y410.
+  PIXEL_FORMAT_Y410 = 44,
+
   // Please update UMA histogram enumeration when adding new formats here.
   PIXEL_FORMAT_MAX =
-      PIXEL_FORMAT_P410LE,  // Must always be equal to largest entry logged.
+      PIXEL_FORMAT_Y410,  // Must always be equal to largest entry logged.
 };
+// LINT.ThenChange(//tools/metrics/histograms/metadata/media/enums.xml:VideoPixelFormatUnion)
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.

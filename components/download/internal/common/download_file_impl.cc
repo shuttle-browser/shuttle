@@ -719,7 +719,7 @@ void DownloadFileImpl::OnDownloadCompleted() {
   weak_factory_.InvalidateWeakPtrs();
 
   std::optional<crypto::hash::Hasher> hash_state =
-      file_.Finish(potential_file_length_);
+      file_.Finish(potential_file_length_, save_info_->last_modified);
 
   update_timer_.reset();
   main_task_runner_->PostTask(

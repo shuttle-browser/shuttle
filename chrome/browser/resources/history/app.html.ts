@@ -11,6 +11,7 @@ export function getHtml(this: HistoryAppElement) {
   return html`<!--_html_template_start_-->
     <history-query-manager
         .queryResult="${this.queryResult_}"
+        .timePeriodOptions="${this.timePeriodOptions_}"
         @query-finished="${this.onQueryFinished_}"
         @query-state-changed="${this.onQueryStateChanged_}">
     </history-query-manager>
@@ -28,10 +29,7 @@ export function getHtml(this: HistoryAppElement) {
         ?querying="${this.queryState_.querying}"
         .searchTerm="${this.queryState_.searchTerm}"
         ?spinner-active="${this.shouldShowSpinner_()}"
-        .selectedPage="${this.selectedPage_}"
-        @search-term-native-before-input="${this.onToolbarSearchTermNativeBeforeInput_}"
-        @search-term-native-input="${this.onToolbarSearchTermNativeInput_}"
-        @search-term-cleared="${this.onToolbarSearchTermCleared_}">
+        .selectedPage="${this.selectedPage_}">
     </history-toolbar>
     <div id="main-container">
       <history-side-bar id="contentSideBar"
@@ -57,6 +55,7 @@ export function getHtml(this: HistoryAppElement) {
                 .userVisits="${this.includeUserVisits_}"
                 .actorVisits="${this.includeActorVisits_}"
                 .clientIds="${this.clientIds_}"
+                .selectedTimePeriodOptionId="${this.selectedTimePeriodOptionId_}"
                 @filter-changed="${this.onFilterChanged_}">
             </history-filter-chips>
           ` : ''}
@@ -71,8 +70,7 @@ export function getHtml(this: HistoryAppElement) {
                   ?pending-delete="${this.pendingDelete_}"
                   @pending-delete-changed="${this.onListPendingDeleteChanged_}"
                   path="history"
-                  .scrollTarget="${this.scrollTarget_}"
-                  .scrollOffset="${this.tabContentScrollOffset_}">
+                  .scrollTarget="${this.scrollTarget_}">
               </history-list>
             </cr-page-selector>
           </div>

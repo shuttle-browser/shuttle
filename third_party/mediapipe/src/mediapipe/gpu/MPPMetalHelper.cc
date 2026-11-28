@@ -15,8 +15,8 @@
 #import "mediapipe/gpu/MPPMetalHelper.h"
 
 #import "GTMDefines.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
+#include "absl/log/absl_check.h"  // from @com_google_absl
+#include "absl/log/absl_log.h"    // from @com_google_absl
 #include "mediapipe/framework/port/ret_check.h"
 #import "mediapipe/gpu/gpu_buffer.h"
 #import "mediapipe/gpu/gpu_service.h"
@@ -173,6 +173,18 @@ class MetalHelperLegacySupport {
         metalPixelFormat = MTLPixelFormatR8Unorm;
       } else if (plane == 1) {
         metalPixelFormat = MTLPixelFormatRG8Unorm;
+      } else {
+        NSCAssert(NO, @"Invalid plane number");
+      }
+      width = CVPixelBufferGetWidthOfPlane(pixel_buffer, plane);
+      height = CVPixelBufferGetHeightOfPlane(pixel_buffer, plane);
+      break;
+    case kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange:
+    case kCVPixelFormatType_420YpCbCr10BiPlanarFullRange:
+      if (plane == 0) {
+        metalPixelFormat = MTLPixelFormatR16Unorm;
+      } else if (plane == 1) {
+        metalPixelFormat = MTLPixelFormatRG16Unorm;
       } else {
         NSCAssert(NO, @"Invalid plane number");
       }

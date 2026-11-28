@@ -162,6 +162,7 @@ constexpr auto kGpuSharedImageFormatCandidates =
         {PIXEL_FORMAT_XBGR, DXGI_FORMAT_R8G8B8A8_UNORM},
         {PIXEL_FORMAT_XB30, DXGI_FORMAT_R10G10B10A2_UNORM},
         {PIXEL_FORMAT_RGBAF16, DXGI_FORMAT_R16G16B16A16_FLOAT},
+        {PIXEL_FORMAT_Y410, DXGI_FORMAT_Y410},
     });
 
 // Whether the video processor can convert |input_format| to |output_format|.
@@ -461,7 +462,11 @@ D3D12VideoEncodeDelegate::Encode(
     const gfx::ColorSpace& input_frame_color_space,
     const BitstreamBuffer& bitstream_buffer,
     const VideoEncoder::EncodeOptions& options,
-    const gfx::HDRMetadata& input_frame_hdr_metadata) {
+    const gfx::HDRMetadata& input_frame_hdr_metadata,
+    base::TimeDelta timestamp) {
+  // Codec delegates read the frame timestamp from `metadata_` in
+  // `EncodeImpl()`, for example to drive the software rate controller.
+  metadata_.timestamp = timestamp;
   if (options.reference_buffers.size() > GetMaxNumOfManualRefBuffers()) {
     return base::unexpected(EncoderStatus{
         EncoderStatus::Codes::kBadReferenceBuffer,

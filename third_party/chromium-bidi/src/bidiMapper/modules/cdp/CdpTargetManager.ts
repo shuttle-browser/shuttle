@@ -127,6 +127,15 @@ export class CdpTargetManager {
    * for creating and destroying all targets and browsing contexts.
    */
   #setEventListeners(cdpClient: CdpClient) {
+    // The browser session reports info changes for all targets (see
+    // `Target.setDiscoverTargets` in `BidiServer`). Other sessions can carry
+    // renderer-originated events, so only trust the browser session here.
+    if (cdpClient === this.#browserCdpClient) {
+      cdpClient.on(
+        'Target.targetInfoChanged',
+        this.#handleTargetInfoChangedEvent.bind(this),
+      );
+    }
     cdpClient.on('Target.attachedToTarget', (params) => {
       this.#handleAttachedToTargetEvent(params, cdpClient);
     });
@@ -134,51 +143,74 @@ export class CdpTargetManager {
       'Target.detachedFromTarget',
       this.#handleDetachedFromTargetEvent.bind(this),
     );
-    cdpClient.on(
-      'Target.targetInfoChanged',
-      this.#handleTargetInfoChangedEvent.bind(this),
-    );
     cdpClient.on('Inspector.targetCrashed', () => {
       this.#handleTargetCrashedEvent(cdpClient);
     });
 
-    cdpClient.on(
-      'Page.frameAttached',
-      this.#handleFrameAttachedEvent.bind(this),
-    );
-    cdpClient.on(
-      'Page.frameSubtreeWillBeDetached',
-      this.#handleFrameSubtreeWillBeDetached.bind(this),
-    );
+    // Pass the emitting session, so that frame events are only applied to
+    // frames hosted by that session.
+    cdpClient.on('Page.frameAttached', (params) => {
+      this.#handleFrameAttachedEvent(params, cdpClient);
+    });
+    cdpClient.on('Page.frameSubtreeWillBeDetached', (params) => {
+      this.#handleFrameSubtreeWillBeDetached(params, cdpClient);
+    });
   }
 
-  #handleFrameAttachedEvent(params: Protocol.Page.FrameAttachedEvent) {
+  #handleFrameAttachedEvent(
+    params: Protocol.Page.FrameAttachedEvent,
+    cdpClient: CdpClient,
+  ) {
     const parentBrowsingContext = this.#browsingContextStorage.findContext(
       params.parentFrameId,
     );
-    if (parentBrowsingContext !== undefined) {
-      BrowsingContextImpl.create(
-        params.frameId,
-        params.parentFrameId,
-        parentBrowsingContext.userContext,
-        parentBrowsingContext.cdpTarget,
-        this.#eventManager,
-        this.#browsingContextStorage,
-        this.#realmStorage,
-        this.#configStorage,
-        // At this point, we don't know the URL of the frame yet, so it will be updated
-        // later.
-        'about:blank',
-        undefined,
-        this.#logger,
-      );
+    if (parentBrowsingContext === undefined) {
+      return;
     }
+    // A renderer reports frames attached to the frames it hosts. A session
+    // that does not host the parent frame cannot attach frames to it.
+    if (parentBrowsingContext.cdpTarget.cdpClient !== cdpClient) {
+      this.#logger?.(LogType.debugError)?.(
+        `Ignoring frameAttached for ${params.frameId}: the session does not host parent ${params.parentFrameId}`,
+      );
+      return;
+    }
+    // A known frame is either already hosted by this session, or by another
+    // target which only the browser can release (`Target.detachedFromTarget`).
+    // Never re-create or re-bind it here. This also prevents parent cycles,
+    // as every ancestor of the parent is a known frame.
+    if (this.#browsingContextStorage.hasContext(params.frameId)) {
+      return;
+    }
+    BrowsingContextImpl.create(
+      params.frameId,
+      params.parentFrameId,
+      parentBrowsingContext.userContext,
+      parentBrowsingContext.cdpTarget,
+      this.#eventManager,
+      this.#browsingContextStorage,
+      this.#realmStorage,
+      this.#configStorage,
+      // At this point, we don't know the URL of the frame yet, so it will be updated
+      // later.
+      'about:blank',
+      undefined,
+      this.#logger,
+    );
   }
 
   #handleFrameSubtreeWillBeDetached(
     params: Protocol.Page.FrameSubtreeWillBeDetachedEvent,
+    cdpClient: CdpClient,
   ) {
-    this.#browsingContextStorage.findContext(params.frameId)?.dispose(true);
+    const context = this.#browsingContextStorage.findContext(params.frameId);
+    // Only the session hosting the frame can remove it here. A frame with its
+    // own target (OOPIF) is disposed when the browser reports that target
+    // detached, as the embedder's session does not host it.
+    if (context?.cdpTarget.cdpClient !== cdpClient) {
+      return;
+    }
+    context.dispose(true);
   }
 
   #handleAttachedToTargetEvent(
@@ -314,13 +346,50 @@ export class CdpTargetManager {
         }
         return;
       }
-      case 'service_worker':
       case 'worker': {
+        // In CDP, `Target.attachedToTarget` for a dedicated worker spawned
+        // during navigation can arrive before the parent frame's
+        // `Runtime.executionContextCreated` event (or after
+        // `Runtime.executionContextsCleared` deletes the previous document's
+        // realm). Check `BrowsingContextStorage` so the worker target is not
+        // prematurely detached while its parent browsing context's default
+        // realm is still pending.
+        let browsingContext: BrowsingContextImpl | undefined;
+        if (parentSessionCdpClient.sessionId) {
+          browsingContext = this.#browsingContextStorage.findContextBySession(
+            parentSessionCdpClient.sessionId,
+          );
+        }
         const realm = this.#realmStorage.findRealm({
           cdpSessionId: parentSessionCdpClient.sessionId,
           sandbox: null, // Non-sandboxed realms.
         });
         // If there is no browsing context, this worker is already terminated.
+        if (!realm && !browsingContext) {
+          void detach();
+          return;
+        }
+
+        const cdpTarget = this.#createCdpTarget(
+          targetCdpClient,
+          parentSessionCdpClient,
+          targetInfo,
+          userContext,
+        );
+        this.#handleWorkerTarget(
+          cdpToBidiTargetTypes[targetInfo.type],
+          cdpTarget,
+          realm,
+          browsingContext,
+        );
+        return;
+      }
+      case 'service_worker': {
+        const realm = this.#realmStorage.findRealm({
+          cdpSessionId: parentSessionCdpClient.sessionId,
+          sandbox: null, // Non-sandboxed realms.
+        });
+        // If there is no realm, this worker is already terminated.
         if (!realm) {
           void detach();
           return;
@@ -431,22 +500,62 @@ export class CdpTargetManager {
     realmType: WorkerRealmType,
     cdpTarget: CdpTarget,
     ownerRealm?: Realm,
+    browsingContext?: BrowsingContextImpl,
   ) {
-    cdpTarget.cdpClient.on('Runtime.executionContextCreated', (params) => {
-      const {uniqueId, id, origin} = params.context;
-      const workerRealm = new WorkerRealm(
-        cdpTarget.cdpClient,
-        this.#eventManager,
-        id,
-        this.#logger,
-        serializeOrigin(origin),
-        ownerRealm ? [ownerRealm] : [],
-        uniqueId,
-        this.#realmStorage,
-        realmType,
-      );
-      this.#workers.set(cdpTarget.cdpSessionId, workerRealm);
-    });
+    cdpTarget.cdpClient.on(
+      'Runtime.executionContextCreated',
+      async (params) => {
+        const {uniqueId, id, origin} = params.context;
+        // Prefer the parent session's current default realm, or await it on the
+        // parent browsing context if navigation has not created it yet.
+        let resolvedOwnerRealm = browsingContext
+          ? this.#realmStorage.findRealm({
+              cdpSessionId: cdpTarget.parentCdpClient.sessionId,
+              sandbox: null,
+            })
+          : ownerRealm;
+        if (!resolvedOwnerRealm && browsingContext) {
+          let detached = false;
+          const onDetached = (
+            params: Protocol.Target.DetachedFromTargetEvent,
+          ) => {
+            if (params.sessionId === cdpTarget.cdpSessionId) {
+              detached = true;
+            }
+          };
+          cdpTarget.parentCdpClient.on('Target.detachedFromTarget', onDetached);
+          try {
+            resolvedOwnerRealm =
+              await browsingContext.getOrCreateUserSandbox(undefined);
+          } catch (error) {
+            // The context was destroyed before its default realm was created.
+            this.#logger?.(LogType.debugError)?.(error);
+            return;
+          } finally {
+            cdpTarget.parentCdpClient.off(
+              'Target.detachedFromTarget',
+              onDetached,
+            );
+          }
+          // Do not register a realm if the worker detached while awaiting its owner.
+          if (detached) {
+            return;
+          }
+        }
+        const workerRealm = new WorkerRealm(
+          cdpTarget.cdpClient,
+          this.#eventManager,
+          id,
+          this.#logger,
+          serializeOrigin(origin),
+          resolvedOwnerRealm ? [resolvedOwnerRealm] : [],
+          uniqueId,
+          this.#realmStorage,
+          realmType,
+        );
+        this.#workers.set(cdpTarget.cdpSessionId, workerRealm);
+      },
+    );
   }
 
   #handleDetachedFromTargetEvent({

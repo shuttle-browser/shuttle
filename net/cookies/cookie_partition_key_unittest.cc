@@ -69,7 +69,6 @@ TEST(CookiePartitionKeyTest, TestFromStorage) {
 }
 
 TEST(CookiePartitionKeyTest, TestFromUntrustedInput) {
-  const std::string kFullURL = "https://subdomain.toplevelsite.com/index.html";
   const std::string kValidSite = "https://toplevelsite.com";
   struct Output {
     bool third_party;
@@ -210,8 +209,16 @@ TEST(CookiePartitionKeyTest, FromNetworkIsolationKey) {
       {"WithNetworkIsolationPartition",
        NetworkIsolationKey(
            kTopLevelSite, kCookieSite, /*nonce=*/std::nullopt,
-           NetworkIsolationPartition::kProtectedAudienceSellerWorklet),
+           NetworkIsolationPartition::kFedCmUncredentialedRequests),
        std::nullopt, SiteForCookies(), kTopLevelSite,
+       /*main_frame_navigation=*/false},
+      {"WithSharedWorkerSameSiteCookiesNoneNetworkIsolationPartition",
+       NetworkIsolationKey(
+           kTopLevelSite, kCookieSite, /*nonce=*/std::nullopt,
+           NetworkIsolationPartition::kSharedWorkerSameSiteCookiesNone),
+       CookiePartitionKey::FromURLForTesting(kTopLevelSite.GetURL(), kCrossSite,
+                                             std::nullopt),
+       SiteForCookies(), kTopLevelSite,
        /*main_frame_navigation=*/false},
       {"WithCrossSiteAncestorSameSite",
        NetworkIsolationKey(kTopLevelSite, kTopLevelSite),

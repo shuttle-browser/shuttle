@@ -16,14 +16,14 @@ limitations under the License.
 #ifndef MEDIAPIPE_TASKS_C_COMPONENTS_CONTAINERS_MATRIX_CONVERTER_H_
 #define MEDIAPIPE_TASKS_C_COMPONENTS_CONTAINERS_MATRIX_CONVERTER_H_
 
-#include "Eigen/Core"
+#include "Eigen/Core"  // from @eigen
 #include "mediapipe/tasks/c/components/containers/matrix.h"
 
 namespace mediapipe::tasks::c::components::containers {
 
-void CppConvertToMatrix(const Eigen::MatrixXf& in, ::Matrix* out);
+void CppConvertToMatrix(const Eigen::MatrixXf& in, MpMatrix* out);
 
-void CppCloseMatrix(::Matrix* m);
+void CppCloseMatrix(MpMatrix* m);
 
 }  // namespace mediapipe::tasks::c::components::containers
 

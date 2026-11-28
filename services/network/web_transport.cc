@@ -20,6 +20,7 @@
 #include "base/time/time.h"
 #include "mojo/public/cpp/system/data_pipe.h"
 #include "net/base/io_buffer.h"
+#include "net/base/net_errors.h"
 #include "net/base/network_handle.h"
 #include "net/http/http_response_headers.h"
 #include "net/log/net_log_with_source.h"
@@ -34,6 +35,8 @@
 #include "services/network/public/mojom/http_request_headers.mojom.h"
 #include "services/network/public/mojom/url_loader_network_service_observer.mojom-shared.h"
 #include "services/network/public/mojom/web_transport.mojom.h"
+#include "services/network/throttling/throttling_controller.h"
+#include "services/network/throttling/throttling_network_interceptor.h"
 
 namespace network {
 
@@ -244,7 +247,7 @@ class WebTransport::Stream final {
     }
   }
 
-  std::optional<net::WebTransportSendStreamStats> Abort(uint8_t code) {
+  std::optional<net::WebTransportSendStreamStats> Abort(uint32_t code) {
     if (!outgoing_) {
       return std::nullopt;
     }
@@ -257,7 +260,7 @@ class WebTransport::Stream final {
     return stats;
   }
 
-  void StopSending(uint8_t code) {
+  void StopSending(uint32_t code) {
     if (!incoming_) {
       return;
     }
@@ -608,6 +611,7 @@ WebTransport::WebTransport(
     std::optional<uint16_t>
         anticipated_concurrent_incoming_bidirectional_streams,
     std::vector<net::HttpRequestHeaders::HeaderKeyValuePair> additional_headers,
+    const std::optional<base::UnguessableToken>& throttling_profile_id,
     NetworkContext* context,
     mojo::PendingRemote<mojom::WebTransportHandshakeClient> handshake_client,
     mojo::PendingRemote<mojom::URLLoaderNetworkServiceObserver>
@@ -631,6 +635,7 @@ WebTransport::WebTransport(
               std::move(additional_headers)))),
       url_(url),
       origin_(origin),
+      throttling_profile_id_(throttling_profile_id),
       context_(context),
       final_receive_stream_stats_(kMaxFinalReceiveStreamStatsEntries),
       receiver_(this),
@@ -646,6 +651,25 @@ WebTransport::WebTransport(
 WebTransport::~WebTransport() {
   // Ensure that we ignore all callbacks while mid-destruction.
   torn_down_ = true;
+}
+
+void WebTransport::NetworkConditionsUpdated(
+    const base::UnguessableToken& throttling_profile_id) {
+  if (torn_down_ || throttling_profile_id_ != throttling_profile_id) {
+    return;
+  }
+
+  auto* interceptor = ThrottlingController::GetInterceptorForProfile(
+      throttling_profile_id, url_);
+  if (!interceptor || !interceptor->IsOffline()) {
+    return;
+  }
+
+  if (handshake_client_) {
+    handshake_client_->OnHandshakeFailed(
+        net::WebTransportError(net::ERR_INTERNET_DISCONNECTED));
+  }
+  TearDown();
 }
 
 void WebTransport::SendDatagram(base::span<const uint8_t> data,
@@ -1102,7 +1126,7 @@ void WebTransport::SendFin(uint32_t stream) {
 }
 
 void WebTransport::AbortStream(uint32_t stream,
-                               uint8_t code,
+                               uint32_t code,
                                AbortStreamCallback callback) {
   auto it = streams_.find(stream);
   if (it == streams_.end()) {
@@ -1112,7 +1136,7 @@ void WebTransport::AbortStream(uint32_t stream,
   std::move(callback).Run(it->second->Abort(code));
 }
 
-void WebTransport::StopSending(uint32_t stream, uint8_t code) {
+void WebTransport::StopSending(uint32_t stream, uint32_t code) {
   auto it = streams_.find(stream);
   if (it != streams_.end()) {
     it->second->StopSending(code);

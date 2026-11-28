@@ -53,6 +53,7 @@
 #include "chrome/browser/navigation_predictor/navigation_predictor_keyed_service_factory.h"
 #include "chrome/browser/profiles/delete_profile_helper.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
+#include "chrome/browser/profiles/nuke_profile_directory_utils.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
 #include "chrome/browser/profiles/profile_attributes_init_params.h"
 #include "chrome/browser/profiles/profile_attributes_storage.h"
@@ -118,13 +119,13 @@
 #include "chrome/browser/accessibility/live_caption/live_caption_controller_factory.h"
 #include "chrome/browser/lifetime/application_lifetime_desktop.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
-#include "chrome/browser/profiles/nuke_profile_directory_utils.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"  // nogncheck
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"  // nogncheck
 #include "components/live_caption/live_caption_controller.h"
 #else
 #include "chrome/browser/profiles/profile_manager_android.h"
 #include "chrome/browser/signin/signin_manager_android_factory.h"
+#include "chrome/browser/startup_data.h"
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -678,8 +679,17 @@ base::FilePath ProfileManager::GetInitialProfileDir() {
     // IsLoggedIn check above ensures |user| is non-null.
     const auto* user = manager->GetActiveUser();
     return base::FilePath(
-        ash::BrowserContextHelper::GetUserBrowserContextDirName(
-            user->username_hash()));
+        user_manager::User::GetDirName(user->username_hash()));
+  }
+#endif
+#if BUILDFLAG(IS_ANDROID)
+  // The first profile created must be the one StartupData was built for, so
+  // that its ProfileImpl takes over the pre-created objects.
+  StartupData* startup_data =
+      g_browser_process ? g_browser_process->startup_data() : nullptr;
+  if (profiles::IsAndroidMultiprofileStartupDataEnabled() && startup_data &&
+      !startup_data->GetProfilePath().empty()) {
+    return startup_data->GetProfilePath().BaseName();
   }
 #endif
   base::FilePath relative_profile_dir;
@@ -695,13 +705,7 @@ base::FilePath ProfileManager::GetLastUsedProfileDir() {
 base::FilePath ProfileManager::GetLastUsedProfileBaseName() {
   PrefService* local_state = g_browser_process->local_state();
   CHECK(local_state, base::NotFatalUntil::M162);
-  base::FilePath last_used_profile_base_name =
-      local_state->GetFilePath(prefs::kProfileLastUsed);
-  if (!last_used_profile_base_name.empty()) {
-    return last_used_profile_base_name;
-  }
-
-  return base::FilePath::FromASCII(chrome::kInitialProfile);
+  return profiles::GetLastUsedProfileBaseName(*local_state);
 }
 
 base::FilePath ProfileManager::GetProfileDirForEmail(const std::string& email) {
@@ -772,7 +776,6 @@ std::map<ProfileKeepAliveOrigin, int> ProfileManager::GetKeepAlivesByPath(
                       : std::map<ProfileKeepAliveOrigin, int>();
 }
 
-#if !BUILDFLAG(IS_ANDROID)
 // static
 void ProfileManager::CreateMultiProfileAsync(
     const std::u16string& name,
@@ -839,7 +842,6 @@ void ProfileManager::CreateMultiProfileAsync(
                                     new_path, std::move(initialized_callback),
                                     std::move(created_callback))));
 }
-#endif  // !BUILDFLAG(IS_ANDROID)
 
 base::FilePath ProfileManager::GenerateNextProfileDirectoryPath() {
   PrefService* local_state = g_browser_process->local_state();
@@ -1838,10 +1840,7 @@ void ProfileManager::SetProfileAsLastUsed(Profile* last_active) {
 
   // Only keep track of profiles that we are managing; tests may create others.
   if (profiles_info_.find(last_active->GetPath()) != profiles_info_.end()) {
-    base::FilePath profile_path_base = last_active->GetBaseName();
-    if (profile_path_base != GetLastUsedProfileBaseName()) {
-      profiles::SetLastUsedProfile(profile_path_base);
-    }
+    profiles::SetLastUsedProfile(last_active->GetBaseName());
 
     ProfileAttributesEntry* entry =
         GetProfileAttributesStorage().GetProfileAttributesWithPath(

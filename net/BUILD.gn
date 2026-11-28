@@ -337,8 +337,6 @@ component("net") {
     "base/scheme_host_port_matcher_rule.cc",
     "base/scheme_host_port_matcher_rule.h",
     "base/session_usage.h",
-    "base/sockaddr_storage.cc",
-    "base/sockaddr_storage.h",
     "base/switches.h",
     "base/sys_addrinfo.h",
     "base/task/task_runner.cc",
@@ -1035,6 +1033,8 @@ component("net") {
     "socket/datagram_client_socket.h",
     "socket/datagram_server_socket.h",
     "socket/datagram_socket.h",
+    "socket/delayed_client_socket_factory.cc",
+    "socket/delayed_client_socket_factory.h",
     "socket/delayed_datagram_socket.cc",
     "socket/delayed_datagram_socket.h",
     "socket/delayed_socket_config.h",
@@ -1214,6 +1214,8 @@ component("net") {
     "url_request/clear_site_data.cc",
     "url_request/clear_site_data.h",
     "url_request/device_bound_session_mode.h",
+    "url_request/isolated_http_network_session.cc",
+    "url_request/isolated_http_network_session.h",
     "url_request/redirect_info.cc",
     "url_request/redirect_info.h",
     "url_request/redirect_util.cc",
@@ -1236,6 +1238,8 @@ component("net") {
     "url_request/url_request_error_job.h",
     "url_request/url_request_http_job.cc",
     "url_request/url_request_http_job.h",
+    "url_request/url_request_http_transaction_factory_override.cc",
+    "url_request/url_request_http_transaction_factory_override.h",
     "url_request/url_request_interceptor.cc",
     "url_request/url_request_interceptor.h",
     "url_request/url_request_job.cc",
@@ -1614,8 +1618,6 @@ component("net") {
       "base/file_stream_context_posix.cc",
       "base/network_interfaces_posix.cc",
       "base/network_interfaces_posix.h",
-      "base/sockaddr_util_posix.cc",
-      "base/sockaddr_util_posix.h",
       "disk_cache/cache_util_posix.cc",
       "disk_cache/simple/simple_util_posix.cc",
       "http/url_security_manager_posix.cc",
@@ -2127,6 +2129,7 @@ source_set("net_public_deps") {
     "//base",
     "//crypto",
     "//net/base:registry_controlled_domains",
+    "//net/base:sockaddr_util",
     "//net/base/module",
     "//net/third_party/quiche",
     "//net/third_party/quiche:net_quic_test_tools_proto",
@@ -3015,7 +3018,6 @@ target(_test_target_type, "net_unittests") {
     "cert/ct_log_verifier_unittest.cc",
     "cert/ct_objects_extractor_unittest.cc",
     "cert/ct_serialization_unittest.cc",
-    "cert/ev_root_ca_metadata_unittest.cc",
     "cert/internal/cert_issuer_source_aia_unittest.cc",
     "cert/internal/cert_issuer_source_sync_unittest.cc",
     "cert/internal/revocation_checker_unittest.cc",
@@ -3222,6 +3224,7 @@ target(_test_target_type, "net_unittests") {
     "socket/connect_job_test_util.cc",
     "socket/connect_job_test_util.h",
     "socket/connect_job_unittest.cc",
+    "socket/delayed_client_socket_factory_unittest.cc",
     "socket/delayed_datagram_socket_unittest.cc",
     "socket/delayed_stream_socket_unittest.cc",
     "socket/mock_client_socket_pool_manager.cc",
@@ -3299,6 +3302,7 @@ target(_test_target_type, "net_unittests") {
     "tools/dump_cache/dump_cache_helper_unittest.cc",
     "tools/quic/quic_simple_client_test.cc",
     "tools/tld_cleanup/tld_cleanup_util_unittest.cc",
+    "url_request/isolated_http_network_session_unittest.cc",
     "url_request/multinetwork_unittest.cc",
     "url_request/redirect_info_unittest.cc",
     "url_request/redirect_util_unittest.cc",
@@ -3402,7 +3406,6 @@ target(_test_target_type, "net_unittests") {
     "HpackHeaderTableFuzzTest.CanCallMethodSequence",
     "HttpAuthHandlerDigestTest.DigestAuthDoesNotCrash",
     "HttpChunkedDecoderParityTest.DecodeParity",
-    "HttpNoVarySearchTest.AreEquivalentImplementationsMatch",
     "HttpUtilTest.ParseFetchSingleRangeNeverCrashes",
     "PickleTest.FuzzRoundTrip",
     "ParseProxyListFuzzer.TestOneInput",
@@ -3773,18 +3776,21 @@ target(_test_target_type, "net_unittests") {
     deps += [ "//components/winhttp" ]
   }
 
-  if (chrome_root_store_supported) {
-    sources += [ "cert/internal/trust_store_chrome_unittest.cc" ]
-    deps += [
-      "//base/version_info",
-      "//net/data/ssl/chrome_root_store:gen_root_store_test_inc",
-      "//net/data/ssl/chrome_root_store:gen_signer_set_inc",
-    ]
+  if (chrome_root_store_supported || is_fuchsia) {
+    sources += [ "cert/ev_root_ca_metadata_unittest.cc" ]
+    deps += [ "//net/data/ssl/chrome_root_store:gen_root_store_test_inc" ]
 
-    if (is_win) {
-      sources += [ "cert/internal/trust_store_win_unittest.cc" ]
-      sources += [ "cert/internal/path_builder_trust_store_win_unittest.cc" ]
-      libs += [ "crypt32.lib" ]
+    if (chrome_root_store_supported) {
+      sources += [ "cert/internal/trust_store_chrome_unittest.cc" ]
+      deps += [
+        "//base/version_info",
+        "//net/data/ssl/chrome_root_store:gen_signer_set_inc",
+      ]
+      if (is_win) {
+        sources += [ "cert/internal/trust_store_win_unittest.cc" ]
+        sources += [ "cert/internal/path_builder_trust_store_win_unittest.cc" ]
+        libs += [ "crypt32.lib" ]
+      }
     }
   }
 
@@ -3886,6 +3892,7 @@ if (!is_ios) {
       "http/http_no_vary_search_data_perftest.cc",
       "http/http_request_headers_perftest.cc",
       "http/no_vary_search_cache_perftest.cc",
+      "http/structured_headers_perftest.cc",
       "socket/udp_socket_perftest.cc",
       "spdy/spdy_http_utils_perftest.cc",
       "url_request/url_request_quic_perftest.cc",

@@ -23,8 +23,8 @@
 #include "chrome/browser/metrics/profile_pref_names.h"
 #include "chrome/browser/prefs/session_startup_pref.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/safe_browsing/generated_safe_browsing_pref.h"
 #include "chrome/browser/safe_browsing/generated_security_settings_bundle_pref.h"
+#include "chrome/browser/safe_browsing/settings/generated_safe_browsing_pref.h"
 #include "chrome/browser/ssl/generated_https_first_mode_pref.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
@@ -33,7 +33,6 @@
 #include "components/browsing_data/core/pref_names.h"
 #include "components/component_updater/pref_names.h"
 #include "components/content_settings/core/common/pref_names.h"
-#include "components/dom_distiller/core/pref_names.h"
 #include "components/drive/drive_pref_names.h"
 #include "components/embedder_support/pref_names.h"
 #include "components/language/core/browser/pref_names.h"
@@ -52,6 +51,7 @@
 #include "components/unified_consent/pref_names.h"
 #include "components/universal_optout/prefs.h"
 #include "components/url_formatter/url_fixer.h"
+#include "components/web_distiller/core/pref_names.h"
 #include "extensions/browser/extension_pref_value_map.h"
 #include "extensions/browser/extension_pref_value_map_factory.h"
 #include "extensions/browser/extension_registry.h"
@@ -742,11 +742,13 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kNumber;
 
   // Text to Speech.
-  (*s_allowlist)[::prefs::kTextToSpeechLangToVoiceName] =
+  (*s_allowlist)[::ash::prefs::kTextToSpeechLangToVoiceName] =
       settings_api::PrefType::kDictionary;
-  (*s_allowlist)[::prefs::kTextToSpeechRate] = settings_api::PrefType::kNumber;
-  (*s_allowlist)[::prefs::kTextToSpeechPitch] = settings_api::PrefType::kNumber;
-  (*s_allowlist)[::prefs::kTextToSpeechVolume] =
+  (*s_allowlist)[::ash::prefs::kTextToSpeechRate] =
+      settings_api::PrefType::kNumber;
+  (*s_allowlist)[::ash::prefs::kTextToSpeechPitch] =
+      settings_api::PrefType::kNumber;
+  (*s_allowlist)[::ash::prefs::kTextToSpeechVolume] =
       settings_api::PrefType::kNumber;
 
   // Guest OS
@@ -835,8 +837,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[ash::kStatsReportingPref] = settings_api::PrefType::kBoolean;
   (*s_allowlist)[::metrics::prefs::kMetricsUserConsent] =
-      settings_api::PrefType::kBoolean;
-  (*s_allowlist)[ash::prefs::kSuggestedContentEnabled] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[ash::kAttestationForContentProtectionEnabled] =
       settings_api::PrefType::kBoolean;
@@ -1001,7 +1001,7 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kDictionary;
   (*s_allowlist)[ash::kDisplayRotationDefault] =
       settings_api::PrefType::kDictionary;
-  (*s_allowlist)[::prefs::kAllowExcludeDisplayInMirrorMode] =
+  (*s_allowlist)[ash::prefs::kAllowExcludeDisplayInMirrorMode] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[arc::prefs::kArcVisibleExternalStorages] =
       settings_api::PrefType::kList;
@@ -1073,7 +1073,7 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
 #if BUILDFLAG(IS_CHROMEOS)
   (*s_allowlist)[::ash::prefs::kDocumentScanAPITrustedExtensions] =
       settings_api::PrefType::kList;
-  (*s_allowlist)[::prefs::kPrintingAPIExtensionsAllowlist] =
+  (*s_allowlist)[::ash::prefs::kPrintingAPIExtensionsAllowlist] =
       settings_api::PrefType::kList;
 
   (*s_allowlist)[ash::prefs::kAccessibilityFocusHighlightEnabled] =

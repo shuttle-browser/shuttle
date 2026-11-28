@@ -10,7 +10,6 @@
 
 #include "base/callback_list.h"
 #include "base/memory/raw_ptr.h"
-#include "base/scoped_observation.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.h"
 #include "chrome/browser/ui/views/tabs/shared/drop_arrow.h"
@@ -33,8 +32,7 @@ class TabCollectionNode;
 
 // Shared collection-based foundation for tabstrip region views. Manages
 // observers and controllers used for both horizontal and vertical orientations.
-class BaseTabStripRegionView : public TabStripRegionView,
-                               public views::WidgetObserver {
+class BaseTabStripRegionView : public TabStripRegionView {
   METADATA_HEADER(BaseTabStripRegionView, TabStripRegionView)
 
  public:
@@ -93,12 +91,8 @@ class BaseTabStripRegionView : public TabStripRegionView,
   void HandleDragExited() override;
 
   // Views::View:
-  void AddedToWidget() override;
-  void RemovedFromWidget() override;
   void Layout(PassKey) override;
-
-  // views::WidgetObserver:
-  void OnWidgetVisibilityChanged(views::Widget* widget, bool visible) override;
+  views::View* GetDefaultFocusableChild() override;
 
   void DisableTabStripEditingForTesting() override;
   gfx::Rect GetLinkDropBoundsForTesting(
@@ -151,6 +145,8 @@ class BaseTabStripRegionView : public TabStripRegionView,
   }
 
  private:
+  class TabStripObserverBridge;
+
   views::View* SetTabStripView(std::unique_ptr<views::View> view);
   void ClearTabStripView(views::View* view);
 
@@ -189,9 +185,8 @@ class BaseTabStripRegionView : public TabStripRegionView,
 
   std::optional<base::TimeTicks> new_tab_button_pressed_start_time_;
 
-  bool is_first_window_presentation_ = true;
-  base::ScopedObservation<views::Widget, views::WidgetObserver>
-      widget_observation_{this};
+  raw_ptr<TabStripObserver> tab_strip_observer_ = nullptr;
+  std::unique_ptr<TabStripObserverBridge> tab_strip_observer_bridge_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_BASE_TAB_STRIP_REGION_VIEW_H_

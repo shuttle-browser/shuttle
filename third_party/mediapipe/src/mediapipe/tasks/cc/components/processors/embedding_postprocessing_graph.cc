@@ -18,9 +18,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -33,7 +34,7 @@ limitations under the License.
 #include "mediapipe/tasks/cc/components/processors/proto/embedding_postprocessing_graph_options.pb.h"
 #include "mediapipe/tasks/cc/core/model_resources.h"
 #include "mediapipe/tasks/cc/metadata/metadata_extractor.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_generated.h"  // from @litert
 
 namespace mediapipe {
 namespace tasks {
@@ -67,12 +68,20 @@ struct EmbeddingPostprocessingOutputStreams {
 absl::StatusOr<bool> HasQuantizedOutputs(
     const ModelResources& model_resources) {
   const tflite::Model& model = *model_resources.GetTfLiteModel();
+
+  if (model.subgraphs()->size() > 1) {
+    // Multi-subgraph models are assumed to be EmbeddingGemma models, which
+    // do not have quantized outputs.
+    return false;
+  }
+
   if (model.subgraphs()->size() != 1) {
     return CreateStatusWithPayload(absl::StatusCode::kInvalidArgument,
                                    "Embedding tflite models are "
                                    "assumed to have a single subgraph.",
                                    MediaPipeTasksStatus::kInvalidArgumentError);
   }
+
   const auto* primary_subgraph = (*model.subgraphs())[0];
   int num_output_tensors = primary_subgraph->outputs()->size();
   // Sanity check tensor types and check if model outputs are quantized or not.
@@ -151,13 +160,13 @@ absl::Status ConfigureEmbeddingPostprocessingGraph(
     const ModelResources& model_resources,
     const proto::EmbedderOptions& embedder_options,
     proto::EmbeddingPostprocessingGraphOptions* options) {
-  MP_ASSIGN_OR_RETURN(bool has_quantized_outputs,
-                      HasQuantizedOutputs(model_resources));
+  ABSL_ASSIGN_OR_RETURN(bool has_quantized_outputs,
+                        HasQuantizedOutputs(model_resources));
   options->set_has_quantized_outputs(has_quantized_outputs);
   auto* tensors_to_embeddings_options =
       options->mutable_tensors_to_embeddings_options();
   *tensors_to_embeddings_options->mutable_embedder_options() = embedder_options;
-  MP_ASSIGN_OR_RETURN(auto head_names, GetHeadNames(model_resources));
+  ABSL_ASSIGN_OR_RETURN(auto head_names, GetHeadNames(model_resources));
   if (!head_names.empty()) {
     *tensors_to_embeddings_options->mutable_head_names() = {head_names.begin(),
                                                             head_names.end()};
@@ -197,7 +206,7 @@ class EmbeddingPostprocessingGraph : public mediapipe::Subgraph {
   absl::StatusOr<mediapipe::CalculatorGraphConfig> GetConfig(
       mediapipe::SubgraphContext* sc) override {
     Graph graph;
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto output_streams,
         BuildEmbeddingPostprocessing(
             sc->Options<proto::EmbeddingPostprocessingGraphOptions>(),

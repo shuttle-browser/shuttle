@@ -14,8 +14,10 @@
 
 #include <memory>
 
-#include "absl/log/absl_log.h"
-#include "absl/strings/str_cat.h"
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/calculators/util/annotation_overlay_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_options.pb.h"
@@ -27,7 +29,6 @@
 #include "mediapipe/framework/formats/video_stream_header.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/vector.h"
 #include "mediapipe/util/annotation_renderer.h"
 #include "mediapipe/util/color.pb.h"
@@ -245,7 +246,7 @@ absl::Status AnnotationOverlayCalculator::GetContract(CalculatorContract* cc) {
 
   if (use_gpu) {
 #if !MEDIAPIPE_DISABLE_GPU
-    MP_RETURN_IF_ERROR(mediapipe::GlCalculatorHelper::UpdateContract(cc));
+    ABSL_RETURN_IF_ERROR(mediapipe::GlCalculatorHelper::UpdateContract(cc));
 #endif  // !MEDIAPIPE_DISABLE_GPU
   }
 
@@ -291,7 +292,7 @@ absl::Status AnnotationOverlayCalculator::Open(CalculatorContext* cc) {
 
   if (use_gpu_) {
 #if !MEDIAPIPE_DISABLE_GPU
-    MP_RETURN_IF_ERROR(gpu_helper_.Open(cc));
+    ABSL_RETURN_IF_ERROR(gpu_helper_.Open(cc));
 #endif  // !MEDIAPIPE_DISABLE_GPU
   }
 
@@ -320,7 +321,7 @@ absl::Status AnnotationOverlayCalculator::Process(CalculatorContext* cc) {
   if (use_gpu_) {
 #if !MEDIAPIPE_DISABLE_GPU
     if (!gpu_initialized_) {
-      MP_RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           gpu_helper_.RunInGlContext([this, cc]() -> absl::Status {
             if (HasImageTag(cc)) {
               return GlSetup<mediapipe::Image, kImageTag>(cc);
@@ -330,22 +331,23 @@ absl::Status AnnotationOverlayCalculator::Process(CalculatorContext* cc) {
       gpu_initialized_ = true;
     }
     if (HasImageTag(cc)) {
-      MP_RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           (CreateRenderTargetGpu<mediapipe::Image, kImageTag>(cc, image_mat)));
     }
     if (cc->Inputs().HasTag(kGpuBufferTag)) {
-      MP_RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           (CreateRenderTargetGpu<mediapipe::GpuBuffer, kGpuBufferTag>(
               cc, image_mat)));
     }
 #endif  // !MEDIAPIPE_DISABLE_GPU
   } else {
     if (cc->Outputs().HasTag(kImageTag)) {
-      MP_RETURN_IF_ERROR(
+      ABSL_RETURN_IF_ERROR(
           CreateRenderTargetCpuImage(cc, image_mat, &target_format));
     }
     if (cc->Outputs().HasTag(kImageFrameTag)) {
-      MP_RETURN_IF_ERROR(CreateRenderTargetCpu(cc, image_mat, &target_format));
+      ABSL_RETURN_IF_ERROR(
+          CreateRenderTargetCpu(cc, image_mat, &target_format));
     }
   }
 
@@ -381,7 +383,7 @@ absl::Status AnnotationOverlayCalculator::Process(CalculatorContext* cc) {
 #if !MEDIAPIPE_DISABLE_GPU
     // Overlay rendered image in OpenGL, onto a copy of input.
     uchar* image_mat_ptr = image_mat->data;
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         gpu_helper_.RunInGlContext([this, cc, image_mat_ptr]() -> absl::Status {
           if (HasImageTag(cc)) {
             return RenderToGpu<mediapipe::Image, kImageTag>(cc, image_mat_ptr);
@@ -393,7 +395,7 @@ absl::Status AnnotationOverlayCalculator::Process(CalculatorContext* cc) {
   } else {
     // Copy the rendered image to output.
     uchar* image_mat_ptr = image_mat->data;
-    MP_RETURN_IF_ERROR(RenderToCpu(cc, target_format, image_mat_ptr));
+    ABSL_RETURN_IF_ERROR(RenderToCpu(cc, target_format, image_mat_ptr));
   }
 
   return absl::OkStatus();
@@ -470,7 +472,7 @@ absl::Status AnnotationOverlayCalculator::RenderToGpu(CalculatorContext* cc,
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, image_mat_tex_);
 
-    MP_RETURN_IF_ERROR(GlRender(cc));
+    ABSL_RETURN_IF_ERROR(GlRender(cc));
 
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, 0);

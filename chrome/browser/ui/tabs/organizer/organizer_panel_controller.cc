@@ -7,10 +7,13 @@
 #include <utility>
 
 #include "base/callback_list.h"
+#include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ref.h"
-#include "base/notreached.h"
+#include "base/metrics/user_metrics.h"
+#include "base/metrics/user_metrics_action.h"
 #include "chrome/app/vector_icons/vector_icons.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/actions/actions_util.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/animation/browser_animation_controller.h"
@@ -19,10 +22,15 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/views/animations/organizer_panel_animations.h"
-#include "chrome/browser/ui/views/animations/tab_strip_animations.h"
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_host.h"
+#include "chrome/browser/ui/views/tabs/organizer/organizer_panel_view.h"
+#include "chrome/browser/ui/webui/top_chrome/webui_contents_preload_manager.h"
+#include "chrome/browser/ui/webui/webui_embedding_context.h"
+#include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
-#include "extensions/buildflags/buildflags.h"
+#include "components/site_engagement/content/site_engagement_helper.h"
+#include "components/site_engagement/content/site_engagement_service.h"
+#include "content/public/browser/web_contents.h"
 #include "ui/actions/actions.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_features.h"
@@ -30,25 +38,25 @@
 #include "ui/views/view_tracker.h"
 #include "ui/views/view_utils.h"
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/profiles/profile.h"
-#include "extensions/browser/extension_util.h"
-#endif
-
 DEFINE_USER_DATA(OrganizerPanelController);
 
 // Handles the work of placing the panel view in the correct host based on
 // browser state. This is the organizer tray view.
 class OrganizerPanelController::PanelViewManager {
  public:
-  explicit PanelViewManager(BrowserWindowInterface& browser)
-      : browser_(browser) {}
+  PanelViewManager(OrganizerPanelController& controller,
+                   BrowserWindowInterface& browser)
+      : controller_(controller), browser_(browser) {}
 
   std::unique_ptr<views::View> SetPanelView(
       std::unique_ptr<views::View> panel_view) {
+    const auto old_location = current_location_;
     std::unique_ptr<views::View> old_panel = RemovePanelView();
     if (panel_view) {
       AddPanelView(std::move(panel_view));
+    }
+    if (current_location_ != old_location) {
+      controller_->NotifyStateChanged();
     }
     return old_panel;
   }
@@ -84,6 +92,7 @@ class OrganizerPanelController::PanelViewManager {
     host->SetOrganizerPanelView(std::move(panel_view));
   }
 
+  const raw_ref<OrganizerPanelController> controller_;
   const raw_ref<BrowserWindowInterface> browser_;
   views::ViewTracker panel_view_;
   OrganizerPanelLocation current_location_ = OrganizerPanelLocation::kNone;
@@ -95,7 +104,7 @@ OrganizerPanelController::OrganizerPanelController(
     : browser_window_(browser_window),
       root_action_item_(root_action_item),
       panel_view_manager_(
-          std::make_unique<PanelViewManager>(browser_window)),
+          std::make_unique<PanelViewManager>(*this, browser_window)),
       scoped_unowned_user_data_(browser_window.GetUnownedUserDataHost(),
                                 *this) {
   UpdateOrganizerActionItem();
@@ -120,21 +129,17 @@ void OrganizerPanelController::SetOrganizerVisible(bool visible,
   }
 
   is_visible_ = visible;
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  if (!is_visible_) {
-    active_extension_id_.reset();
+  base::RecordAction(base::UserMetricsAction(
+      is_visible_ ? "OrganizerPanel.Open" : "OrganizerPanel.Close"));
+  if (is_visible_) {
+    UpdatePanelWebContents();
   }
-#endif
   if (immediate) {
     BrowserAnimationController::From(&*browser_window_)
-        ->Reset(OrganizerPanelAnimations::kOrganizerPanel,
-                is_visible_ ? OrganizerPanelAnimations::kShow
-                            : OrganizerPanelAnimations::kHide);
+        ->Reset(OrganizerPanelAnimations::kOrganizerPanel, GetTargetMotion());
   } else {
     BrowserAnimationController::From(&*browser_window_)
-        ->Start(OrganizerPanelAnimations::kOrganizerPanel,
-                is_visible_ ? OrganizerPanelAnimations::kShow
-                            : OrganizerPanelAnimations::kHide);
+        ->Start(OrganizerPanelAnimations::kOrganizerPanel, GetTargetMotion());
   }
 
   NotifyStateChanged();
@@ -145,44 +150,57 @@ OrganizerPanelController::GetCurrentOrganizerPanelLocation() const {
   return panel_view_manager_->current_location();
 }
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-void OrganizerPanelController::OpenForExtension(
-    const extensions::ExtensionId& extension_id) {
-  Profile* const profile = browser_window_->GetProfile();
-  if (profile->IsOffTheRecord() &&
-      !extensions::util::IsIncognitoEnabled(extension_id, profile)) {
-    return;
-  }
-
-  if (is_visible_ && active_extension_id_ == extension_id) {
-    return;
-  }
-
-  active_extension_id_ = extension_id;
-  SetOrganizerVisible(true);
+BrowserAnimationMotion OrganizerPanelController::GetTargetMotion() const {
+  // Shuttle: no vertical tab strip, so the panel only lives in the tray.
+  return is_visible_ ? OrganizerPanelAnimations::kShowInTray
+                     : OrganizerPanelAnimations::kHideInTray;
 }
-
-void OrganizerPanelController::ToggleForExtension(
-    const extensions::ExtensionId& extension_id) {
-  if (is_visible_ && active_extension_id_ == extension_id) {
-    SetOrganizerVisible(false);
-    return;
-  }
-  OpenForExtension(extension_id);
-}
-
-void OrganizerPanelController::CloseForExtension(
-    const extensions::ExtensionId& extension_id) {
-  if (!is_visible_ || active_extension_id_ != extension_id) {
-    return;
-  }
-  SetOrganizerVisible(false);
-}
-#endif
 
 base::CallbackListSubscription OrganizerPanelController::RegisterOnStateChanged(
     StateChangedCallback callback) {
   return on_state_changed_callback_list_.Add(std::move(callback));
+}
+
+content::WebContents* OrganizerPanelController::EnsureWebContentsCreated() {
+  if (web_contents_) {
+    return web_contents_.get();
+  }
+
+  auto* const preload_manager = WebUIContentsPreloadManager::GetInstance();
+  CHECK(preload_manager);
+  WebUIContentsPreloadManager::RequestResult result = preload_manager->Request(
+      GURL(chrome::kChromeUIOrganizerPanelURL), browser_window_->GetProfile());
+  web_contents_ = std::move(result.web_contents);
+  webui::SetBrowserWindowInterface(web_contents_.get(), &*browser_window_);
+  web_contents_->SetSupportsDraggableRegions(true);
+  if (site_engagement::SiteEngagementService::IsEnabled()) {
+    site_engagement_helper_ =
+        std::make_unique<site_engagement::SiteEngagementService::Helper>(
+            web_contents_.get());
+  }
+  return web_contents_.get();
+}
+
+void OrganizerPanelController::RegisterPanelView(
+    OrganizerPanelView* panel_view) {
+  CHECK(!panel_view_);
+  CHECK(!is_visible_);
+  panel_view_ = panel_view;
+}
+
+void OrganizerPanelController::UnregisterPanelView(
+    OrganizerPanelView* panel_view) {
+  CHECK_EQ(panel_view_, panel_view);
+  panel_view_ = nullptr;
+}
+
+void OrganizerPanelController::UpdatePanelWebContents() {
+  if (!is_visible_ || !panel_view_) {
+    return;
+  }
+  if (content::WebContents* const contents = EnsureWebContentsCreated()) {
+    panel_view_->AttachWebContents(contents);
+  }
 }
 
 std::unique_ptr<views::View> OrganizerPanelController::SetPanelView(

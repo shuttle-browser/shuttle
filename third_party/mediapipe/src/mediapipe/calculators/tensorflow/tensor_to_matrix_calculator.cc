@@ -15,16 +15,16 @@
 // Calculator converts from one-dimensional Tensor of DT_FLOAT to Matrix
 // OR from (batched) two-dimensional Tensor of DT_FLOAT to Matrix.
 
-#include "absl/log/absl_check.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensorflow/tensor_to_matrix_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/matrix.h"
 #include "mediapipe/framework/formats/time_series_header.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_macros.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/tensor.h"  // from @org_tensorflow
+#include "tensorflow/core/framework/types.h"   // from @org_tensorflow
 
 namespace mediapipe {
 
@@ -150,7 +150,7 @@ absl::Status TensorToMatrixCalculator::GetContract(CalculatorContract* cc) {
 }
 
 absl::Status TensorToMatrixCalculator::Open(CalculatorContext* cc) {
-  auto input_header = absl::make_unique<TimeSeriesHeader>();
+  auto input_header = std::make_unique<TimeSeriesHeader>();
   absl::Status header_status;
   if (cc->Inputs().HasTag(kReference)) {
     header_status = FillTimeSeriesHeaderIfValid(
@@ -207,7 +207,7 @@ absl::Status TensorToMatrixCalculator::Process(CalculatorContext* cc) {
     RET_CHECK_EQ(width, header_.num_samples())
         << "The number of samples at runtime does not match the header.";
   }
-  auto output = absl::make_unique<Matrix>(width, length);
+  auto output = std::make_unique<Matrix>(width, length);
   *output =
       Eigen::MatrixXf::Map(input_tensor.flat<float>().data(), length, width);
   cc->Outputs().Tag(kMatrix).Add(output.release(), cc->InputTimestamp());

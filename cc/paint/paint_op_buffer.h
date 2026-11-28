@@ -20,7 +20,6 @@
 #include "base/memory/aligned_memory.h"
 #include "base/memory/stack_allocated.h"
 #include "cc/paint/paint_export.h"
-#include "cc/paint/scroll_offset_map.h"
 #include "third_party/skia/include/core/SkM44.h"
 #include "third_party/skia/include/core/SkRefCnt.h"
 #include "ui/gfx/display_color_spaces.h"
@@ -41,6 +40,7 @@ class ClientPaintCache;
 class ImageProvider;
 class PaintOp;
 class PaintRecord;
+struct RasterInducingValues;
 class ServicePaintCache;
 class SkottieSerializationHistory;
 class TransferCacheDeserializeHelper;
@@ -86,7 +86,7 @@ struct CC_PAINT_EXPORT PlaybackParams {
   SkM44 original_ctm;
   PlaybackCallbacks callbacks;
   std::optional<bool> save_layer_alpha_should_preserve_lcd_text;
-  const ScrollOffsetMap* raster_inducing_scroll_offsets = nullptr;
+  const RasterInducingValues* raster_inducing_values = nullptr;
   bool is_analyzing = false;
 
   // The HDR headroom to tone map to.
@@ -131,7 +131,7 @@ class CC_PAINT_EXPORT PaintOpBuffer : public SkRefCnt {
         bool can_use_lcd_text,
         bool context_supports_distance_field_text,
         int max_texture_size,
-        const ScrollOffsetMap* raster_inducing_scroll_offsets = nullptr);
+        const RasterInducingValues* raster_inducing_values = nullptr);
     SerializeOptions(const SerializeOptions&);
     SerializeOptions& operator=(const SerializeOptions&);
     ~SerializeOptions();
@@ -146,7 +146,7 @@ class CC_PAINT_EXPORT PaintOpBuffer : public SkRefCnt {
     bool can_use_lcd_text = false;
     bool context_supports_distance_field_text = true;
     int max_texture_size = 0;
-    const ScrollOffsetMap* raster_inducing_scroll_offsets = nullptr;
+    const RasterInducingValues* raster_inducing_values = nullptr;
     PlaybackCallbacks::CustomDataRasterCallback custom_callback;
   };
 
@@ -238,6 +238,12 @@ class CC_PAINT_EXPORT PaintOpBuffer : public SkRefCnt {
     return has_effects_preventing_lcd_text_for_save_layer_alpha_;
   }
   bool has_discardable_images() const { return has_discardable_images_; }
+  // True when this buffer (or any op/sub-record in it) contains content whose
+  // pixel readback is disallowed (e.g., cross-origin images without CORS
+  // access).
+  bool has_read_back_disallowed_content() const {
+    return has_read_back_disallowed_content_;
+  }
   const gfx::ContentColorVolume& content_color_volume() const {
     return content_color_volume_;
   }
@@ -251,13 +257,24 @@ class CC_PAINT_EXPORT PaintOpBuffer : public SkRefCnt {
   // If the shrinking-to-fit allocates a new data buffer, this PaintOpBuffer
   // retains the original data buffer for future use.
   PaintRecord ReleaseAsRecord();
-  PaintRecord DeepCopyAsRecord() const;
+  // Returns a deep copy as a PaintRecord. When `strip_read_back_disallowed_ops`
+  // is true, ops and SaveLayer scopes containing read-back disallowed content
+  // are omitted.
+  PaintRecord DeepCopyAsRecord(
+      bool strip_read_back_disallowed_ops = false) const;
   PaintRecord ReplaceCustomData(
-      const base::flat_map<uint32_t, PaintRecord>& replacements) const;
+      const base::flat_map<uint32_t, PaintRecord>& replacements,
+      bool strip_read_back_disallowed_ops = false) const;
 
-  PaintOpBuffer& operator+=(const PaintOpBuffer& other);
+  // Appends all ops from `other` into this buffer. When
+  // `strip_read_back_disallowed_ops` is true, ops and SaveLayer scopes
+  // containing read-back disallowed content are omitted. Otherwise, `other`
+  // must not be whole-buffer read-back disallowed
+  // (`!other.is_read_back_disallowed_`); use `push<DrawRecordOp>()` instead so
+  // whole-record read-back disallowed state stays scoped to that sub-record.
   void Append(const PaintOpBuffer& other,
-              const base::flat_map<uint32_t, PaintRecord>* replacements);
+              bool strip_read_back_disallowed_ops = false);
+  PaintOpBuffer& operator+=(const PaintOpBuffer& other);
 
   bool EqualsForTesting(const PaintOpBuffer& other) const;
 
@@ -307,6 +324,11 @@ class CC_PAINT_EXPORT PaintOpBuffer : public SkRefCnt {
 
     has_discardable_images_ |= op->HasDiscardableImages();
     has_discardable_images_ |= op->HasDiscardableImagesFromFlags();
+    if (!has_read_back_disallowed_content_) {
+      has_read_back_disallowed_content_ =
+          op->HasReadBackDisallowedContentIgnoringFlags() ||
+          op->HasReadBackDisallowedContentFromFlags();
+    }
 
     op->UnionColorVolumeInto(content_color_volume_);
     op->UnionColorVolumeFromFlagsInto(content_color_volume_);
@@ -339,10 +361,22 @@ class CC_PAINT_EXPORT PaintOpBuffer : public SkRefCnt {
   friend class DisplayItemList;
   friend class PaintOp;
   friend class PaintOpBufferOffsetsTest;
+  friend class PaintRecord;
   friend class SolidColorAnalyzer;
   using BufferData = base::HeapArray<uint8_t, base::AlignedFreeDeleter>;
 
   bool is_mutable() const { return unique(); }
+
+  bool is_read_back_disallowed() const { return is_read_back_disallowed_; }
+  void set_is_read_back_disallowed() {
+    DCHECK(is_mutable());
+    is_read_back_disallowed_ = true;
+    has_read_back_disallowed_content_ = true;
+  }
+
+  void Append(const PaintOpBuffer& other,
+              const base::flat_map<uint32_t, PaintRecord>* replacements,
+              bool strip_read_back_disallowed_ops = false);
 
   void DestroyOps();
 
@@ -398,6 +432,8 @@ class CC_PAINT_EXPORT PaintOpBuffer : public SkRefCnt {
   bool has_effects_preventing_lcd_text_for_save_layer_alpha_ : 1 = false;
 
   bool has_discardable_images_ : 1 = false;
+  bool is_read_back_disallowed_ : 1 = false;
+  bool has_read_back_disallowed_content_ : 1 = false;
   gfx::ContentColorVolume content_color_volume_;
 };
 

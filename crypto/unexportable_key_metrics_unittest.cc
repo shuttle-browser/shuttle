@@ -18,6 +18,7 @@
 #include "base/containers/transparent_hash.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "build/build_config.h"
+#include "crypto/scoped_fake_unexportable_key_provider.h"
 #include "crypto/unexportable_key.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
@@ -229,6 +230,40 @@ TEST_F(UnexportableKeyMetricTest, GatherAllMetrics) {
               BucketsAre(base::Bucket(true, 1)));
 }
 
+TEST(UnexportableKeyMetricNoProviderTest, RecordsNoSupport) {
+  ScopedNullUnexportableKeyProvider null_provider;
+  base::HistogramTester histogram_tester;
+
+  internal::MeasureTpmOperationsInternalForTesting();
+
+  EXPECT_THAT(histogram_tester.GetAllSamples("Crypto.TPMSupport2"),
+              BucketsAre(base::Bucket(internal::TPMSupport::kNone, 1)));
+  histogram_tester.ExpectTotalCount("Crypto.TPMDuration.NewKeyCreationECDSA",
+                                    0);
+  histogram_tester.ExpectTotalCount("Crypto.TPMOperation.NewKeyCreation", 0);
+}
+
+// Crypto.KeyHardwareSupport.{Win,Mac} doesn't depend on the key provider.
+TEST(UnexportableKeyMetricNoProviderTest, RecordsKeyHardwareSupport) {
+  ScopedNullUnexportableKeyProvider null_provider;
+  base::HistogramTester histogram_tester;
+
+  internal::MeasureTpmOperationsInternalForTesting();
+
+#if BUILDFLAG(IS_WIN)
+  // The bucket depends on the machine.
+  histogram_tester.ExpectTotalCount("Crypto.KeyHardwareSupport.Win", 1);
+  histogram_tester.ExpectTotalCount("Crypto.KeyHardwareSupport.Mac", 0);
+#elif BUILDFLAG(IS_MAC)
+  // The bucket depends on the machine.
+  histogram_tester.ExpectTotalCount("Crypto.KeyHardwareSupport.Mac", 1);
+  histogram_tester.ExpectTotalCount("Crypto.KeyHardwareSupport.Win", 0);
+#else
+  histogram_tester.ExpectTotalCount("Crypto.KeyHardwareSupport.Win", 0);
+  histogram_tester.ExpectTotalCount("Crypto.KeyHardwareSupport.Mac", 0);
+#endif
+}
+
 #if BUILDFLAG(IS_MAC)
 constexpr char kTestKeychainAccessGroup[] = "test-keychain-access-group";
 
@@ -274,6 +309,43 @@ TEST(UnexportableKeyMetricMacTest, DeletesLeftoverKeys) {
   histogram_tester.ExpectUniqueSample("Crypto.TPMOperation.NewKeyCreationECDSA",
                                       true, 1);
   EXPECT_THAT(GetAllKeyTags(), testing::UnorderedElementsAre("", other_tag));
+}
+
+TEST(UnexportableKeyMetricMacTest, KeyHardwareSupportSecureEnclave) {
+  apple::ScopedFakeKeychainV2 scoped_fake_keychain(kTestKeychainAccessGroup);
+  base::HistogramTester histogram_tester;
+
+  MaybeMeasureTpmOperations(
+      {.keychain_access_group = kTestKeychainAccessGroup});
+
+  histogram_tester.ExpectUniqueSample(
+      "Crypto.KeyHardwareSupport.Mac",
+      internal::MacKeyHardwareSupport::kSecureEnclave, 1);
+}
+
+TEST(UnexportableKeyMetricMacTest, KeyHardwareSupportNoSecureEnclave) {
+  apple::ScopedFakeKeychainV2 scoped_fake_keychain(kTestKeychainAccessGroup);
+  scoped_fake_keychain.SetSecureEnclaveAvailable(false);
+  base::HistogramTester histogram_tester;
+
+  MaybeMeasureTpmOperations(
+      {.keychain_access_group = kTestKeychainAccessGroup});
+
+  histogram_tester.ExpectUniqueSample(
+      "Crypto.KeyHardwareSupport.Mac",
+      internal::MacKeyHardwareSupport::kNoSecureEnclave, 1);
+}
+
+TEST(UnexportableKeyMetricMacTest, KeyHardwareSupportMissingEntitlement) {
+  // The fake grants the entitlement for its own access group only.
+  apple::ScopedFakeKeychainV2 scoped_fake_keychain(kTestKeychainAccessGroup);
+  base::HistogramTester histogram_tester;
+
+  MaybeMeasureTpmOperations({.keychain_access_group = "other-access-group"});
+
+  histogram_tester.ExpectUniqueSample(
+      "Crypto.KeyHardwareSupport.Mac",
+      internal::MacKeyHardwareSupport::kMissingEntitlement, 1);
 }
 #endif  // BUILDFLAG(IS_MAC)
 

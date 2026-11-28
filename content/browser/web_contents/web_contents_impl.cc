@@ -171,6 +171,7 @@
 #include "content/public/browser/site_isolation_policy.h"
 #include "content/public/browser/ssl_status.h"
 #include "content/public/browser/storage_partition.h"
+#include "content/public/browser/user_browser_context.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_view_delegate.h"
 #include "content/public/browser/web_ui_controller.h"
@@ -223,11 +224,11 @@
 #include "ui/accessibility/platform/browser_accessibility_manager.h"
 #include "ui/base/clipboard/clipboard_metadata.h"
 #include "ui/base/ime/mojom/virtual_keyboard_types.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/base/pointer/pointer_device.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/ui_base_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_provider_key.h"
 #include "ui/color/color_provider_manager.h"
 #include "ui/color/color_provider_utils.h"
@@ -342,7 +343,7 @@ RenderFrameHostImpl* FindOpenerRFH(const WebContents::CreateParams& params) {
 // user interaction observers.
 bool IsUserInteractionInputType(blink::WebInputEvent::Type type) {
   // TODO(mustaq): This list should be based off the HTML spec:
-  // https://html.spec.whatwg.org/multipage/interaction.html#tracking-user-activation,
+  // https://html.spec.whatwg.org/multipage/interaction.html#activation-triggering-input-event,
   // and kGestureScrollBegin is a clear outlier.
   return type == blink::WebInputEvent::Type::kMouseDown ||
          type == blink::WebInputEvent::Type::kGestureScrollBegin ||
@@ -875,8 +876,8 @@ bool WebContentsImpl::IsPopup() const {
   return is_popup_;
 }
 
-WindowOpenDisposition WebContentsImpl::GetOriginalWindowOpenDisposition()
-    const {
+ui::mojom::WindowOpenDisposition
+WebContentsImpl::GetOriginalWindowOpenDisposition() const {
   return original_window_open_disposition_;
 }
 
@@ -1135,6 +1136,10 @@ void WebContentsImpl::NotifySwappedRWHVChildFrameFromRenderManager(
     bool allow_paint_holding) {
   if (surface_embed_connector_) {
     surface_embed_connector_->SetView(new_view, allow_paint_holding);
+
+    // Swapping the view changes the `gfx::NativeView` returned by
+    // `GetCaptureTarget()`.
+    observers_.NotifyObservers(&WebContentsObserver::CaptureTargetChanged);
   }
 }
 
@@ -2703,14 +2708,20 @@ void WebContentsImpl::SetDisplayCutoutSafeArea(gfx::Insets insets) {
   }
 }
 
-void WebContentsImpl::ShowInterestInElement(int nodeID) {
-  OPTIONAL_TRACE_EVENT0("content", "WebContentsImpl::ShowInterestInElement");
-  if (auto* rwhv = GetRenderWidgetHostView()) {
-    rwhv->ShowInterestInElement(nodeID);
-  }
-}
-
 #endif
+
+void WebContentsImpl::ShowInterestInElement(const GlobalDOMNodeId& node_id) {
+  OPTIONAL_TRACE_EVENT0("content", "WebContentsImpl::ShowInterestInElement");
+  auto* rfh = static_cast<RenderFrameHostImpl*>(
+      node_id.document.AsRenderFrameHostIfValid());
+  if (!rfh || !rfh->IsRenderFrameLive() ||
+      WebContents::FromRenderFrameHost(rfh) != this ||
+      node_id.target_element_dom_id.is_null()) {
+    return;
+  }
+  rfh->GetAssociatedLocalFrame()->ShowInterestInElement(
+      node_id.target_element_dom_id.value());
+}
 
 const std::u16string& WebContentsImpl::GetTitle() {
   WebUI* our_web_ui =
@@ -2887,7 +2898,7 @@ bool WebContentsImpl::IsBeingVisiblyCaptured() {
 void WebContentsImpl::OnCapturerCountChanged() {
   view_->OnCapturerCountChanged();
   if (surface_embed_connector_) {
-    surface_embed_connector_->SetKeepSurfaceAlive(IsBeingCaptured());
+    surface_embed_connector_->UpdateKeepSurfaceAlive();
   }
 }
 
@@ -3119,7 +3130,9 @@ int WebContentsImpl::GetVirtualKeyboardResizeHeight() {
 }
 
 bool WebContentsImpl::ShouldDoLearning() {
-  return !GetBrowserContext()->IsOffTheRecord();
+  // Use the off-the-record state of the user that this WebContents is shown
+  // for, which can differ from that of its BrowserContext.
+  return !GetUserBrowserContext(*this)->IsOffTheRecord();
 }
 
 void WebContentsImpl::OnAudioStateChanged() {
@@ -3723,6 +3736,10 @@ void WebContentsImpl::SetSurfaceEmbedConnector(
   RecursivelyRegisterRenderWidgetHostViews();
 
   surface_embed_connector_->OnAttachedToParent();
+
+  // Swapping the view changes the `gfx::NativeView` returned by
+  // `GetCaptureTarget()`.
+  observers_.NotifyObservers(&WebContentsObserver::CaptureTargetChanged);
 }
 
 void WebContentsImpl::ClearSurfaceEmbedConnector() {
@@ -3799,6 +3816,10 @@ void WebContentsImpl::ClearSurfaceEmbedConnector() {
       CreateRenderWidgetHostViewForRenderManager(rvh);
     }
     RecursivelyRegisterRenderWidgetHostViews();
+
+    // Restoring the view changes the `gfx::NativeView` returned by
+    // `GetCaptureTarget()`.
+    observers_.NotifyObservers(&WebContentsObserver::CaptureTargetChanged);
   }
 }
 
@@ -5731,9 +5752,10 @@ FrameTree* WebContentsImpl::CreateNewWindow(
 
   // Block Document Picture-in-Picture window creation if the delegate reports
   // that the OS currently prevents it (e.g., Android in app fullscreen).
-  // `NEW_PICTURE_IN_PICTURE` is specific to Document PiP and does not affect
+  // `kNewPictureInPicture` is specific to Document PiP and does not affect
   // traditional video PiP or regular popups.
-  if (params.disposition == WindowOpenDisposition::kNewPictureInPicture &&
+  if (params.disposition ==
+          ui::mojom::WindowOpenDisposition::kNewPictureInPicture &&
       delegate_ && delegate_->IsDocumentPictureInPictureBlockedBySystem()) {
     return nullptr;
   }
@@ -5781,12 +5803,12 @@ FrameTree* WebContentsImpl::CreateNewWindow(
       return nullptr;
     }
     web_contents_impl->is_popup_ =
-        params.disposition == WindowOpenDisposition::kNewPopup;
+        params.disposition == ui::mojom::WindowOpenDisposition::kNewPopup;
     return &web_contents_impl->GetPrimaryFrameTree();
   }
 
   bool renderer_started_hidden =
-      params.disposition == WindowOpenDisposition::kNewBackgroundTab;
+      params.disposition == ui::mojom::WindowOpenDisposition::kNewBackgroundTab;
 
   bool is_guest =
       base::FeatureList::IsEnabled(features::kGuestViewMPArch)
@@ -5887,7 +5909,7 @@ FrameTree* WebContentsImpl::CreateNewWindow(
 
   auto* new_contents_impl = new_contents.get();
   new_contents_impl->is_popup_ =
-      params.disposition == WindowOpenDisposition::kNewPopup;
+      params.disposition == ui::mojom::WindowOpenDisposition::kNewPopup;
 
   // Sets the newly created WebContents WindowOpenDisposition.
   new_contents_impl->original_window_open_disposition_ = params.disposition;
@@ -5901,6 +5923,14 @@ FrameTree* WebContentsImpl::CreateNewWindow(
         new_contents_impl->GetPrimaryMainFrame()->browsing_context_state());
   }
 
+  // Creating and showing the new window's view, and AddNewContents(), can run
+  // a nested message loop (e.g. UpdateLegacyWin() on Windows) in which the
+  // opener's tab or frame is closed. If so, stop creating the window; the
+  // caller already handles the opener frame being gone. See
+  // crbug.com/574739217.
+  base::WeakPtr<WebContentsImpl> weak_this = weak_factory_.GetWeakPtr();
+  base::WeakPtr<RenderFrameHostImpl> weak_opener = opener->GetWeakPtr();
+
   // Save the window for later if we're not suppressing the opener (since it
   // will be shown immediately).
   if (!params.opener_suppressed) {
@@ -5911,11 +5941,17 @@ FrameTree* WebContentsImpl::CreateNewWindow(
       // newly created object and give it one of its own member variables.
       RenderWidgetHostViewBase* widget_view = new_view->CreateViewForWidget(
           new_contents_impl->GetRenderViewHost()->GetWidget());
+      if (!weak_this || !weak_opener || !widget_view) {
+        return nullptr;
+      }
       view_->SetOverscrollControllerEnabled(CanOverscrollContent());
       if (!renderer_started_hidden) {
         // RenderWidgets for frames always initialize as hidden. If the renderer
         // created this window as visible, then we show it here.
         widget_view->ShowWithVisibility(PageVisibilityState::kVisible);
+        if (!weak_this || !weak_opener) {
+          return nullptr;
+        }
       }
     }
     // Save the created window associated with the route so we can show it
@@ -5956,14 +5992,13 @@ FrameTree* WebContentsImpl::CreateNewWindow(
   bool was_blocked = false;
   base::WeakPtr<WebContentsImpl> weak_new_contents =
       new_contents_impl->weak_factory_.GetWeakPtr();
-  base::WeakPtr<WebContentsImpl> weak_this = weak_factory_.GetWeakPtr();
   WebContentsImpl* contents_to_load = new_contents_impl;
   if (delegate_) {
     WebContents* web_contents_navigated = delegate_->AddNewContents(
         this, std::move(new_contents), params.target_url, params.disposition,
         *params.features, has_user_gesture, &was_blocked);
 
-    if (!weak_this) {
+    if (!weak_this || !weak_opener) {
       // `this` may be deleted after AddNewContents() due to a nested message
       // loop (e.g. the window hosting the opener is closed). See
       // crbug.com/527676561.
@@ -6109,7 +6144,7 @@ int64_t WebContentsImpl::AdjustWindowRect(gfx::Rect* bounds,
 WebContents* WebContentsImpl::ShowCreatedWindow(
     RenderFrameHostImpl* opener,
     int main_frame_widget_route_id,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture) {
   OPTIONAL_TRACE_EVENT2("content", "WebContentsImpl::ShowCreatedWindow",
@@ -6190,7 +6225,8 @@ WebContents* WebContentsImpl::ShowCreatedWindow(
 }
 
 gfx::Rect WebContentsImpl::ConstrainPopupBounds(const gfx::Rect& bounds) {
-  if (!base::FeatureList::IsEnabled(features::kLimitPopupWidgetHostPosition)) {
+  if (!base::FeatureList::IsEnabled(
+          blink::features::kLimitPopupWidgetHostPosition)) {
     return bounds;
   }
   // Constrain popup bounds so that the top of the popup is at or below the line
@@ -6203,6 +6239,17 @@ gfx::Rect WebContentsImpl::ConstrainPopupBounds(const gfx::Rect& bounds) {
   int line_of_death = view->GetViewBounds().y();
   if (constrained_bounds.y() < line_of_death) {
     constrained_bounds.set_y(line_of_death);
+    if (display::Screen* screen = display::Screen::Get();
+        screen && !screen->IsHeadless()) {
+      const display::Display display =
+          screen->GetDisplayNearestView(view->GetNativeView());
+      const gfx::Rect work_area = display.work_area();
+      if (!work_area.IsEmpty() &&
+          constrained_bounds.bottom() > work_area.bottom()) {
+        constrained_bounds.set_height(
+            std::max(0, work_area.bottom() - constrained_bounds.y()));
+      }
+    }
   }
   return constrained_bounds;
 }
@@ -6311,8 +6358,16 @@ void WebContentsImpl::ShowCreatedWidget(ChildProcessId process_id,
     }
   }
 
+  // InitAsPopup() can run a nested message loop (UpdateLegacyWin() on Windows)
+  // in which the popup is closed, e.g. because its parent loses focus, which
+  // deletes `render_widget_host_impl`.
+  base::WeakPtr<RenderWidgetHostImpl> weak_widget =
+      render_widget_host_impl->GetWeakPtr();
   widget_host_view->InitAsPopup(view, transformed_rect,
                                 transformed_anchor_rect);
+  if (!weak_widget) {
+    return;
+  }
 
   // Renderer-owned popup widgets wait for the renderer to request for them
   // to be shown. We signal that this condition is satisfied by calling Init().
@@ -7012,7 +7067,7 @@ WebContents* WebContentsImpl::OpenURL(
 
   // Prevent frames that are not active (e.g. a prerendering page) from opening
   // new windows, tabs, popups, etc.
-  if (params.disposition != WindowOpenDisposition::kCurrentTab &&
+  if (params.disposition != ui::mojom::WindowOpenDisposition::kCurrentTab &&
       source_render_frame_host && !source_render_frame_host->IsActive()) {
     return nullptr;
   }
@@ -7039,7 +7094,8 @@ WebContents* WebContentsImpl::OpenURL(
       // tree.
       if (frame_tree.is_prerendering() ||
           frame_tree_node->IsInFencedFrameTree()) {
-        DCHECK_EQ(params.disposition, WindowOpenDisposition::kCurrentTab);
+        DCHECK_EQ(params.disposition,
+                  ui::mojom::WindowOpenDisposition::kCurrentTab);
         frame_tree.controller().LoadURLWithParams(
             NavigationController::LoadURLParams(params));
         return this;
@@ -7072,7 +7128,7 @@ WebContents* WebContentsImpl::OpenURL(
   // ServiceWorker calls WindowClient.navigate() on a crashed frame), starting
   // the navigation performs an early RenderFrameHost swap, which deletes the
   // crashed source RenderFrameHost. So, don't use `source_render_frame_host`
-  // after this point. In that case the disposition is CURRENT_TAB and
+  // after this point. In that case the disposition is `kCurrentTab` and
   // `new_contents` is `this`, so the observer notification below won't run,
   // but use a WeakPtr to avoid relying on that.
   base::WeakPtr<RenderFrameHostImpl> weak_source_rfh =
@@ -7700,21 +7756,26 @@ bool WebContentsImpl::GotResponseToPointerLockRequest(
     blink::mojom::PointerLockResult result) {
   OPTIONAL_TRACE_EVENT0("content",
                         "WebContentsImpl::GotResponseToPointerLockRequest");
-  if (pointer_lock_widget_) {
-    auto* web_contents =
-        WebContentsImpl::FromRenderWidgetHostImpl(pointer_lock_widget_);
-    if (web_contents != this) {
-      return web_contents->GotResponseToPointerLockRequest(result);
-    }
+  // Ignore the response if this WebContents has no pointer lock request of its
+  // own. Clearing the parent chain here would drop a lock held by an outer
+  // WebContents.
+  if (!pointer_lock_widget_) {
+    return false;
+  }
 
-    if (pointer_lock_widget_->GotResponseToPointerLockRequest(result)) {
-      return true;
-    }
+  auto* web_contents =
+      WebContentsImpl::FromRenderWidgetHostImpl(pointer_lock_widget_);
+  if (web_contents != this) {
+    return web_contents->GotResponseToPointerLockRequest(result);
+  }
 
-    if (pointer_lock_widget_ && pointer_lock_widget_->GetView() &&
-        pointer_lock_widget_->GetView()->IsPointerLocked()) {
-      return true;
-    }
+  if (pointer_lock_widget_->GotResponseToPointerLockRequest(result)) {
+    return true;
+  }
+
+  if (pointer_lock_widget_ && pointer_lock_widget_->GetView() &&
+      pointer_lock_widget_->GetView()->IsPointerLocked()) {
+    return true;
   }
 
   SetPointerLockWidgetInParentChain(nullptr);
@@ -7761,6 +7822,14 @@ bool WebContentsImpl::GotResponseToKeyboardLockRequest(bool allowed) {
   }
   keyboard_lock_widget_->GotResponseToKeyboardLockRequest(allowed);
   return true;
+}
+
+void WebContentsImpl::DiscardKeyboardLockRequest() {
+  OPTIONAL_TRACE_EVENT0("content",
+                        "WebContentsImpl::DiscardKeyboardLockRequest");
+  // Clearing `keyboard_lock_widget_` keeps EnterFullscreenMode() from sending
+  // the rejected request to the delegate again.
+  CancelKeyboardLock(keyboard_lock_widget_);
 }
 
 bool WebContentsImpl::HasOpener() {
@@ -8936,7 +9005,7 @@ void WebContentsImpl::ViewSource(RenderFrameHostImpl* frame) {
   constexpr bool kUserGesture = true;
   bool ignored_was_blocked;
   delegate_->AddNewContents(this, std::move(view_source_contents), url,
-                            WindowOpenDisposition::kNewForegroundTab,
+                            ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                             blink::mojom::WindowFeatures(), kUserGesture,
                             &ignored_was_blocked);
   // Note that the |delegate_| could have deleted |view_source_contents| during
@@ -9062,6 +9131,12 @@ void WebContentsImpl::DOMContentLoaded(RenderFrameHostImpl* render_frame_host) {
                         "render_frame_host", render_frame_host);
   SCOPED_UMA_HISTOGRAM_TIMER("WebContentsObserver.DOMContentLoaded");
   observers_.NotifyObservers(&WebContentsObserver::DOMContentLoaded,
+                             render_frame_host);
+}
+
+void WebContentsImpl::ScriptToolsReadyStateChanged(
+    RenderFrameHostImpl* render_frame_host) {
+  observers_.NotifyObservers(&WebContentsObserver::ScriptToolsReadyStateChanged,
                              render_frame_host);
 }
 
@@ -11232,6 +11307,10 @@ bool WebContentsImpl::DoesWebContentsDisallowServiceWorkerControl() {
          privileged_params_->disallow_service_worker_control;
 }
 
+bool WebContentsImpl::DoesWebContentsDisallowSharedWorkers() {
+  return privileged_params_ && privileged_params_->disallow_shared_workers;
+}
+
 WebContents* WebContentsImpl::GetDocumentPictureInPictureOpener() {
   return picture_in_picture_opener_.get();
 }
@@ -11330,7 +11409,7 @@ void WebContentsImpl::DidReceiveInputEvent(
       static_cast<const blink::WebMouseEvent&>(event).button ==
           blink::WebPointerProperties::Button::kBack) {
     BackNavigationLikely(content_preloading_predictor::kMouseBackButton,
-                         WindowOpenDisposition::kCurrentTab);
+                         ui::mojom::WindowOpenDisposition::kCurrentTab);
   }
 
   HandleUserInteractionForInputEvent(render_widget_host, event);
@@ -11645,7 +11724,10 @@ void WebContentsImpl::CreateRenderWidgetHostViewForRenderManager(
     RenderWidgetHostViewBase* rwh_view =
         view_->CreateViewForWidget(render_view_host->GetWidget());
     view_->SetOverscrollControllerEnabled(CanOverscrollContent());
-    rwh_view->SetSize(GetSizeForMainFrame());
+    // The view is destroyed if the renderer goes away while it is created.
+    if (rwh_view) {
+      rwh_view->SetSize(GetSizeForMainFrame());
+    }
   }
 
   if (opt_out_frame_eviction_) {
@@ -13335,8 +13417,9 @@ bool WebContentsImpl::IsAllowedToStartPrerendering() {
   return GetPrerenderHostRegistry()->IsAllowedToStartPrerenderingForEmbedder();
 }
 
-void WebContentsImpl::BackNavigationLikely(PreloadingPredictor predictor,
-                                           WindowOpenDisposition disposition) {
+void WebContentsImpl::BackNavigationLikely(
+    PreloadingPredictor predictor,
+    ui::mojom::WindowOpenDisposition disposition) {
   CHECK(!IsBeingDestroyed());
 
   // See the comment of `last_back_navigation_hint_time_` for why this cooldown
@@ -13348,7 +13431,7 @@ void WebContentsImpl::BackNavigationLikely(PreloadingPredictor predictor,
   }
   last_back_navigation_hint_time_ = now;
 
-  if (disposition != WindowOpenDisposition::kCurrentTab) {
+  if (disposition != ui::mojom::WindowOpenDisposition::kCurrentTab) {
     RecordPrerenderBackNavigationEligibility(
         predictor, PrerenderBackNavigationEligibility::kTargetingOtherWindow,
         nullptr);

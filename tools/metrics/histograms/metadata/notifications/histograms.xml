@@ -823,8 +823,24 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="Notifications.macOS.ActionReceived.{Style}"
+    enum="NotificationOperation" expires_after="2027-05-02">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    Records the operation (e.g. click, close, settings) received for a macOS
+    notification, sliced by the UI style {Style} of the notification. This can
+    be used alongside Notifications.macOS.DisplayNotificationResult.{Style} to
+    compute click-through rates (CTR) across macOS notification styles. Note
+    that Close counts may not be directly comparable across styles due to
+    differences in how NSUserNotificationCenter and UNUserNotificationCenter
+    report notification dismissals and removals.
+  </summary>
+  <token key="Style" variants="MacOSNotificationStyle"/>
+</histogram>
+
 <histogram name="Notifications.macOS.AppShimProcess.UptimeOnDisconnect"
-    units="ms" expires_after="2027-03-01">
+    units="ms" expires_after="2027-05-02">
   <owner>mek@chromium.org</owner>
   <owner>pwa-team@google.com</owner>
   <summary>
@@ -836,7 +852,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Notifications.macOS.AppShimProcess.UptimeOnUnexpectedDisconnect"
-    units="ms" expires_after="2027-03-01">
+    units="ms" expires_after="2027-05-02">
   <owner>mek@chromium.org</owner>
   <owner>pwa-team@google.com</owner>
   <summary>
@@ -848,18 +864,20 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Notifications.macOS.AttributionOutcome"
-    enum="MacNotificationAttributionOutcome" expires_after="2027-03-01">
+    enum="MacNotificationAttributionOutcome" expires_after="2027-05-02">
   <owner>mek@chromium.org</owner>
   <owner>pwa-team@google.com</owner>
   <summary>
     Records the outcome of attempting to attribute a Web App notification to its
     App Shim on macOS. Recorded when displaying a notification that has a Web
-    App ID.
+    App ID: synchronously when no installed App Shim is eligible for
+    attribution, or asynchronously once the App Shim's DisplayNotification call
+    completes (or its Mojo connection fails).
   </summary>
 </histogram>
 
 <histogram name="Notifications.macOS.DeliveryResult{Attempt}.{Style}"
-    enum="UNNotificationDeliveryResult" expires_after="2027-03-01">
+    enum="UNNotificationDeliveryResult" expires_after="2027-05-02">
   <owner>mek@chromium.org</owner>
   <owner>pwa-team@google.com</owner>
   <summary>
@@ -876,6 +894,23 @@ chromium-metrics-reviews@google.com.
         summary="retrying a notification request without attachments after an
                  attachment error"/>
   </token>
+  <token key="Style" variants="MacOSNotificationStyle"/>
+</histogram>
+
+<histogram name="Notifications.macOS.DisplayNotificationResult.{Style}"
+    enum="MacNotificationDisplayResult" expires_after="2027-03-01">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    Records the browser-observed result of attempting to display a notification
+    via the {Style} macOS notification service over Mojo, including permission
+    states, OS delivery errors, and Mojo connection or process launch failures.
+    Recorded when the DisplayNotification Mojo call completes or its pipe
+    disconnects. Note that NSUserNotificationCenter-backed services always
+    report Success when connected (or ConnectionFailed on Mojo disconnect),
+    whereas UNUserNotificationCenter-backed services (such as AppShim) also
+    report OS permission and delivery errors.
+  </summary>
   <token key="Style" variants="MacOSNotificationStyle"/>
 </histogram>
 
@@ -1021,21 +1056,100 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Notifications.Permissions.AppShim.OSPermissionRequestResult"
+<histogram name="Notifications.Permissions.AppShim.BadgeUpdateOSStatus"
+    enum="MacAppShimBadgeOSStatus" expires_after="2027-06-01">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    The macOS system notification and badging permission status of an installed
+    web app's app shim at the time Chrome updates the app badge in the Dock.
+    Recorded in the app shim process when SetBadgeLabel queries the OS
+    notification settings (macOS only).
+  </summary>
+</histogram>
+
+<histogram name="Notifications.Permissions.AppShim.BadgeUpdateResult"
+    enum="MacAppShimBadgeResult" expires_after="2027-06-01">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    The result of updating an installed web app's Dock badge in its app shim
+    process when Chrome updates a profile's app badge to a non-empty value.
+    Recorded in the browser process when the SetBadgeLabel Mojo callback runs
+    (or when the connection drops before completing) (macOS only).
+  </summary>
+</histogram>
+
+<histogram
+    name="Notifications.Permissions.AppShim.OSPermissionRequestResult{Source}"
     enum="UNNotificationPermissionRequestResult" expires_after="2027-06-01">
   <owner>mek@chromium.org</owner>
   <owner>pwa-team@google.com</owner>
   <summary>
     The result of asking a web app's app shim to request macOS notification
-    permission. Recorded in the browser process after the user grants
-    notification permission in Chrome to a site that is attributed to an
-    installed web app with an app shim (macOS only). Unlike
+    permission. Recorded in the browser process {Source} for a site that is
+    attributed to an installed web app with an app shim (macOS only). Unlike
     Notifications.Permissions.UNNotification.AppShim.PermissionRequest (which is
     recorded in the app shim process), this also captures requests that failed
     because the app shim could not be launched or did not support the
     UNNotification API.
   </summary>
+  <token key="Source">
+    <variant name=""
+        summary="after the user grants notification permission in Chrome"/>
+    <variant name=".FromNotificationsBubble"
+        summary="after the user clicks Allow in the notifications content
+                 setting bubble"/>
+  </token>
 </histogram>
+
+<histogram
+    name="Notifications.Permissions.AppShim.OSStatus.Chrome{ChromeSetting}"
+    enum="MacAppShimNotificationPermissionStatus" expires_after="2027-06-01">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    The macOS system notification permission status of an installed web app's
+    app shim when Chrome's notification content setting for the app's start URL
+    is {ChromeSetting}. Recorded at most once per day per (profile, app) within
+    a browser session for each loaded profile where the app is installed with OS
+    integration when an app shim process reports a non-pending permission status
+    (macOS only). Note that if a user grants Chrome notification permission
+    while the app shim is not running, Chrome updates the content setting to
+    Allow and launches the shim in the background to request OS permission, so
+    that report on connect will record NotDetermined and suppress recording the
+    post-prompt status for the next day.
+  </summary>
+  <token key="ChromeSetting">
+    <variant name="Allow"/>
+    <variant name="Ask"/>
+    <variant name="Block"/>
+  </token>
+</histogram>
+
+<!-- LINT.IfChange(NotificationPermissionStatusVariant) -->
+
+<histogram
+    name="Notifications.Permissions.AppShim.StatusTransition.{OldStatus}"
+    enum="MacAppShimNotificationPermissionStatus" expires_after="2027-06-01">
+  <owner>mek@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    The new macOS system notification permission status for an installed web
+    app's app shim when its status in AppShimRegistry changes from {OldStatus}
+    to a different status (macOS only). Apps without a previously persisted
+    status in Local State default to NotDetermined.
+  </summary>
+  <token key="OldStatus">
+    <variant name="ExplicitlyDenied"/>
+    <variant name="Granted"/>
+    <variant name="ImplicitlyDenied"/>
+    <variant name="NotDetermined"/>
+    <variant name="PromptPending"/>
+  </token>
+</histogram>
+
+<!-- LINT.ThenChange(//chrome/browser/web_applications/os_integration/mac/app_shim_registry.cc:NotificationPermissionStatusVariant) -->
 
 <histogram name="Notifications.Permissions.RevokeDeleteCount" units="units"
     expires_after="2027-04-18">
@@ -1052,7 +1166,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Notifications.Permissions.UNNotification.{Style}.PermissionRequest"
-    enum="UNNotificationPermissionRequestResult" expires_after="2027-03-01">
+    enum="UNNotificationPermissionRequestResult" expires_after="2027-05-02">
   <owner>mek@chromium.org</owner>
   <owner>peter@chromium.org</owner>
   <summary>
@@ -1066,7 +1180,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Notifications.Permissions.UNNotification.{Style}.PermissionStatus"
-    enum="UNNotificationPermissionStatus" expires_after="2027-03-01">
+    enum="UNNotificationPermissionStatus" expires_after="2027-05-02">
   <owner>mek@chromium.org</owner>
   <owner>peter@chromium.org</owner>
   <summary>
@@ -1079,7 +1193,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Notifications.Permissions.UNNotification.{Style}.Style"
-    enum="UNNotificationStyle" expires_after="2027-03-01">
+    enum="UNNotificationStyle" expires_after="2027-05-02">
   <owner>mek@chromium.org</owner>
   <owner>peter@chromium.org</owner>
   <summary>

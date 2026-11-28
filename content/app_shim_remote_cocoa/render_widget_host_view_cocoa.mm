@@ -17,6 +17,7 @@
 #import "base/apple/foundation_util.h"
 #include "base/apple/owned_objc.h"
 #include "base/debug/crash_logging.h"
+#include "base/functional/bind.h"
 #import "base/mac/mac_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/numerics/safe_conversions.h"
@@ -24,6 +25,7 @@
 #include "base/strings/sys_string_conversions.h"
 #include "base/trace_event/trace_event.h"
 #include "components/input/web_input_event_builders_mac.h"
+#import "components/remote_cocoa/app_shim/bridged_content_view.h"
 #include "components/remote_cocoa/app_shim/immersive_mode_controller_cocoa.h"
 #include "components/remote_cocoa/app_shim/ns_view_ids.h"
 #import "content/browser/cocoa/system_hotkey_helper_mac.h"
@@ -217,6 +219,9 @@ void ExtractUnderlines(NSAttributedString* string,
 - (void)windowDidResignKey:(NSNotification*)notification;
 - (void)sendViewBoundsInWindowToHost;
 - (void)requestTextSubstitutions;
+- (void)didGetRect:(const std::optional<gfx::Rect>&)rect
+    forTextCheckingResult:(NSTextCheckingResult*)result;
+- (BOOL)isPendingCorrectionTextUnchanged;
 - (void)requestTextSuggestions;
 - (void)sendWindowFrameInScreenToHost;
 - (bool)hostIsDisconnected;
@@ -407,6 +412,11 @@ gfx::PointF GetSanitizedFlippedPoint(NSPoint point, CGFloat height) {
   NSInteger _textSuggestionsSequenceNumber;
   BOOL _shouldRequestTextSubstitutions;
   BOOL _substitutionWasApplied;
+  // The text replacement candidate whose correction indicator is waiting for
+  // the bounds of the text it replaces (see -requestTextSubstitutions).
+  NSTextCheckingResult* __strong _pendingCorrectionResult;
+  NSUInteger _pendingCorrectionChangeNumber;
+  std::u16string _pendingCorrectionText;
   bool _sonomaAccessibilityRefinementsAreActive;
   std::unique_ptr<content::ScopedAccessibilityMode> _basic_accessibility_mode;
 }
@@ -528,27 +538,68 @@ static NSWindow* __weak _deferredResignKeyWindow;
     return;
   }
 
-  NSRect textRectInScreenCoordinates =
-      [self firstRectForCharacterRange:candidateResult.range
-                           actualRange:nullptr];
-  NSRect textRectInWindowCoordinates =
-      [self.window convertRectFromScreen:textRectInScreenCoordinates];
-  NSRect textRectInViewCoordinates =
-      [self convertRect:textRectInWindowCoordinates fromView:nil];
+  const size_t candidateStart =
+      candidateResult.range.location - _availableTextOffset;
+  _pendingCorrectionResult = candidateResult;
+  _pendingCorrectionChangeNumber = _availableTextChangeCounter;
+  _pendingCorrectionText =
+      _availableText.substr(candidateStart, candidateResult.range.length);
+  RenderWidgetHostViewCocoa* __weak weakSelf = self;
+  _host->GetFirstRectForRange(
+      gfx::Range::FromPossiblyInvalidNSRange(candidateResult.range),
+      base::BindOnce(^(const std::optional<gfx::Rect>& rect) {
+        [weakSelf didGetRect:rect forTextCheckingResult:candidateResult];
+      }));
+}
 
-  NSUInteger capturedChangeCounter = _availableTextChangeCounter;
+- (void)didGetRect:(const std::optional<gfx::Rect>&)rect
+    forTextCheckingResult:(NSTextCheckingResult*)result {
+  // Ignore the bounds if the candidate is no longer pending, e.g. because the
+  // text changed or the composition was cancelled before they arrived.
+  if (_pendingCorrectionResult != result) {
+    return;
+  }
 
+  // Check IsZero instead of IsEmpty (the caret's position is a zero-width rect)
+  // to ensure we only drop rects with no size at all.
+  if (!rect || rect->size().IsZero()) {
+    _pendingCorrectionResult = nil;
+    return;
+  }
+
+  // The rect is in WebKit coordinates (upper left origin), so flip the
+  // coordinate system.
+  NSRect textRectInViewCoordinates = rect->ToCGRect();
+  textRectInViewCoordinates.origin.y =
+      NSHeight([self frame]) - NSMaxY(textRectInViewCoordinates);
+
+  NSUInteger changeNumber = _pendingCorrectionChangeNumber;
   [self.spellChecker
       showCorrectionIndicatorOfType:NSCorrectionIndicatorTypeDefault
-                      primaryString:candidateResult.replacementString
-                 alternativeStrings:candidateResult.alternativeStrings
+                      primaryString:result.replacementString
+                 alternativeStrings:result.alternativeStrings
                     forStringInRect:textRectInViewCoordinates
                                view:self
                   completionHandler:^(NSString* acceptedString) {
-                    [self didAcceptReplacementString:acceptedString
-                               forTextCheckingResult:candidateResult
-                                    withChangeNumber:capturedChangeCounter];
+                    if (self->_pendingCorrectionResult == result) {
+                      self->_pendingCorrectionResult = nil;
+                      [self didAcceptReplacementString:acceptedString
+                                 forTextCheckingResult:result
+                                      withChangeNumber:changeNumber];
+                    }
                   }];
+}
+
+// Returns whether the text that the pending correction replaces is unchanged.
+- (BOOL)isPendingCorrectionTextUnchanged {
+  // `_availableText` starts at `_availableTextOffset` within the field.
+  const NSRange range = _pendingCorrectionResult.range;
+  if (range.location < _availableTextOffset ||
+      NSMaxRange(range) > _availableTextOffset + _availableText.length()) {
+    return NO;
+  }
+  return _availableText.compare(range.location - _availableTextOffset,
+                                range.length, _pendingCorrectionText) == 0;
 }
 
 - (void)didAcceptReplacementString:(NSString*)acceptedString
@@ -737,7 +788,18 @@ static NSWindow* __weak _deferredResignKeyWindow;
   _availableTextChangeCounter++;
   _textSelectionRange = range;
   _substitutionWasApplied = NO;
+  // Dismissing the indicator makes NSSpellChecker accept the correction, so
+  // decide here instead: accept it only if its text is unchanged.
+  NSTextCheckingResult* pendingResult = _pendingCorrectionResult;
+  const BOOL isSuggestionTextUnchanged =
+      pendingResult && [self isPendingCorrectionTextUnchanged];
+  _pendingCorrectionResult = nil;
   [self.spellChecker dismissCorrectionIndicatorForView:self];
+  if (isSuggestionTextUnchanged) {
+    [self didAcceptReplacementString:pendingResult.replacementString
+               forTextCheckingResult:pendingResult
+                    withChangeNumber:_pendingCorrectionChangeNumber];
+  }
   if (_shouldRequestTextSubstitutions && !_substitutionWasApplied &&
       _textSelectionRange.is_empty()) {
     _shouldRequestTextSubstitutions = NO;
@@ -1389,6 +1451,16 @@ static NSWindow* __weak _deferredResignKeyWindow;
   if (![self isKeyTrackingWindowKey] ||
       [[self window] firstResponder] != self) {
     TRACE_EVENT_INSTANT("browser", "NotKeyWindow");
+    return NO;
+  }
+
+  // While a Views menu is active on the window, do not intercept key
+  // equivalents for the web page so the menu or browser command dispatcher can
+  // handle them.
+  if (BridgedContentView* contentView =
+          base::apple::ObjCCast<BridgedContentView>(
+              [[self window] contentView]);
+      contentView && [contentView hasActiveMenuController]) {
     return NO;
   }
 
@@ -2629,6 +2701,20 @@ extern NSString* NSTextInputReplacementRangeAttributeName;
 // nil when the caret is in non-editable content or password box to avoid
 // making input methods do their work.
 - (NSTextInputContext*)inputContext {
+  // MenuHost windows do not become the key window, so when a Views menu opens
+  // over a focused web page, `RenderWidgetHostViewCocoa` remains the key
+  // window's `firstResponder` (see `-[NativeWidgetMacNSWindow sendEvent:]`).
+  // Delegate `-inputContext` to the window's `BridgedContentView` while a
+  // Views menu is active so `+[NSTextInputContext currentInputContext]` routes
+  // key interpretation and IME events to any active menu text input client
+  // rather than the web page.
+  if (BridgedContentView* contentView =
+          base::apple::ObjCCast<BridgedContentView>(
+              [[self window] contentView]);
+      contentView && [contentView hasActiveMenuController]) {
+    return [contentView inputContext];
+  }
+
   if (_textInputType == ui::TEXT_INPUT_TYPE_NONE ||
       _textInputType == ui::TEXT_INPUT_TYPE_PASSWORD) {
     return nil;
@@ -2793,6 +2879,17 @@ extern NSString* NSTextInputReplacementRangeAttributeName;
       RenderWidgetHostViewMacEditCommandHelper::CommandNameForSelector(
           selector)));
 
+  // The NSStandardKeyBindingResponding protocol (to which this class conforms)
+  // has a family of character-inserting selectors whose names begin with
+  // "insert". These are the only selectors that insert characters, and we only
+  // wish to accept a pending correcting following the insertion of a character.
+  const bool isInsertCommand =
+      base::StartsWith(command, "insert", base::CompareCase::INSENSITIVE_ASCII);
+  if (_pendingCorrectionResult && !isInsertCommand) {
+    _pendingCorrectionResult = nil;
+    [self.spellChecker dismissCorrectionIndicatorForView:self];
+  }
+
   // If this method is called when handling a key down event, then we need to
   // handle the command in the key event handler. Otherwise we can just handle
   // it here.
@@ -2830,9 +2927,9 @@ extern NSString* NSTextInputReplacementRangeAttributeName;
     // We ignore commands that insert characters, because this was causing
     // strange behavior (e.g. tab always inserted a tab rather than moving to
     // the next field on the page).
-    if (!base::StartsWith(command, "insert",
-                          base::CompareCase::INSENSITIVE_ASCII))
+    if (!isInsertCommand) {
       _editCommands.push_back(blink::mojom::EditCommand::New(command, ""));
+    }
   } else {
     _host->ExecuteEditCommand(command);
   }
@@ -2998,6 +3095,9 @@ extern NSString* NSTextInputReplacementRangeAttributeName;
 
 - (void)cancelComposition {
   [NSSpellChecker.sharedSpellChecker dismissCorrectionIndicatorForView:self];
+  // Don't show an indicator for a pending correction once the input session is
+  // cancelled, e.g. because focus moved.
+  _pendingCorrectionResult = nil;
 
   if (!_hasMarkedText)
     return;

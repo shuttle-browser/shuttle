@@ -989,8 +989,11 @@ be describing additional metrics about the same event.
   </metric>
   <metric name="AdCpuTime">
     <summary>
-      Amount of CPU wall time inside of ad iframes over the duration of a page
-      load, while the page is in the foreground. Measured in milliseconds.
+      Amount of CPU wall time inside of ad iframes and executing ad scripts in
+      non-ad frames over the duration of a page load. Measured in milliseconds.
+      Note: Starting in M158 (10/2026), this metric was expanded to include time
+      spent executing ad scripts in non-ad frames (previously it only included
+      ad iframes).
     </summary>
   </metric>
   <metric name="AdJavascriptBytes">
@@ -1027,6 +1030,14 @@ be describing additional metrics about the same event.
       the combined height of ads on the page * 100 / page height. This counts
       each overlapping area once, it may be inaccurate due to updates and
       calculations being throttled.
+    </summary>
+  </metric>
+  <metric name="NonAdFrameAdCpuTimeMs">
+    <summary>
+      Amount of CPU wall time spent executing ad scripts in non-ad frames
+      (outermost main frame and non-ad subframes) over the duration of a page
+      load. Measured in milliseconds. This is rounded down to the nearest
+      exponential bucket (with a bucket ratio of 1.3).
     </summary>
   </metric>
   <metric name="TotalBytes">
@@ -1107,6 +1118,21 @@ be describing additional metrics about the same event.
       time, multiplied by 100 and rounded to the nearest exponential bucket
       integer with bucket spacing 1.15. This allows for 2 decimal places of
       precision.
+    </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <quantiles type="std-percentiles"/>
+        </statistics>
+      </history>
+    </aggregation>
+  </metric>
+  <metric name="AverageViewportAdCountX100_V2">
+    <summary>
+      The estimated average viewport ad count accumulated over the page load
+      time, multiplied by 100, rounded to the nearest integer, linearly bucketed
+      with a bucket size of 10, and capped at 500. This provides 0.1 ad
+      granularity up to 5.0 ads.
     </summary>
     <aggregation>
       <history>
@@ -3505,73 +3531,6 @@ be describing additional metrics about the same event.
       FormTypeNameForLogging's ith type was detected. Multiple types are
       possible.
     </summary>
-  </metric>
-</event>
-
-<event name="Autofill.OneTimeTokens">
-  <owner>kazinova@google.com</owner>
-  <owner>battre@chromium.org</owner>
-  <summary>
-    Recorded when one-time token (OTP) events occur on a page.
-  </summary>
-  <metric name="Latency.FieldDetectionToTickleInMillis">
-    <summary>
-      Records the latency in milliseconds between detecting an OTP field on a
-      web page and receiving a push notification (tickle) from the backend.
-      Recorded when a tickle arrives after an OTP field was detected.
-    </summary>
-    <aggregation>
-      <history>
-        <statistics>
-          <quantiles type="std-percentiles"/>
-        </statistics>
-      </history>
-    </aggregation>
-  </metric>
-  <metric name="Latency.TickleToFieldDetectionInMillis">
-    <summary>
-      Records the latency in milliseconds between receiving a push notification
-      (tickle) from the backend and detecting an OTP field on a web page.
-      Recorded when an OTP field is detected on a page after a tickle was
-      already received.
-    </summary>
-    <aggregation>
-      <history>
-        <statistics>
-          <quantiles type="std-percentiles"/>
-        </statistics>
-      </history>
-    </aggregation>
-  </metric>
-  <metric name="Tickle.Arrival" enum="OneTimeTokensTickleArrival">
-    <summary>
-      Records the arrival order and timing of push notifications (tickles)
-      relative to OTP form detection on a web page. Only recorded for
-      kAfterFieldDetection and kBeforeFieldDetection, where an OTP form was
-      detected and the URL can be reliably established.
-    </summary>
-    <aggregation>
-      <history>
-        <statistics>
-          <enumeration/>
-        </statistics>
-      </history>
-    </aggregation>
-  </metric>
-  <metric name="Tickle.FormOutcome" enum="OneTimeTokensTickleFormOutcome">
-    <summary>
-      Records the outcome of an OTP form on a web page relative to push
-      notification (tickle) delivery and user interaction (e.g. tickle arrived
-      before user interaction, after user interaction, or no tickle received
-      within timeout).
-    </summary>
-    <aggregation>
-      <history>
-        <statistics>
-          <enumeration/>
-        </statistics>
-      </history>
-    </aggregation>
   </metric>
 </event>
 
@@ -15058,7 +15017,6 @@ be describing additional metrics about the same event.
     </summary>
     <aggregation>
       <history>
-        <index fields="metrics.ProcessType"/>
         <statistics>
           <quantiles type="std-percentiles"/>
         </statistics>
@@ -15077,13 +15035,6 @@ be describing additional metrics about the same event.
       services/resource_coordinator/public/mojom/memory_instrumentation/memory_instrumentation.mojom)
       of associated metrics.
     </summary>
-    <aggregation>
-      <history>
-        <statistics export="False">
-          <enumeration/>
-        </statistics>
-      </history>
-    </aggregation>
   </metric>
   <metric name="Resident">
     <summary>
@@ -15188,7 +15139,6 @@ be describing additional metrics about the same event.
     </summary>
     <aggregation>
       <history>
-        <index fields="metrics.ProcessType"/>
         <statistics>
           <quantiles type="std-percentiles"/>
         </statistics>
@@ -15201,7 +15151,6 @@ be describing additional metrics about the same event.
     </summary>
     <aggregation>
       <history>
-        <index fields="metrics.ProcessType"/>
         <statistics>
           <quantiles type="std-percentiles"/>
         </statistics>
@@ -17208,6 +17157,140 @@ be describing additional metrics about the same event.
     <summary>
       Placeholder metric, always true.
     </summary>
+  </metric>
+</event>
+
+<event name="OneTimeTokens">
+  <owner>kazinova@google.com</owner>
+  <owner>battre@chromium.org</owner>
+  <summary>
+    Recorded when one-time token (OTP) events occur on a page.
+  </summary>
+  <metric name="Gmail.SenderDomainMatchAcceptedMatchType.Cached"
+      enum="GmailOtpSenderDomainMatchType">
+    <summary>
+      Records the match type of a Gmail OTP whose sender domain passed the check
+      against the origin of the page's OTP form. Recorded once per checked token
+      that came from Chrome's 1-minute Gmail OTP cache. Mirrors the UMA
+      histograms
+      OneTimeTokens.{GmailActor,GmailAutofill}.SenderDomainMatchAcceptedMatchType.Cached.
+    </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <enumeration/>
+        </statistics>
+      </history>
+    </aggregation>
+  </metric>
+  <metric name="Gmail.SenderDomainMatchAcceptedMatchType.Received"
+      enum="GmailOtpSenderDomainMatchType">
+    <summary>
+      Records the match type of a Gmail OTP whose sender domain passed the check
+      against the origin of the page's OTP form. Recorded once per checked token
+      that arrived while Chrome was waiting for a Gmail OTP for this page.
+      Mirrors the UMA histograms
+      OneTimeTokens.{GmailActor,GmailAutofill}.SenderDomainMatchAcceptedMatchType.Received.
+    </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <enumeration/>
+        </statistics>
+      </history>
+    </aggregation>
+  </metric>
+  <metric name="Gmail.SenderDomainMatchRejectionReason.Cached"
+      enum="GmailOtpSenderDomainMatchType">
+    <summary>
+      Records why a Gmail OTP's sender domain failed the check against the
+      origin of the page's OTP form. Recorded once per checked token that came
+      from Chrome's 1-minute Gmail OTP cache. Mirrors the UMA histograms
+      OneTimeTokens.{GmailActor,GmailAutofill}.SenderDomainMatchRejectionReason.Cached.
+    </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <enumeration/>
+        </statistics>
+      </history>
+    </aggregation>
+  </metric>
+  <metric name="Gmail.SenderDomainMatchRejectionReason.Received"
+      enum="GmailOtpSenderDomainMatchType">
+    <summary>
+      Records why a Gmail OTP's sender domain failed the check against the
+      origin of the page's OTP form. Recorded once per checked token that
+      arrived while Chrome was waiting for a Gmail OTP for this page. Mirrors
+      the UMA histograms
+      OneTimeTokens.{GmailActor,GmailAutofill}.SenderDomainMatchRejectionReason.Received.
+    </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <enumeration/>
+        </statistics>
+      </history>
+    </aggregation>
+  </metric>
+  <metric name="Latency.FieldDetectionToTickleInMillis">
+    <summary>
+      Records the latency in milliseconds between detecting an OTP field on a
+      web page and receiving a push notification (tickle) from the backend.
+      Recorded when a tickle arrives after an OTP field was detected.
+    </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <quantiles type="std-percentiles"/>
+        </statistics>
+      </history>
+    </aggregation>
+  </metric>
+  <metric name="Latency.TickleToFieldDetectionInMillis">
+    <summary>
+      Records the latency in milliseconds between receiving a push notification
+      (tickle) from the backend and detecting an OTP field on a web page.
+      Recorded when an OTP field is detected on a page after a tickle was
+      already received.
+    </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <quantiles type="std-percentiles"/>
+        </statistics>
+      </history>
+    </aggregation>
+  </metric>
+  <metric name="Tickle.Arrival" enum="OneTimeTokensTickleArrival">
+    <summary>
+      Records the arrival order and timing of push notifications (tickles)
+      relative to OTP form detection on a web page. Only recorded for
+      kAfterFieldDetection and kBeforeFieldDetection, where an OTP form was
+      detected and the URL can be reliably established.
+    </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <enumeration/>
+        </statistics>
+      </history>
+    </aggregation>
+  </metric>
+  <metric name="Tickle.FormOutcome" enum="OneTimeTokensTickleFormOutcome">
+    <summary>
+      Records the outcome of an OTP form on a web page relative to push
+      notification (tickle) delivery and user interaction (e.g. tickle arrived
+      before user interaction, after user interaction, or no tickle received
+      within timeout).
+    </summary>
+    <aggregation>
+      <history>
+        <statistics>
+          <enumeration/>
+        </statistics>
+      </history>
+    </aggregation>
   </metric>
 </event>
 
@@ -23835,6 +23918,131 @@ be describing additional metrics about the same event.
   <metric name="Voltage">
     <summary>
       Charge voltage in mV.
+    </summary>
+  </metric>
+</event>
+
+<event name="SmartSelection.Suggestions">
+  <owner>schwering@google.com</owner>
+  <owner>jkeitel@google.com</owner>
+  <summary>
+    Recorded when a Smart Selection Suggestions (Dokodemo) server request
+    completes successfully. Contains client-side, network, and backend server
+    latency breakdowns, as well as payload sizes, to diagnose performance
+    bottlenecks across different site archetypes.
+  </summary>
+  <metric name="Latency.ClientMesRpcMs">
+    <summary>
+      Client-observed round-trip time (in ms) for the MES ExecuteModel RPC.
+      Bucketed using ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.ClientPrepMs">
+    <summary>
+      Client-side request preparation time (in ms), including screenshot
+      capture/compression and AnnotatedPageContent serialization. Bucketed using
+      ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.EndToEndMs">
+    <summary>
+      Total duration (in ms) from RequestSuggestions invocation to response
+      callback dispatch. Bucketed using
+      ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.MesImagePrepMs">
+    <summary>
+      MES server-side image preprocessing time (in ms), including cropping,
+      padding, dimming, and re-encoding. Bucketed using
+      ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.MesOtherOverheadMs">
+    <summary>
+      MES server-side overhead (in ms) outside image preprocessing and model
+      execution. Bucketed using ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.MesOverheadMs">
+    <summary>
+      Total MES server-side overhead (in ms) outside model execution. Bucketed
+      using ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.MesTotalMs">
+    <summary>
+      Total MES server-side request handling time (in ms). Bucketed using
+      ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.ModelContentProcMs">
+    <summary>
+      Multimodal content preprocessing and vision tokenization duration (in ms)
+      in the model backend. Bucketed using
+      ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.ModelDecodeMs">
+    <summary>
+      Output token decoding time (in ms) on the model server. Bucketed using
+      ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.ModelDecodeQueueWaitMs">
+    <summary>
+      Queue wait time (in ms) before token decoding starts on the model server
+      (including decode backlog and RDMA KV transfer). Bucketed using
+      ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.ModelOtherMs">
+    <summary>
+      Model execution time (in ms) not accounted for by content processing,
+      prefill queue wait, prefill, decode queue wait, and decode. Bucketed using
+      ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.ModelPrefillMs">
+    <summary>
+      Prompt prefill time (in ms) on the model server. Bucketed using
+      ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.ModelPrefillQueueWaitMs">
+    <summary>
+      Queue wait time (in ms) before prompt prefill starts on the model server.
+      Bucketed using ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.ModelRunMs">
+    <summary>
+      Wall time (in ms) of the backend GenerateContent RPC from MES to the model
+      service. Bucketed using ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Latency.TransmissionMs">
+    <summary>
+      Estimated network transmission and edge overhead (in ms), calculated as
+      ClientMesRpc minus MesTotal. Bucketed using
+      ukm::GetExponentialBucketMinForFineUserTiming.
+    </summary>
+  </metric>
+  <metric name="Request.ApcSize">
+    <summary>
+      Serialized byte size (in bytes) of the AnnotatedPageContent proto sent in
+      the request. Bucketed using ukm::GetExponentialBucketMinForBytes.
+    </summary>
+  </metric>
+  <metric name="Request.ImageSize">
+    <summary>
+      Encoded byte size (in bytes) of the screenshot sent in the request.
+      Bucketed using ukm::GetExponentialBucketMinForBytes.
+    </summary>
+  </metric>
+  <metric name="Response.SuggestionCount">
+    <summary>
+      The number of valid suggestions extracted from the response (range 0-10).
     </summary>
   </metric>
 </event>

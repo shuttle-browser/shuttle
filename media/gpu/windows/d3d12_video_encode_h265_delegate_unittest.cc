@@ -294,6 +294,10 @@ class D3D12VideoEncodeH265DelegateTest
           return S_OK;
         });
 
+    CreateEncoderDelegate();
+  }
+
+  void CreateEncoderDelegate() override {
     gpu::GpuDriverBugWorkarounds gpu_workarounds{};
     encoder_delegate_ = std::make_unique<D3D12VideoEncodeH265Delegate>(
         video_device3_, gpu_workarounds);
@@ -587,10 +591,21 @@ TEST_F(D3D12VideoEncodeH265DelegateTest,
 
   for (const auto& supported_profile : supported_profiles) {
     if (supported_profile.profile == HEVCPROFILE_REXT) {
-      // This mock cannot produce the packed formats, so shared image encoding
-      // is not advertised for the range extension rows.
-      EXPECT_FALSE(supported_profile.supports_gpu_shared_images);
-      ASSERT_EQ(supported_profile.gpu_supported_pixel_formats.size(), 1u);
+      // This mock cannot produce the packed formats, so only a shared image
+      // format that already is the encoder input format, which needs no video
+      // processor pass, can be advertised: Y410 for the 4:4:4 row. The 4:2:2
+      // row has no such format.
+      ASSERT_FALSE(supported_profile.gpu_supported_pixel_formats.empty());
+      if (supported_profile.gpu_supported_pixel_formats[0] ==
+          PIXEL_FORMAT_P410LE) {
+        EXPECT_TRUE(supported_profile.supports_gpu_shared_images);
+        ASSERT_EQ(supported_profile.gpu_supported_pixel_formats.size(), 2u);
+        EXPECT_EQ(supported_profile.gpu_supported_pixel_formats[1],
+                  PIXEL_FORMAT_Y410);
+      } else {
+        EXPECT_FALSE(supported_profile.supports_gpu_shared_images);
+        EXPECT_EQ(supported_profile.gpu_supported_pixel_formats.size(), 1u);
+      }
       continue;
     }
     EXPECT_TRUE(supported_profile.supports_gpu_shared_images);
@@ -1385,6 +1400,18 @@ TEST_F(D3D12VideoEncodeH265DelegateTest, EncodeFramesAndVerifyKeyFrameFlag) {
     ASSERT_TRUE(result_or_error.has_value());
     Mock::VerifyAndClearExpectations(GetVideoEncoderWrapper());
   }
+}
+
+TEST_F(D3D12VideoEncodeH265DelegateTest, RateControlUsesFrameTimestamps) {
+  // Static screen content can arrive at 1 fps while the encoder is configured
+  // for 30 fps. Each frame then has a 30 times larger bit budget, so the same
+  // frames must end up with a lower QP than when they arrive at 30 fps.
+  VideoEncodeAccelerator::Config config = GetDefaultH265Config();
+  config.bitrate = Bitrate::ConstantBitrate(1000000u);
+  config.content_type = VideoEncodeAccelerator::Config::ContentType::kDisplay;
+  auto [qp_at_1fps, qp_at_30fps] = GetLastQpAtIntervalAndAtConfigFramerate(
+      config, /*frame_size=*/20000, /*num_frames=*/30, base::Seconds(1));
+  EXPECT_LT(qp_at_1fps, qp_at_30fps);
 }
 
 }  // namespace media

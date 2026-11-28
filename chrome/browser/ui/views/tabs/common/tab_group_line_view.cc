@@ -8,16 +8,17 @@
 
 #include "base/check.h"
 #include "base/i18n/rtl.h"
+#include "base/numerics/safe_conversions.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/tab_group_data.h"
 #include "chrome/browser/ui/tabs/tab_group_theme.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_z_order_manager.h"
+#include "chrome/browser/ui/views/tabs/common/tab_group_style.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_view.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
-#include "chrome/browser/ui/views/tabs/tab_group_underline.h"
 #include "chrome/browser/ui/views/tabs/tab_style_views.h"
 #include "third_party/skia/include/core/SkPath.h"
 #include "third_party/skia/include/core/SkPathBuilder.h"
@@ -47,8 +48,17 @@ TabGroupLineView::TabGroupLineView(TabGroupView& tab_group_view)
 
 TabGroupLineView::~TabGroupLineView() = default;
 
+void TabGroupLineView::SetOpacity(float opacity) {
+  if (opacity_ == opacity) {
+    return;
+  }
+  opacity_ = opacity;
+  SchedulePaint();
+}
+
 void TabGroupLineView::OnPaint(gfx::Canvas* canvas) {
-  if (!tab_group_view_->GetColorProvider() || !tab_group_view_->GetWidget()) {
+  if (opacity_ <= 0.0f || !tab_group_view_->GetColorProvider() ||
+      !tab_group_view_->GetWidget()) {
     return;
   }
 
@@ -56,6 +66,10 @@ void TabGroupLineView::OnPaint(gfx::Canvas* canvas) {
       tab_group_view_->GetColorProvider()->GetColor(GetTabGroupTabStripColorId(
           tab_group_view_->tab_group_visual_data().color(),
           tab_group_view_->GetWidget()->ShouldPaintAsActive()));
+  if (opacity_ < 1.0f) {
+    color = SkColorSetA(color,
+                        base::ClampRound<U8CPU>(SkColorGetA(color) * opacity_));
+  }
 
   if (tab_group_view_->orientation() == TabStripOrientation::kVertical) {
     PaintVertical(canvas, color);
@@ -87,7 +101,8 @@ void TabGroupLineView::PaintVertical(gfx::Canvas* canvas, SkColor color) {
 void TabGroupLineView::PaintHorizontal(gfx::Canvas* canvas, SkColor color) {
   gfx::ScopedCanvas scoped_canvas(canvas);
   const float scale = canvas->UndoDeviceScaleFactor();
-  const float stroke_thickness = TabGroupUnderline::kStrokeThickness * scale;
+  const float stroke_thickness =
+      TabGroupStyle::GetUnderlineStrokeThickness() * scale;
 
   cc::PaintFlags flags;
   flags.setAntiAlias(true);
@@ -103,19 +118,22 @@ void TabGroupLineView::PaintHorizontal(gfx::Canvas* canvas, SkColor color) {
 SkPath TabGroupLineView::GetHorizontalLinePath(
     const std::optional<SkPath>& active_tab_path,
     float scale) const {
-  const float stroke_inset = TabGroupUnderline::GetStrokeInset() * scale;
-  const float stroke_thickness = TabGroupUnderline::kStrokeThickness * scale;
+  const float stroke_inset = TabGroupStyle::GetUnderlineStrokeInset() * scale;
+  const float stroke_thickness =
+      TabGroupStyle::GetUnderlineStrokeThickness() * scale;
   const bool is_rtl = base::i18n::IsRTL();
   const float width_pixels = width() * scale;
+  const float start_x = is_rtl ? stroke_inset : 0.0f;
+  const float end_x = is_rtl ? width_pixels : (width_pixels - stroke_inset);
+  if (end_x <= start_x) {
+    return SkPath();
+  }
 
   SkPathBuilder path_builder;
   if (active_tab_path.has_value() && !active_tab_path->isEmpty() &&
       active_tab_path->countPoints() > 0) {
     SkPoint start_pt = active_tab_path->getPoint(0);
     SkPoint end_pt = active_tab_path->getLastPt().value_or(start_pt);
-
-    const float start_x = is_rtl ? stroke_inset : 0.0f;
-    const float end_x = is_rtl ? width_pixels : (width_pixels - stroke_inset);
 
     if (start_pt.x() > start_x) {
       path_builder.moveTo(start_x, start_pt.y());
@@ -130,21 +148,17 @@ SkPath TabGroupLineView::GetHorizontalLinePath(
     float bottom_extension =
         GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap) * scale;
     float y = height() * scale - bottom_extension - 0.5f * stroke_thickness;
-
-    if (is_rtl) {
-      path_builder.moveTo(stroke_inset, y);
-      path_builder.lineTo(width_pixels, y);
-    } else {
-      path_builder.moveTo(0, y);
-      path_builder.lineTo(width_pixels - stroke_inset, y);
-    }
+    path_builder.moveTo(start_x, y);
+    path_builder.lineTo(end_x, y);
   }
   return path_builder.detach();
 }
 
 SkPath TabGroupLineView::GetOffsetOverlinePath(const TabView& tab_view,
                                                float scale) const {
-  if (!tab_view.tab_styling()) {
+  const int min_overline_width = 2 * TabStyle::Get()->GetBottomCornerRadius() +
+                                 TabStyle::Get()->GetSeparatorSize().width();
+  if (!tab_view.tab_styling() || tab_view.width() <= min_overline_width) {
     return SkPath();
   }
   SkPath path = tab_view.tab_styling()->GetOverlinePath(scale);

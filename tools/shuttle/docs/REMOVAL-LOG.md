@@ -1270,3 +1270,48 @@ DCHECK). One upstream file changed: `cr_toolbar.html.ts` gets a `center-end` slo
   no longer resolved to the agent ("New tab to the right" there opened in default storage); now every group maps
   back to its agent (`group_agents_`), one per window. (F3, P3) Out-of-process iframes counted as extra tabs: tabs
   are counted once per tab id. Fork 62: no findings.
+
+## Fork commit 64 (2026-11-22): "+" opens in the shown agent on both tab strips (issue #36 follow-up)
+
+Nothing removed. Jeremiah Church's 0b6bcad046 (author), from their review of #39: on the classic tab strip "+" goes
+`TabStrip::NewTabButtonPressed` → `BrowserTabStripController::CreateNewTab`, not `kActionNewTab`, so it opened a plain
+tab next to an agent's tab. `CreateNewTab(kNewTabButton)` now takes the agent path; `AgentOfTab(nullptr)` returns "".
+On top (Toby's decision, 2026-11-22): only "+" opens in the agent. Fork 63 had hooked `kActionNewTab`, but under the
+default `CommandActionUpdater` (`kUseActionsForBrowserCommands`) `IDC_NEW_TAB` runs that action too: Cmd/Ctrl+T, File
+> New Tab, the app menu's and the "+" menu's plain "New tab" all opened in the agent. `kActionNewTab` is upstream
+again; the shared strip's "+" opens the agent tab in `shared::NewTabButton::NotifyClick` before the action (Linux
+middle-click still pastes a URL, as upstream). Their doc change ("Cmd/Ctrl+T opens in the agent", true for fork 63)
+was replaced by the new rule. The "+" menu's "New tab in another agent" is a string (`IDS_NEW_TAB_IN_ANOTHER_AGENT`,
+both title cases; a new message, so no translations yet). Sessions opened from the "+" menu keep no idle timeout
+(user-opened, like chrome://agents "Open tab").
+- SH-Review (2026-11-22, before the PR): F1 (P2) the first version only excluded the `kAppMenu` and
+  `kKeyboardShortcut` invocation sources; native Mac Cmd+T, File > New Tab, the default `AppMenuModel` and the "+"
+  menu's "New tab" pass none and still opened in the agent. Fixed by moving the agent path into the button.
+  Re-review: F1 closed; F2 (P3) `shared:impl` lacked the `//chrome/browser/shuttle` dep (also for the existing menu
+  model include): added. Skipping `Button::NotifyClick` on the agent path also skips its ElementTracker activation
+  (no new-tab tutorial consumer; noted only).
+
+## Fork commit 65 (2026-11-28): agent sessions can't record the browser window (159)
+
+Nothing removed. Chromium 159 adds `Page.startScreenRecording` `captureArea: "browserWindow"`: it records the tab's
+top-level window (tab strip, omnibox and whichever tab is shown, possibly another agent's or the user's), on Aura
+(`DesktopMediaID::RegisterNativeWindow`) and Mac (`devtools_desktop_media_id_mac.mm`). The page handler's trust check
+doesn't stop it (session clients are trusted; flattened child sessions inherit it). `SessionCdpFilter` now answers any
+`captureArea` other than `target` with an error, on session endpoints (flattened child sessions included) and leased
+page endpoints, and inside non-flattened `Target.sendMessageToTarget` envelopes (they reach the agent host without
+passing the filter again; nested envelopes checked to depth 3, deeper refused). Messages the filter can't parse are
+refused instead of forwarded (outer: error with id null; wrapped: Shuttle error): `base::JSONReader` stops at depth 200,
+the CDP parser accepts 300 and ignores unknown params, so padding made commands pass unchecked (predates 159). `Target.exposeDevToolsProtocol` is
+refused on filtered connections: it handed the page a binding to a fresh browser-level connection outside the filter
+(all targets; predates 159). Recording the own target is unchanged, browser-wide CDP stays unrestricted. Found by
+SH-Review in the 159 merge review (F1, re-reviews F1/F2/F3, P2). `smoke-session-cdp.mjs` expects the filter's error
+for all six routes, so a platform where upstream refuses anyway can't hide a missing guard.
+
+## Fork commit 66 (2026-11-28): screenshot fallback on all of Linux (X11, Wayland)
+
+Nothing removed. Fork 61's 3 s ForceRedraw fallback was gated to `--headless` (SH-Review P2, 2026-11-10: a renderer
+slower than 3 s to paint can get the previous frame). The first X11 run of `smoke-page-tools` (159, WSLg, SH-MagWin)
+hung on a full-page capture of a session tab; the raw repro without agent-browser hangs on X11 too (`164 62 64 66 66
+3421 HANG 52` ms), so headed Linux had the same hang (not new in 159: no build had the fallback on X11). Toby
+(2026-11-28): fallback on all of Linux, accepting a rare previous frame over a 20-30 s client timeout. `#if
+BUILDFLAG(IS_LINUX)` only; the Mac keeps the upstream wait. `ui/gfx/switches.h` include dropped (only kHeadless used it).

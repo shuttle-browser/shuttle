@@ -2,6 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/ui.gni")
+import("//components/enterprise/buildflags/buildflags.gni")
 import("//content/browser/devtools/features.gni")
 import("//extensions/buildflags/buildflags.gni")
 import("//printing/buildflags/buildflags.gni")
@@ -240,6 +242,9 @@ static_library("devtools") {
       "//components/metrics/structured:structured_events",
       "//components/signin/public/base:signin_switches",
       "//components/viz/host",
+      "//ui/base",
+      "//ui/base/interaction",
+      "//ui/base/mojom:ui_base_types",
       "//ui/shell_dialogs",
     ]
     public_deps += [ "//chrome/browser/themes" ]
@@ -249,6 +254,7 @@ static_library("devtools") {
         "//chrome/browser/ui:browser_commands",
         "//chrome/browser/ui:browser_tabstrip",
         "//chrome/browser/ui:scoped_tabbed_browser_displayer",
+        "//chrome/browser/ui/webui/top_chrome",
       ]
     }
   }
@@ -305,6 +311,7 @@ static_library("devtools") {
       "//chrome/browser/ui/views/frame:contents_web_view",
       "//chrome/browser/ui/views/frame:scrim_view",
       "//chrome/common",
+      "//components/enterprise/buildflags",
       "//components/guest_view/browser",
       "//components/input",
       "//components/keep_alive_registry",
@@ -328,6 +335,8 @@ static_library("devtools") {
       "//ui/views",
       "//ui/views/controls/webview",
     ]
+    if (enterprise_cdp_attribution) {
+    }
     if (is_mac || is_win || is_linux || is_chromeos) {
     }
     if (is_chromeos) {
@@ -335,6 +344,19 @@ static_library("devtools") {
         "//ash/constants",
         "//chromeos/constants",
       ]
+    } else {
+      # Not on ChromeOS: there, //chrome/browser/media/webrtc depends on this
+      # target via camera_app, so the includes use nogncheck.
+      deps += [ "//chrome/browser/media/webrtc" ]
+    }
+    if (is_mac) {
+      sources += [ "devtools_desktop_media_id_mac.mm" ]
+      deps += [ "//components/remote_cocoa/browser" ]
+    } else {
+      sources += [ "devtools_desktop_media_id.cc" ]
+    }
+    if (use_aura) {
+      deps += [ "//ui/aura" ]
     }
     sources += [
       "chrome_devtools_manager_delegate.cc",
@@ -371,6 +393,7 @@ static_library("devtools") {
       "devtools_auto_opener.h",
       "devtools_browser_context_manager.cc",
       "devtools_browser_context_manager.h",
+      "devtools_desktop_media_id.h",
       "devtools_dock_tile.h",
       "devtools_infobar_delegate.cc",
       "devtools_infobar_delegate.h",

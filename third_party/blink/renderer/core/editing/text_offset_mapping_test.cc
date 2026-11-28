@@ -242,7 +242,7 @@ TEST_F(TextOffsetMappingTest, RangeOfEmptyBlock) {
           "<div><p>abc</p><p id='target'>|</p><p>ghi</p></div>")
           .Anchor());
   const LayoutObject* const target_layout_object =
-      GetDocument().getElementById(AtomicString("target"))->GetLayoutObject();
+      GetElementById("target")->GetLayoutObject();
   const TextOffsetMapping::InlineContents inline_contents =
       TextOffsetMapping::FindForwardInlineContents(position);
   ASSERT_TRUE(inline_contents.IsNotNull());
@@ -274,9 +274,13 @@ TEST_F(TextOffsetMappingTest, BlockInInlineWithAbsolute) {
   for (const auto contents : TextOffsetMapping::BackwardRangeOf(position))
     results.push_back(GetRange(contents));
 
-  ElementsAre("<div id=\"t\"><i><p><a></a></p></i> </div><p>^ab|</p>",
-              "<div id=\"t\"><i><p><a></a></p></i>^ |</div><p>ab</p>",
-              "<div id=\"t\">^<i><p><a></a></p></i>| </div><p>ab</p>");
+  EXPECT_THAT(
+      results,
+      ElementsAre("<div id=\"t\"><i><p><a></a></p></i> </div><p>^ab|</p>",
+                  "<div id=\"t\"><i><p><a></a></p></i>^ |</div><p>ab</p>",
+                  "<div id=\"t\"><i><p><a>|</a></p></i> </div><p>ab</p>",
+                  "<div id=\"t\"><i><p>^<a></a>|</p></i> </div><p>ab</p>",
+                  "<div id=\"t\">^<i><p><a></a></p></i>| </div><p>ab</p>"));
 }
 
 TEST_F(TextOffsetMappingTest, ForwardRangesWithTextControl) {

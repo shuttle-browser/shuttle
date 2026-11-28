@@ -14,16 +14,16 @@
 
 #include <memory>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensorflow/image_frame_to_tensor_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/port/proto_ns.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_macros.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/tensor.h"        // from @org_tensorflow
+#include "tensorflow/core/framework/tensor_shape.h"  // from @org_tensorflow
+#include "tensorflow/core/framework/types.h"         // from @org_tensorflow
 
 namespace mediapipe {
 
@@ -42,7 +42,7 @@ std::unique_ptr<tf::Tensor> ImageFrameToNormalizedTensor(
   const int channels = image_frame.NumberOfChannels();
   const uint8_t* pixel = image_frame.PixelData();
   const int width_padding = image_frame.WidthStep() - cols * channels;
-  auto tensor = ::absl::make_unique<tf::Tensor>(
+  auto tensor = std::make_unique<tf::Tensor>(
       tf::DT_FLOAT, tf::TensorShape({rows, cols, channels}));
   auto tensor_data = tensor->tensor<float, 3>();
 
@@ -184,7 +184,7 @@ absl::Status ImageFrameToTensorCalculator::Process(CalculatorContext* cc) {
         << ")";
 
     // Create the output tensor.
-    tensor = ::absl::make_unique<tf::Tensor>(data_type, tensor_shape);
+    tensor = std::make_unique<tf::Tensor>(data_type, tensor_shape);
 
     // Copy pixel data from the ImageFrame to the tensor.
     if (data_type == tf::DT_UINT8) {

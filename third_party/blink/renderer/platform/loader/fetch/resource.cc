@@ -285,12 +285,9 @@ void Resource::CheckResourceIntegrity() {
     return;
   }
 
-  const FeatureContext* feature_context =
-      loader_ ? loader_->GetFeatureContext() : nullptr;
-
   HashMap<HashAlgorithm, String> integrity_hashes;
   bool is_cors_same_origin = response_.IsCorsSameOrigin();
-  HashSet<HashAlgorithm> csp_hash_reports_needed;
+  HashAlgorithmSet csp_hash_reports_needed;
   if ((type_ == ResourceType::kScript) && loader_) {
     csp_hash_reports_needed = loader_->Fetcher()->Context().CSPHashesToReport();
   }
@@ -299,18 +296,18 @@ void Resource::CheckResourceIntegrity() {
     integrity_disposition_ = ResourceIntegrityDisposition::kPassed;
   } else {
     if (SubresourceIntegrity::CheckSubresourceIntegrity(
-            GetIntegrityMetadata(), Data(), Url(), *this, feature_context,
-            integrity_report_, &integrity_hashes)) {
+            GetIntegrityMetadata(), Data(), Url(), *this, integrity_report_,
+            &integrity_hashes)) {
       integrity_disposition_ = ResourceIntegrityDisposition::kPassed;
     } else {
       integrity_disposition_ =
           ResourceIntegrityDisposition::kFailedIntegrityMetadata;
       // The resource was blocked so there's nothing to report.
-      csp_hash_reports_needed = HashSet<HashAlgorithm>();
+      csp_hash_reports_needed.Clear();
     }
   }
 
-  if (csp_hash_reports_needed.size()) {
+  if (!csp_hash_reports_needed.empty()) {
     if (is_cors_same_origin) {
       for (HashAlgorithm algorithm : csp_hash_reports_needed) {
         if (integrity_hashes.Contains(algorithm)) {
@@ -401,6 +398,29 @@ void Resource::SetResourceBuffer(scoped_refptr<SharedBuffer> resource_buffer) {
 
 void Resource::ClearData() {
   data_ = nullptr;
+  if (!base::FeatureList::IsEnabled(
+          features::kResourceEncodedMemoryAccounting)) {
+    return;
+  }
+  // ImageResource hands its buffer to ImageResourceContent before calling
+  // ClearData(), so only stop counting once no encoded buffer is reachable.
+  if (encoded_data_released_ || encoded_size_ == 0 || HasResourceBuffer()) {
+    return;
+  }
+  // FontResource only reports its decoded size with
+  // kFontResourceDecodedMemoryAccounting. Without it, a decoded font would
+  // count as almost nothing.
+  if (GetType() == ResourceType::kFont &&
+      !base::FeatureList::IsEnabled(
+          features::kFontResourceDecodedMemoryAccounting)) {
+    return;
+  }
+
+  size_t old_size = size();
+  encoded_data_released_ = true;
+  if (IsMainThread()) {
+    MemoryCache::Get()->Update(this, old_size, size());
+  }
 }
 
 void Resource::TriggerNotificationForFinishObservers(
@@ -691,7 +711,7 @@ String Resource::ReasonNotDeletable() const {
       builder.Append(' ');
     builder.Append("in_memory_cache");
   }
-  return builder.ToString();
+  return builder.ReleaseString();
 }
 
 void Resource::DidAddClient(ResourceClient* client) {
@@ -818,13 +838,16 @@ void Resource::SetDecodedSize(size_t decoded_size) {
 }
 
 void Resource::SetEncodedSize(size_t encoded_size) {
-  if (encoded_size == encoded_size_) {
+  // New encoded data counts again, even if it has the same size.
+  if (encoded_size == encoded_size_ && !encoded_data_released_) {
     return;
   }
   size_t old_size = size();
   encoded_size_ = encoded_size;
-  if (IsMainThread())
+  encoded_data_released_ = false;
+  if (IsMainThread() && old_size != size()) {
     MemoryCache::Get()->Update(this, old_size, size());
+  }
 }
 
 void Resource::FinishPendingClients() {
@@ -1103,14 +1126,6 @@ String Resource::GetMemoryDumpName() const {
                 InspectorId());
 }
 
-void Resource::SetCachePolicyBypassingCache() {
-  resource_request_.SetCacheMode(mojom::FetchCacheMode::kBypassCache);
-}
-
-void Resource::ClearRangeRequestHeader() {
-  resource_request_.ClearHttpHeaderField(http_names::kLowerRange);
-}
-
 void Resource::RevalidationSucceeded(
     const ResourceResponse& validating_response) {
   SECURITY_CHECK(redirect_chain_.empty());
@@ -1138,10 +1153,10 @@ void Resource::RevalidationSucceeded(
 
 void Resource::RevalidationFailed() {
   SECURITY_CHECK(redirect_chain_.empty());
-  ClearData();
   integrity_disposition_ = ResourceIntegrityDisposition::kNotChecked;
   integrity_report_.Clear();
   DestroyDecodedDataForFailedRevalidation();
+  ClearData();
   revalidation_status_ = RevalidationStatus::kNoRevalidatingOrFailed;
   memory_cache_hit_count_ = 0;
 }

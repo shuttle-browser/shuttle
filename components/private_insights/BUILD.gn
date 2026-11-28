@@ -4,6 +4,7 @@
 
 component("private_insights") {
   public = [
+    "event_queue.h",
     "private_insights_features.h",
     "private_insights_service.h",
   ]
@@ -15,6 +16,7 @@ component("private_insights") {
   ]
   defines = [ "IS_PRIVATE_INSIGHTS_IMPL" ]
   public_deps = [
+    "//base",
     "//components/keyed_service/core",
     "//components/metrics",
     "//components/prefs",
@@ -28,7 +30,6 @@ component("private_insights") {
     ":fcp_log_manager",
     ":fcp_simple_task_environment",
     ":fcp_utils",
-    "//base",
     "//base:i18n",
     "//components/version_info",
     "//google_apis",

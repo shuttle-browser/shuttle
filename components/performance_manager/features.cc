@@ -192,6 +192,9 @@ const base::FeatureParam<bool> kRenderedOutOfViewIsNotVisible{
 const base::FeatureParam<bool> kRendererHighInitialPriority{
     &kPMProcessPriorityPolicy, "renderer_high_initial_priority", false};
 
+BASE_FEATURE(kSubframeNotVisibleIfParentNotVisible,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kPMLoadingPageVoter, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kPMLoadingPageVoterV2, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -264,14 +267,53 @@ BASE_FEATURE_PARAM(base::TimeDelta,
                    "interval",
                    base::Seconds(5));
 
-BASE_FEATURE_PARAM(int,
-                   kInfiniteTabsFreezingOnMemoryPressurePercent,
-                   &kInfiniteTabsFreezingOnMemoryPressure,
-                   "percent_threshold",
-                   15);
+// On Windows, memory is swapped to disk once available physical memory drops
+// below ~10%, and swapping continues until available memory is back to 15%.
+// If available memory drops to e.g. 12%, no swapping occurs and there is no
+// reason to freeze tabs. Once it drops below 10%, Windows swaps until
+// available memory recovers to 15%, so tabs remain frozen until then.
+BASE_FEATURE_PARAM(
+    int,
+    kInfiniteTabsFreezingOnMemoryPressureEnterAvailableMemoryPercent,
+    &kInfiniteTabsFreezingOnMemoryPressure,
+    10);
+
+BASE_FEATURE_PARAM(
+    int,
+    kInfiniteTabsFreezingOnMemoryPressureExitAvailableMemoryPercent,
+    &kInfiniteTabsFreezingOnMemoryPressure,
+    15);
+
+// Starting in Windows 11 25H2 (build 26200) and 26H2 (build 26300) on PCs with
+// 8 GiB of RAM or less, Windows regulates available physical memory around
+// ~10-11% of RAM by keeping compressed pages in RAM rather than batch-flushing
+// them to the pagefile to refill available memory to ~15%. Use lower enter and
+// exit percentage thresholds on matching devices.
+BASE_FEATURE_PARAM(
+    bool,
+    kInfiniteTabsFreezingOnMemoryPressureLowRamRequireWin1125H2OrLater,
+    &kInfiniteTabsFreezingOnMemoryPressure,
+    true);
+
+BASE_FEATURE_PARAM(
+    int,
+    kInfiniteTabsFreezingOnMemoryPressureLowRamEnterAvailableMemoryPercent,
+    &kInfiniteTabsFreezingOnMemoryPressure,
+    8);
+
+BASE_FEATURE_PARAM(
+    int,
+    kInfiniteTabsFreezingOnMemoryPressureLowRamExitAvailableMemoryPercent,
+    &kInfiniteTabsFreezingOnMemoryPressure,
+    12);
 
 BASE_FEATURE(kDisablePeriodicUnfreezeOnCriticalMemoryPressure,
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE_PARAM(int,
+                   kDisablePeriodicUnfreezeOnCriticalMemoryPressurePercent,
+                   &kDisablePeriodicUnfreezeOnCriticalMemoryPressure,
+                   5);
 
 BASE_FEATURE(kDiscardOnCommitLimit, base::FEATURE_DISABLED_BY_DEFAULT);
 

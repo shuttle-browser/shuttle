@@ -5,6 +5,8 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_WEBUI_CONTENT_H_
 #define CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_WEBUI_CONTENT_H_
 
+#include <memory>
+
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_webui_base_content.h"
@@ -19,7 +21,8 @@
 #include "ui/views/widget/widget.h"
 
 class LocationBar;
-class OmniboxPopupPresenterBase;
+class OmniboxPopupContentDelegate;
+class OmniboxPopupContentSizer;
 class OmniboxPopupHandler;
 
 // The content WebView for the popup of a WebUI Omnibox.
@@ -31,12 +34,25 @@ class OmniboxPopupWebUIContent : public OmniboxPopupWebUIBaseContent {
   // Subclasses pass false for `set_content_url` and call `SetContentURL()`
   // themselves. Loading here would build a WebContents before their overrides
   // (e.g. `EscClosesUI()`) are in place, only for their own load to replace it.
-  OmniboxPopupWebUIContent(OmniboxPopupPresenterBase* presenter,
+  OmniboxPopupWebUIContent(OmniboxPopupContentDelegate* content_delegate,
+                           OmniboxPopupContentSizer* sizer,
+                           OmniboxPopupContentConfig config,
                            LocationBar* location_bar,
                            OmniboxController* controller,
                            bool include_location_bar_cutout,
                            bool wants_focus,
                            bool set_content_url);
+  // `contents` is a WebContents to adopt, or null; see
+  // `OmniboxPopupWebUIBaseContent`.
+  OmniboxPopupWebUIContent(OmniboxPopupContentDelegate* content_delegate,
+                           OmniboxPopupContentSizer* sizer,
+                           OmniboxPopupContentConfig config,
+                           LocationBar* location_bar,
+                           OmniboxController* controller,
+                           bool include_location_bar_cutout,
+                           bool wants_focus,
+                           bool set_content_url,
+                           std::unique_ptr<ContentsWrapper> contents);
   OmniboxPopupWebUIContent(const OmniboxPopupWebUIContent&) = delete;
   OmniboxPopupWebUIContent& operator=(const OmniboxPopupWebUIContent&) = delete;
   ~OmniboxPopupWebUIContent() override;

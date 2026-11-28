@@ -52,15 +52,21 @@ export class PolicyAppElement extends CrLitElement {
       showUnset_: {type: Boolean},
       status_: {type: Object},
       policyGroups_: {type: Array},
+      // <if expr="not is_ios and not is_android">
       shouldShowPromo_: {type: Boolean},
+      // </if>
+      // <if expr="not is_ios and not is_android and not is_chromeos">
       shouldShowCommandLineArgumentsWarning_: {type: Boolean},
       commandLineArguments_: {type: String},
+      // </if>
       toastText_: {type: String},
       reloadButtonDisabled_: {type: Boolean},
+      hideExportButton_: {type: Boolean},
+      // <if expr="not is_chromeos">
       uploadReportButtonDisabled_: {type: Boolean},
       enableReportButton_: {type: Boolean},
-      hideExportButton_: {type: Boolean},
       hideUploadReportButton_: {type: Boolean},
+      // </if>
     };
   }
 
@@ -68,16 +74,21 @@ export class PolicyAppElement extends CrLitElement {
   protected accessor showUnset_: boolean = false;
   protected accessor status_: Record<string, Status> = {};
   protected accessor policyGroups_: PolicyTableModel[] = [];
+  // <if expr="not is_ios and not is_android">
   protected accessor shouldShowPromo_: boolean = false;
+  // </if>
+  // <if expr="not is_ios and not is_android and not is_chromeos">
   protected accessor shouldShowCommandLineArgumentsWarning_: boolean = false;
   protected accessor commandLineArguments_: string = '';
+  // </if>
   protected accessor toastText_: string = '';
   protected accessor reloadButtonDisabled_: boolean = false;
+  protected accessor hideExportButton_: boolean = false;
+  // <if expr="not is_chromeos">
   protected accessor uploadReportButtonDisabled_: boolean = false;
   protected accessor enableReportButton_: boolean = false;
-
-  protected accessor hideExportButton_ = false;
-  protected accessor hideUploadReportButton_ = false;
+  protected accessor hideUploadReportButton_: boolean = false;
+  // </if>
 
 
   private toastTimeoutId_: number|null = null;
@@ -122,17 +133,15 @@ export class PolicyAppElement extends CrLitElement {
 
     this.hideExportButton_ = loadTimeData.valueExists('hideExportButton') &&
         loadTimeData.getBoolean('hideExportButton');
+    // <if expr="not is_chromeos">
     this.hideUploadReportButton_ =
         loadTimeData.valueExists('hideUploadReportButton') &&
         loadTimeData.getBoolean('hideUploadReportButton');
+    // </if>
 
     if (!this.policyPageMojoMigrationEnabled_) {
       sendWithPromise<void>('listenPoliciesUpdates');
     }
-  }
-
-  override disconnectedCallback() {
-    super.disconnectedCallback();
   }
 
   // <if expr="not is_ios and not is_android">
@@ -219,7 +228,7 @@ export class PolicyAppElement extends CrLitElement {
   protected onReloadPoliciesClick_() {
     this.reloadButtonDisabled_ = true;
     this.showToast_(loadTimeData.getString('reloadingPolicies'));
-    sendWithPromise<void>('reloadPolicies');
+    BrowserProxy.reloadPolicies();
   }
 
   protected onMoreActionsClick_(e: Event) {
@@ -240,15 +249,17 @@ export class PolicyAppElement extends CrLitElement {
     this.showToast_(loadTimeData.getString('copyPoliciesDone'));
   }
 
+  // <if expr="not is_chromeos">
   protected onUploadReportClick_() {
     this.closeActionMenu_();
     this.uploadReportButtonDisabled_ = true;
     this.showToast_(loadTimeData.getString('reportUploading'));
-    sendWithPromise<void>('uploadReport').then(() => {
+    BrowserProxy.uploadReport().then(() => {
       this.uploadReportButtonDisabled_ = false;
       this.showToast_(loadTimeData.getString('reportUploaded'));
     });
   }
+  // </if>
 
   protected onViewLogsClick_() {
     this.closeActionMenu_();

@@ -81,6 +81,7 @@ class ReloadButton : public ToolbarButton, public ReloadControl {
  private:
   friend class ReloadButtonMetricsTest;
   friend class ReloadButtonTestBase;
+  friend class ReloadButtonWindowMetricsTest;
   FRIEND_TEST_ALL_PREFIXES(ReloadButtonTest, TooltipText);
   FRIEND_TEST_ALL_PREFIXES(ReloadButtonTest, TooltipTextAccessibility);
 

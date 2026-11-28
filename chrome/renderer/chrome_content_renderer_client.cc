@@ -75,11 +75,6 @@
 #include "components/content_settings/core/common/content_settings_pattern.h"
 #include "components/continuous_search/renderer/search_result_extractor_impl.h"
 #include "components/country_codes/country_codes.h"
-#include "components/dom_distiller/content/renderer/distillability_agent.h"
-#include "components/dom_distiller/content/renderer/distiller_js_render_frame_observer.h"
-#include "components/dom_distiller/core/dom_distiller_features.h"
-#include "components/dom_distiller/core/dom_distiller_switches.h"
-#include "components/dom_distiller/core/url_constants.h"
 #include "components/error_page/common/error.h"
 #include "components/error_page/common/localized_error.h"
 #include "components/grit/components_scaled_resources.h"
@@ -97,7 +92,7 @@
 #include "components/pdf/common/pdf_util.h"
 #include "components/permissions/features.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/safe_browsing/content/renderer/threat_dom_details.h"
+#include "components/safe_browsing/content/renderer/threat_details/threat_dom_details.h"
 #include "components/sampling_profiler/process_type.h"
 #include "components/sampling_profiler/thread_profiler.h"
 #include "components/security_interstitials/content/renderer/security_interstitial_page_controller_delegate_impl.h"
@@ -112,6 +107,11 @@
 #include "components/version_info/version_info.h"
 #include "components/visitedlink/renderer/visitedlink_reader.h"
 #include "components/web_cache/renderer/web_cache_impl.h"
+#include "components/web_distiller/content/renderer/distillability_agent.h"
+#include "components/web_distiller/content/renderer/distiller_js_render_frame_observer.h"
+#include "components/web_distiller/core/url_constants.h"
+#include "components/web_distiller/core/web_distiller_features.h"
+#include "components/web_distiller/core/web_distiller_switches.h"
 #include "content/public/common/content_constants.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
@@ -454,10 +454,10 @@ void ChromeContentRendererClient::RenderThreadStarted() {
   // chrome-distiller: pages should not be accessible by normal content, and
   // should also be unable to script anything but themselves (to help limit the
   // damage that a corrupt page could cause).
-  WebString dom_distiller_scheme(
-      WebString::FromAscii(dom_distiller::kDomDistillerScheme));
+  WebString web_distiller_scheme(
+      WebString::FromAscii(web_distiller::kWebDistillerScheme));
   // TODO(nyquist): Add test to ensure this happens when the flag is set.
-  WebSecurityPolicy::RegisterURLSchemeAsDisplayIsolated(dom_distiller_scheme);
+  WebSecurityPolicy::RegisterURLSchemeAsDisplayIsolated(web_distiller_scheme);
 
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_WIN)
@@ -581,13 +581,13 @@ void ChromeContentRendererClient::RenderFrameCreated(
   }
 
   // Set up a render frame observer to test if this page is a distiller page.
-  new dom_distiller::DistillerJsRenderFrameObserver(
+  new web_distiller::DistillerJsRenderFrameObserver(
       render_frame, ISOLATED_WORLD_ID_CHROME_INTERNAL);
 
-  if (dom_distiller::ShouldStartDistillabilityService()) {
+  if (web_distiller::ShouldStartDistillabilityService()) {
     // Create DistillabilityAgent to send distillability updates to
     // DistillabilityDriver in the browser process.
-    new dom_distiller::DistillabilityAgent(render_frame, DCHECK_IS_ON());
+    new web_distiller::DistillabilityAgent(render_frame, DCHECK_IS_ON());
   }
 
   blink::AssociatedInterfaceRegistry* associated_interfaces =
@@ -725,6 +725,10 @@ bool ChromeContentRendererClient::IsDomStorageDisabled() const {
   // opaque origins). This avoids a renderer kill by the browser process which
   // isn't expecting PDF renderer processes to ever use DOM storage
   // interfaces. See https://crbug.com/357014503.
+  //
+  // TODO(crbug.com/559567801): Remove this once `features::kPdfOpaqueOrigin`
+  // ships, since PDF documents will then have opaque origins, for which DOM
+  // storage access already throws a SecurityError.
   return pdf::IsPdfRenderer();
 #else
   return false;
@@ -739,6 +743,10 @@ bool ChromeContentRendererClient::AreDedicatedWorkersDisabled() const {
   // throws a SecurityError DOMException. This avoids a renderer kill by the
   // browser process which isn't expecting PDF renderer processes to ever create
   // dedicated workers. See https://crbug.com/553118313.
+  //
+  // TODO(crbug.com/559567801): Remove this once `features::kPdfOpaqueOrigin`
+  // ships, since PDF documents will then have opaque origins, for which
+  // creating a dedicated worker already throws a SecurityError.
   return pdf::IsPdfRenderer();
 #else
   return false;

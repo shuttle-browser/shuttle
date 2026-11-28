@@ -25,6 +25,10 @@ namespace content {
 class WebContents;
 }  // namespace content
 
+namespace tabs {
+class TabInterface;
+}  // namespace tabs
+
 class UnloadController : public WebContentsCollection::Observer,
                          public TabStripModelObserver {
  public:
@@ -54,12 +58,13 @@ class UnloadController : public WebContentsCollection::Observer,
     // Returns true if standard beforeunload handling should be skipped for this
     // tab (e.g., when a custom confirmation dialog or background task manages
     // it).
-    virtual bool ShouldSkipBeforeUnload(content::WebContents* contents) = 0;
+    virtual bool ShouldSkipBeforeUnload(
+        content::WebContents* contents) const = 0;
 
     // Returns true if a custom confirmation dialog should be displayed before
     // unloading this tab.
     virtual bool ShouldShowCustomConfirmation(
-        content::WebContents* contents) = 0;
+        content::WebContents* contents) const = 0;
 
     // Displays the custom confirmation dialog. Returns true if the confirmation
     // dialog was shown and will intercept unload.
@@ -100,7 +105,7 @@ class UnloadController : public WebContentsCollection::Observer,
   bool CanCloseContents(content::WebContents* contents) const;
 
   // Returns true if we need to run unload events for the |contents|.
-  bool ShouldRunUnloadEventsHelper(content::WebContents* contents);
+  bool ShouldRunUnloadEventsHelper(content::WebContents* contents) const;
 
   // Helper function to run beforeunload listeners on a WebContents.
   // Returns true if |contents| beforeunload listeners were invoked.
@@ -241,6 +246,9 @@ class UnloadController : public WebContentsCollection::Observer,
   bool ShouldRunUnloadListenerBeforeClosing(content::WebContents* web_contents);
 
   bool RunUnloadListenerBeforeClosing(content::WebContents* web_contents);
+
+  // Returns true if `tab` is allowed to be closed.
+  bool IsTabClosable(const tabs::TabInterface* tab) const;
 
   void BeforeUnloadFired(content::WebContents* web_contents,
                          bool proceed,
@@ -455,6 +463,11 @@ class UnloadController : public WebContentsCollection::Observer,
   bool is_delete_scheduled_ = false;
 
   base::WeakPtrFactory<UnloadController> weak_factory_{this};
+
+  // For custom confirmation callbacks, which must stay valid when
+  // ProcessPendingTabs() invalidates `weak_factory_`.
+  base::WeakPtrFactory<UnloadController> custom_confirmation_weak_factory_{
+      this};
 };
 
 #endif  // CHROME_BROWSER_UI_UNLOAD_CONTROLLER_H_

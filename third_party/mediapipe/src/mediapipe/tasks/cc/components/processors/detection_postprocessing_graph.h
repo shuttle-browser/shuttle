@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/tasks/cc/components/processors/proto/detection_postprocessing_graph_options.pb.h"
 #include "mediapipe/tasks/cc/components/processors/proto/detector_options.pb.h"
 #include "mediapipe/tasks/cc/core/model_resources.h"
@@ -32,7 +34,7 @@ namespace processors {
 //
 //   auto& postprocessing =
 //       graph.AddNode("mediapipe.tasks.components.processors.DetectionPostprocessingGraph");
-//   MP_RETURN_IF_ERROR(ConfigureDetectionPostprocessingGraph(
+//   ABSL_RETURN_IF_ERROR(ConfigureDetectionPostprocessingGraph(
 //       model_resources,
 //       detector_options,
 //       &preprocessing.GetOptions<DetectionPostprocessingGraphOptions>()));

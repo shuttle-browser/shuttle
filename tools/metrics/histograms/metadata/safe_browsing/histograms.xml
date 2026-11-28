@@ -173,6 +173,13 @@ chromium-metrics-reviews@google.com.
       summary="time spent parsing and handling response on UI thread"/>
 </variants>
 
+<variants name="SafeBrowsingProfileMode">
+  <variant name="" summary="across all profile modes"/>
+  <variant name=".Guest" summary="in Guest mode"/>
+  <variant name=".Incognito" summary="in Incognito mode"/>
+  <variant name=".Regular" summary="in Regular mode"/>
+</variants>
+
 <variants name="SafeBrowsingV4OrSB">
   <variant name="SB" summary="Safe Browsing"/>
   <variant name="V4" summary="Safe Browsing V4"/>
@@ -254,7 +261,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SafeBrowsing.Android.RealTimeAllowlist.IsInAllowlistElapsed"
-    units="ms" expires_after="2026-11-15">
+    units="ms" expires_after="2027-11-15">
   <owner>skrakowi@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -379,7 +386,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SafeBrowsing.AsyncCheck.PendingCheckersSize" units="count"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>xinghuilu@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -546,14 +553,22 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="SafeBrowsing.CheckUrl.Result.HashDatabase" enum="SBThreatType"
-    expires_after="2027-04-11">
+<histogram name="SafeBrowsing.CheckUrl.ThreatType.{CheckType}{ProfileMode}"
+    enum="SBThreatType" expires_after="2027-04-11">
   <owner>thefrog@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
-    The threat type result of the Safe Browsing local blocklist check. Logged
-    each time a local browse URL check in DatabaseManagerMechanism completes.
+    The threat type result of a Safe Browsing {CheckType} lookup {ProfileMode}.
+    Logged each time this kind of check completes, unless it times out. Note:
+    This is the check that was initially attempted, even if it ended up falling
+    back to a different type of check.
   </summary>
+  <token key="CheckType">
+    <variant name="HashDatabase" summary="hash-prefix database"/>
+    <variant name="HashRealTime" summary="hash-prefix real-time"/>
+    <variant name="UrlRealTime" summary="URL real-time"/>
+  </token>
+  <token key="ProfileMode" variants="SafeBrowsingProfileMode"/>
 </histogram>
 
 <histogram name="SafeBrowsing.CheckUrl.Timeout" enum="BooleanTimedOut"
@@ -714,7 +729,7 @@ useful for Chirp alerts (go/crca-alerts). -->
   </token>
 </histogram>
 
-<!-- LINT.ThenChange(//components/safe_browsing/core/browser/ping_manager.cc:ClientSafeBrowsingReportTypeString) -->
+<!-- LINT.ThenChange(//components/safe_browsing/core/browser/ping_manager/ping_manager.cc:ClientSafeBrowsingReportTypeString) -->
 
 <histogram
     name="SafeBrowsing.ClientSafeBrowsingReport.NetworkResult{IsAccessTokenIncluded}"
@@ -737,7 +752,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 
 <histogram
     name="SafeBrowsing.ClientSafeBrowsingReport.PasswordReuse.RepeatVisit2"
-    enum="BooleanRepeatVisit" expires_after="2027-02-28">
+    enum="BooleanRepeatVisit" expires_after="2027-05-02">
   <owner>nwokedi@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -1356,7 +1371,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 
 <histogram
     name="SafeBrowsing.ExtensionTelemetry.SearchHijackingDetector.HeuristicMatch"
-    enum="Boolean" expires_after="2027-02-28">
+    enum="Boolean" expires_after="2027-05-02">
   <owner>anunoy@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -1370,7 +1385,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 
 <histogram
     name="SafeBrowsing.ExtensionTelemetry.SearchHijackingDetector.SearchVsSerpCount"
-    enum="SBExtensionTelemetrySearchVsSerpCount" expires_after="2027-02-28">
+    enum="SBExtensionTelemetrySearchVsSerpCount" expires_after="2027-05-02">
   <owner>anunoy@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -1623,8 +1638,8 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SafeBrowsing.GetReferringAppInfo.WithWebApk.Duration"
-    units="ms" expires_after="2026-12-06">
-  <owner>chlily@chromium.org</owner>
+    units="ms" expires_after="2027-06-06">
+  <owner>yawfrempong@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
     Records the elapsed time in GetReferringAppInfo() when requesting WebAPK
@@ -1634,8 +1649,8 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SafeBrowsing.GetReferringAppInfo.WithWebApk.FoundWebApk"
-    enum="BooleanFound" expires_after="2026-12-06">
-  <owner>chlily@chromium.org</owner>
+    enum="BooleanFound" expires_after="2027-06-06">
+  <owner>yawfrempong@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
     Records whether GetReferringAppInfo(), when requesting WebAPK info to be
@@ -2162,22 +2177,6 @@ useful for Chirp alerts (go/crca-alerts). -->
   </token>
 </histogram>
 
-<histogram name="SafeBrowsing.HPRT.OperationOutcome"
-    enum="SafeBrowsingHPRTOperationOutcome" expires_after="2027-04-11">
-<!-- Note to owner: This histogram can be renewed 1 full year if it is still
-useful for Chirp alerts (go/crca-alerts). -->
-
-  <owner>thefrog@chromium.org</owner>
-  <owner>chrome-counter-abuse-alerts@google.com</owner>
-  <summary>
-    Records the return status for hash-prefix real-time lookups. This is logged
-    when the service is returning a response, which can be: if the result is
-    found in the local cache, if the lookup doesn't run because the service is
-    in backoff mode, if the lookup doesn't run because the OHTTP key can't be
-    fetched, or after the lookup network request returns.
-  </summary>
-</histogram>
-
 <histogram name="SafeBrowsing.HPRT.OperationOutcome.WhenEnteringBackoff"
     enum="SafeBrowsingHPRTOperationOutcome" expires_after="2027-04-11">
   <owner>thefrog@chromium.org</owner>
@@ -2186,6 +2185,23 @@ useful for Chirp alerts (go/crca-alerts). -->
     Records the operation outcome for hash-prefix real-time lookups when
     entering backoff mode.
   </summary>
+</histogram>
+
+<histogram name="SafeBrowsing.HPRT.OperationOutcome{ProfileMode}"
+    enum="SafeBrowsingHPRTOperationOutcome" expires_after="2027-04-11">
+<!-- Note to owner: This histogram can be renewed 1 full year if it is still
+useful for Chirp alerts (go/crca-alerts). -->
+
+  <owner>thefrog@chromium.org</owner>
+  <owner>chrome-counter-abuse-alerts@google.com</owner>
+  <summary>
+    Records the return status for hash-prefix real-time lookups {ProfileMode}.
+    This is logged when the service is returning a response, which can be: if
+    the result is found in the local cache, if the lookup doesn't run because
+    the service is in backoff mode, if the lookup doesn't run because the OHTTP
+    key can't be fetched, or after the lookup network request returns.
+  </summary>
+  <token key="ProfileMode" variants="SafeBrowsingProfileMode"/>
 </histogram>
 
 <histogram name="SafeBrowsing.HPRT.Request.CountOfPrefixes" units="prefixes"
@@ -2308,7 +2324,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 
 <histogram
     name="SafeBrowsing.MultipartUploader.NetworkResult.{UploaderConsumer}"
-    enum="CombinedHttpResponseAndNetErrorCode" expires_after="2027-02-28">
+    enum="CombinedHttpResponseAndNetErrorCode" expires_after="2027-05-02">
 <!-- Note to owner: This histogram can be renewed 1 full year if it is still
 useful for Chirp alerts (go/crca-alerts). -->
 
@@ -2392,7 +2408,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SafeBrowsing.NotificationRevocationSource"
-    enum="NotificationRevocationSource" expires_after="2027-02-28">
+    enum="NotificationRevocationSource" expires_after="2027-05-02">
   <owner>skrakowi@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -2552,7 +2568,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SafeBrowsing.Pref.Daily.SafeBrowsingState"
-    enum="SafeBrowsingState" expires_after="2027-02-28">
+    enum="SafeBrowsingState" expires_after="2027-05-02">
   <owner>xinghuilu@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -2618,7 +2634,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SafeBrowsing.Pref.JsOptimizerSetting"
-    enum="SafeBrowsingJsOptimizerSetting" expires_after="2027-02-21">
+    enum="SafeBrowsingJsOptimizerSetting" expires_after="2027-04-25">
   <owner>tiffanysong@google.com</owner>
   <owner>jacastro@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
@@ -2661,31 +2677,6 @@ useful for Chirp alerts (go/crca-alerts). -->
     The length of referrer URL chain we get from referrer attribution. This is
     logged each time a safe browsing ping or download ping is generated.
     {ReferrerAttribution}
-  </summary>
-</histogram>
-
-<histogram
-    name="SafeBrowsing.RendererThrottle.IsCheckCompletedOnProcessResponse"
-    enum="BooleanCompleted" expires_after="2026-12-22">
-  <owner>xinghuilu@chromium.org</owner>
-  <owner>chrome-counter-abuse-alerts@google.com</owner>
-  <summary>
-    Logs whether the Safe Browsing check is completed when the renderer URL
-    loader starts to process a response. If not, the renderer URL loader will be
-    deferred until the Safe Browsing check is completed. Logs each time the
-    renderer URL loader dispatches WillProcessResponse() and the Safe Browsing
-    check doesn't block the URL.
-  </summary>
-</histogram>
-
-<histogram name="SafeBrowsing.RendererThrottle.RequestDestination"
-    enum="RequestDestination" expires_after="2027-04-10">
-  <owner>xinghuilu@chromium.org</owner>
-  <owner>chrome-counter-abuse-alerts@google.com</owner>
-  <summary>
-    Logs the request destination of the URL that is checked by the renderer URL
-    loader throttle, and whether the URL check was requested. Logged each time
-    WillStartRequest is called.
   </summary>
 </histogram>
 
@@ -2903,7 +2894,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SafeBrowsing.RT.GetCacheResult{UserCategory}"
-    enum="SafeBrowsingRTLookupResponseVerdictType" expires_after="2027-02-28">
+    enum="SafeBrowsingRTLookupResponseVerdictType" expires_after="2027-05-02">
 <!-- Note to owner: This histogram can be renewed 1 full year if it is still
 useful for Chirp alerts (go/crca-alerts). -->
 
@@ -2968,7 +2959,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SafeBrowsing.RT.HasTokenInRequest{UserCategory}"
-    enum="BooleanHasToken" expires_after="2027-02-07">
+    enum="BooleanHasToken" expires_after="2027-04-25">
   <owner>xinghuilu@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -3311,7 +3302,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SafeBrowsing.SiteFamiliarity.Verdict{FrameType}"
-    enum="SiteFamiliarity" expires_after="2027-02-21">
+    enum="SiteFamiliarity" expires_after="2027-04-25">
   <owner>jacastro@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -3916,7 +3907,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SafeBrowsing.V4LocalDatabaseManager.ThreatInfoSize{CheckType}"
-    units="verdicts" expires_after="2027-02-28">
+    units="verdicts" expires_after="2027-05-02">
   <owner>xinghuilu@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -4822,7 +4813,7 @@ failing to fetch the updates which puts users' security at risk. -->
 
 <histogram
     name="SafeBrowsing.{SafeBrowsingV4OrV5OrSB}DatabaseInitializationTime"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>thefrog@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -4910,7 +4901,7 @@ failing to fetch the updates which puts users' security at risk. -->
 </histogram>
 
 <histogram name="SafeBrowsing.{SafeBrowsingV4OrV5OrSB}Store.ReadyOnStartup"
-    enum="BooleanReady" expires_after="2027-02-28">
+    enum="BooleanReady" expires_after="2027-05-02">
   <owner>thefrog@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -5109,7 +5100,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SafeBrowsingBinaryUploadRequest.DlpResult"
-    enum="BooleanSuccess" expires_after="2027-02-28">
+    enum="BooleanSuccess" expires_after="2027-05-02">
   <owner>domfc@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>

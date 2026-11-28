@@ -307,7 +307,7 @@ class TcpConnectJobTest : public TcpConnectJobTestBase,
   // validation.
   struct HostResolutionCallbackInfo {
     std::vector<ServiceEndpoint> service_endpoints;
-    std::set<std::string> aliases;
+    base::flat_set<std::string> aliases;
 
     bool operator==(const HostResolutionCallbackInfo&) const = default;
   };
@@ -326,7 +326,7 @@ class TcpConnectJobTest : public TcpConnectJobTestBase,
   OnHostResolutionCallbackResult OnHostResolution(
       const HostPortPair& host_port_pair,
       const HostResolverEndpointsOrServiceEndpoints& endpoint_results,
-      const std::set<std::string>& aliases) {
+      const base::flat_set<std::string>& aliases) {
     // These are the same for all tests, so can test them here.
     EXPECT_EQ(host_port_pair.host(), kHostName);
     EXPECT_EQ(host_port_pair.port(), 443);
@@ -360,7 +360,7 @@ class TcpConnectJobTest : public TcpConnectJobTestBase,
   const ResolveErrorInfo kResolveErrorInfo{ERR_DNS_TIMED_OUT,
                                            /*is_secure_network_error=*/true};
 
-  const std::set<std::string> kDnsAliases{"bar", "foo"};
+  const base::flat_set<std::string> kDnsAliases{"bar", "foo"};
 
   // Socket data for `client_socket_factory_`. Only the connect data matters.
   std::vector<std::unique_ptr<SequencedSocketData>> socket_data_;
@@ -3058,7 +3058,6 @@ TEST_F(TcpConnectJobTest, OneConnectorGetLoadState) {
 
   // Start the request, initially waiting on DNS.
   EXPECT_THAT(InitAndStart(), IsError(ERR_IO_PENDING));
-  std::vector<ConnectionAttempt> expected_connection_attempts;
   EXPECT_EQ(connect_job_->GetLoadState(), LOAD_STATE_RESOLVING_HOST);
 
   // DNS request returns some IP addresses, but does not complete. We start
@@ -3104,7 +3103,6 @@ TEST_F(TcpConnectJobTest, TwoConnectorsGetLoadState) {
 
   // Start the request, initially waiting on DNS.
   EXPECT_THAT(InitAndStart(), IsError(ERR_IO_PENDING));
-  std::vector<ConnectionAttempt> expected_connection_attempts;
   EXPECT_EQ(connect_job_->GetLoadState(), LOAD_STATE_RESOLVING_HOST);
 
   // DNS request returns some IP addresses, but does not complete. We start

@@ -220,7 +220,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="NewTabPage.ActionChips.Shown2" enum="ActionChipIconType"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>giannich@chromium.org</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
   <summary>Logged when any Action Chips was shown to the user.</summary>
@@ -421,7 +421,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="NewTabPage.Composebox.FromNTPLoadToSessionStart" units="ms"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>niharm@google.com</owner>
   <owner>rtatum@google.com</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
@@ -431,6 +431,10 @@ chromium-metrics-reviews@google.com.
     lazy loading completes, if applicable) following a click on the compose
     entrypoint on desktop. This only gets recorded if the compose button leads
     to a compose session starting (i.e. the composebox opening).
+
+    Note: https://crrev.com/c/8710958 switched this from subtracting a
+    browser-captured base::Time::Now() navigation start from renderer Date.now()
+    to renderer performance.now(), which may slightly shift recorded values.
   </summary>
 </histogram>
 
@@ -676,7 +680,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="NewTabPage.Customization.Theme.ThemeCollection.DailyRefresh.TurnOff"
-    enum="NTPCollectionId" expires_after="2027-02-28">
+    enum="NTPCollectionId" expires_after="2027-05-02">
   <owner>hanxi@chromium.org</owner>
   <owner>yyanting@google.com</owner>
   <owner>clank-start@google.com</owner>
@@ -689,7 +693,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="NewTabPage.Customization.Theme.ThemeCollection.DailyRefresh.TurnOn"
-    enum="NTPCollectionId" expires_after="2027-02-28">
+    enum="NTPCollectionId" expires_after="2027-05-02">
   <owner>hanxi@chromium.org</owner>
   <owner>yyanting@google.com</owner>
   <owner>clank-start@google.com</owner>
@@ -977,7 +981,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="NewTabPage.Footer.Click" enum="FooterElement"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>tiborg@chromium.org</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
   <summary>Logged when the Footer was clicked.</summary>
@@ -1026,7 +1030,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="NewTabPage.Footer.ToggledVisibility{FooterToggleSource}"
-    enum="BooleanVisible" expires_after="2027-02-28">
+    enum="BooleanVisible" expires_after="2027-05-02">
   <owner>pauladedeji@google.com</owner>
   <owner>tiborg@chromium.org</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
@@ -1065,7 +1069,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="NewTabPage.Footer.WebUI.LoadDocumentTime" units="ms"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>pauladedeji@google.com</owner>
   <owner>tiborg@chromium.org</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
@@ -1216,7 +1220,12 @@ chromium-metrics-reviews@google.com.
   <improvement direction="LOWER_IS_BETTER"/>
   <summary>
     Histogram of the time, in milliseconds, it took for the NTP to load all of
-    its tiles since navigation start. {NewTabPageTimings}
+    its tiles since navigation start.
+
+    Note: https://crrev.com/c/8710958 switched this from subtracting a
+    browser-captured base::Time::Now() navigation start from renderer Date.now()
+    to renderer performance.now(), which may slightly shift recorded values.
+    {NewTabPageTimings}
   </summary>
   <token key="NewTabPageTimings">
     <variant name=""/>
@@ -1314,6 +1323,10 @@ chromium-metrics-reviews@google.com.
   <summary>
     The amount of time between opening an NTP and the logo appearing. Only
     recorded when there is a logo, and only recorded once per NTP.
+
+    Note: https://crrev.com/c/8710958 switched this from subtracting a
+    browser-captured base::Time::Now() navigation start from renderer Date.now()
+    to renderer performance.now(), which may slightly shift recorded values.
   </summary>
 </histogram>
 
@@ -1344,6 +1357,10 @@ chromium-metrics-reviews@google.com.
     Records the time until the top-level ntp-app Custom Element's |ready|
     callback is called. The intention is to measure how quickly the contents of
     new_tab_page.rollup.js (main JS bundle) are rendered.
+
+    Note: https://crrev.com/c/8710958 switched this from subtracting a
+    browser-captured base::Time::Now() navigation start from renderer Date.now()
+    to renderer performance.now(), which may slightly shift recorded values.
   </summary>
 </histogram>
 
@@ -1769,7 +1786,12 @@ chromium-metrics-reviews@google.com.
     an NTP module header is mostly visible in the window's content area
     (viewport). If the module header is mostly below the page fold, the time
     delta will include the time it takes for the user to scroll the module into
-    view. {NewTabPageModules}
+    view.
+
+    Note: https://crrev.com/c/8710958 switched this from subtracting a
+    browser-captured base::Time::Now() navigation start from renderer Date.now()
+    to renderer performance.now(), which may slightly shift recorded values.
+    {NewTabPageModules}
   </summary>
   <token key="NewTabPageModules" variants="NewTabPageModules">
     <variant name=""/>
@@ -1827,6 +1849,10 @@ chromium-metrics-reviews@google.com.
     an NTP module loaded.
 
     Logged for modules that were loaded after the initial NTP load.
+
+    Note: https://crrev.com/c/8710958 switched this from subtracting a
+    browser-captured base::Time::Now() navigation start from renderer Date.now()
+    to renderer performance.now(), which may slightly shift recorded values.
   </summary>
 </histogram>
 
@@ -1853,6 +1879,10 @@ chromium-metrics-reviews@google.com.
     an NTP module loaded.
 
     Logged for modules that were loaded during the initial NTP load.
+
+    Note: https://crrev.com/c/8710958 switched this from subtracting a
+    browser-captured base::Time::Now() navigation start from renderer Date.now()
+    to renderer performance.now(), which may slightly shift recorded values.
   </summary>
 </histogram>
 
@@ -1890,6 +1920,10 @@ chromium-metrics-reviews@google.com.
     an NTP module loaded.
 
     Logged by all modules, regardless of if they loaded at or before NTP load.
+
+    Note: https://crrev.com/c/8710958 switched this from subtracting a
+    browser-captured base::Time::Now() navigation start from renderer Date.now()
+    to renderer performance.now(), which may slightly shift recorded values.
     {NewTabPageModules}
   </summary>
   <token key="NewTabPageModules" variants="NewTabPageModules">
@@ -1962,6 +1996,10 @@ chromium-metrics-reviews@google.com.
   <summary>
     Histogram of the time, in milliseconds since navigation start, it took until
     the modules showed up on the NTP.
+
+    Note: https://crrev.com/c/8710958 switched this from subtracting a
+    browser-captured base::Time::Now() navigation start from renderer Date.now()
+    to renderer performance.now(), which may slightly shift recorded values.
   </summary>
 </histogram>
 
@@ -2051,6 +2089,16 @@ chromium-metrics-reviews@google.com.
     <variant name="8"/>
     <variant name="9"/>
   </token>
+</histogram>
+
+<histogram name="NewTabPage.MostVisited.MenuAction"
+    enum="MostVisitedMenuAction" expires_after="2027-05-09">
+  <owner>jennserrano@google.com</owner>
+  <owner>chrome-desktop-ntp@google.com</owner>
+  <summary>
+    Logs the action taken by the user in the most visited action menu. Recorded
+    when one of the menu items is clicked.
+  </summary>
 </histogram>
 
 <histogram name="NewTabPage.MostVisited.ReselectMatch.{StrictnessSuffix}"
@@ -2154,13 +2202,17 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="NewTabPage.OneGoogleBar.ShownTime" units="ms"
-    expires_after="2027-02-21">
+    expires_after="2027-04-25">
   <owner>romanarora@chromium.org</owner>
   <owner>tiborg@chromium.org</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
   <summary>
     Histogram of the time, in milliseconds since navigation start, it took until
     the OneGoogleBar showed up on the NTP. Recorded only on the local NTP.
+
+    Note: https://crrev.com/c/8710958 switched this from subtracting a
+    browser-captured base::Time::Now() navigation start from renderer Date.now()
+    to renderer performance.now(), which may slightly shift recorded values.
   </summary>
 </histogram>
 
@@ -2300,18 +2352,6 @@ chromium-metrics-reviews@google.com.
 
     This histogram is of special interest to the chrome-analysis-team@. Do not
     change its semantics or retire it without talking to them first.
-  </summary>
-</histogram>
-
-<histogram name="NewTabPage.Promos.PromoBrowserCommand"
-    enum="PromoBrowserCommandEnum" expires_after="2026-09-06">
-  <owner>mahmadi@chromium.org</owner>
-  <owner>tiborg@chromium.org</owner>
-  <owner>chrome-desktop-ntp@google.com</owner>
-  <summary>
-    Logs how many times various promo browser commands are executed. Triggered
-    when a supported and enabled promo browser commandis executed by the
-    BrowserCommandHandler.
   </summary>
 </histogram>
 
@@ -2522,24 +2562,28 @@ chromium-metrics-reviews@google.com.
 
 <histogram name="NewTabPage.ThreadsRail.Action" enum="NTPThreadsRailAction"
     expires_after="2027-03-28">
+  <owner>bofengchen@google.com</owner>
   <owner>romanarora@chromium.org</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
   <summary>
-    Logs count of each type of user action within the threads rail. Only logged
-    on the 1P NTP. Note that Incognito and Guest mode NTPs are not considered 1P
-    and don't log this histogram.
+    Logs count of each type of user click action (configured rail items, logo
+    button, and folded rail background) within the native folded threads rail.
+    Only logged on the 1P NTP when hybrid rail mode is enabled. Note that
+    Incognito and Guest mode NTPs are not considered 1P and don't log this
+    histogram.
   </summary>
 </histogram>
 
 <histogram name="NewTabPage.ThreadsRail.Shown" enum="BooleanShown"
     expires_after="2027-03-21">
+  <owner>bofengchen@google.com</owner>
   <owner>romanarora@chromium.org</owner>
   <owner>chrome-desktop-ntp@google.com</owner>
   <summary>
-    Recorded when the threads rail is shown on the New Tab Page. This is
-    recorded once when the threads rail is attached to DOM. Only logged on the
-    1P NTP. Note that Incognito and Guest mode NTPs are not considered 1P and
-    don't log this histogram.
+    Recorded when the native folded threads rail is shown on the New Tab Page.
+    This is recorded once when the threads rail element is attached to DOM (when
+    hybrid rail mode is enabled). Only logged on the 1P NTP. Note that Incognito
+    and Guest mode NTPs are not considered 1P and don't log this histogram.
   </summary>
 </histogram>
 

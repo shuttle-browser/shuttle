@@ -27,7 +27,7 @@ import type {SettingsCheckboxElement} from '../controls/settings_checkbox.js';
 import {loadTimeData} from '../i18n_setup.js';
 import type {MetricsBrowserProxy} from '../metrics_browser_proxy.js';
 import {MetricsBrowserProxyImpl} from '../metrics_browser_proxy.js';
-import {routes} from '../route.js';
+import {AiSettingsSection, routes} from '../route.js';
 import type {Route} from '../router.js';
 import {RouteObserverMixinLit} from '../router.js';
 

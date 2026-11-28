@@ -2,12 +2,9 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//extensions/buildflags/buildflags.gni")
-
 source_set("organizer") {
   sources = [
     "layout_constants.h",
-    "organizer_panel_controls_view.h",
     "organizer_panel_view.h",
     "organizer_tray_view.h",
   ]
@@ -21,13 +18,6 @@ source_set("organizer") {
     "//ui/base",
     "//ui/views",
   ]
-
-  if (enable_extensions) {
-    public_deps += [
-      "//extensions/buildflags",
-      "//extensions/common",
-    ]
-  }
 }
 
 source_set("organizer_panel_host") {
@@ -41,16 +31,12 @@ source_set("organizer_panel_host") {
 
 source_set("impl") {
   sources = [
-    "organizer_panel_controls_view.cc",
     "organizer_panel_host.cc",
     "organizer_panel_view.cc",
     "organizer_tray_view.cc",
   ]
 
-  public_deps = [
-    ":organizer",
-    "//chrome/browser/ui/views/extensions:extension_view_views",
-  ]
+  public_deps = [ ":organizer" ]
 
   deps = [
     "//chrome/app:generated_resources",
@@ -68,20 +54,11 @@ source_set("impl") {
     "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/ui/views/tabs/shared",
     "//chrome/browser/ui/views/toolbar",
+    "//content/public/browser",
     "//ui/actions",
     "//ui/decoration",
     "//ui/views/controls/webview",
     "//url",
   ]
-
-  if (enable_extensions) {
-
-    deps += [
-      "//chrome/browser/extensions",
-      "//chrome/common/extensions/api",
-      "//extensions/browser",
-      "//extensions/common",
-    ]
-  }
 }
 

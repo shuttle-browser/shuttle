@@ -7,7 +7,7 @@ import type {TSESLint, TSESTree} from '/third_party/node/node_modules/@typescrip
 import assert from 'node:assert';
 import path from 'node:path';
 
-import {dashCaseToCamelCase, isCrLitElementSubclass, isIdentifier, isLiteral, isMixinClass, isType, LIT_IMPORT_REGEX} from './query_utils.js';
+import {dashCaseToCamelCase, isCrLitElementSubclass, isCrLitElementType, isIdentifier, isLiteral, isMixinClass, isType, LIT_IMPORT_REGEX} from './query_utils.js';
 
 // The order in which boilerplate and lifecycle CrLitElement methods should
 // be defined.
@@ -30,12 +30,14 @@ interface OrderEntry {
 }
 
 type Options = [];
-type MessageIds = 'htmlImportInTsFile'|'inconsistentClassName'|
-    'inconsistentFilename'|'incorrectClassNameSuffix'|'incorrectDomNameSuffix'|
-    'incorrectFilenameSuffix'|'incorrectMethodDefinitionOrder'|
-    'invalidDollarSignProperty'|'missingCustomElementRegistration'|
-    'missingCustomEventTypeParameter'|'missingStaticIsGetter'|
-    'missingSuperCalls'|'missingTagNameRegistration'|'noReExport';
+type MessageIds =
+    'emptyLifecycleMethod'|'emptyPropertiesGetter'|'htmlImportInTsFile'|
+    'inconsistentClassName'|'inconsistentFilename'|'incorrectClassNameSuffix'|
+    'incorrectDomNameSuffix'|'incorrectFilenameSuffix'|
+    'incorrectMethodDefinitionOrder'|'invalidDollarSignProperty'|
+    'missingCustomElementRegistration'|'missingCustomEventTypeParameter'|
+    'missingStaticIsGetter'|'missingSuperCalls'|'missingTagNameRegistration'|
+    'noConstructorParams'|'noNewCrLitElement';
 
 // Necessary info to track about each CrLitElement subclass definition
 // encountered in the current file.
@@ -98,6 +100,43 @@ class ClassInfo {
     }
   }
 
+  runEmptyPropertiesGetterCheck(node: TSESTree.ReturnStatement) {
+    if (!node.argument || !isType(node.argument, Node.ObjectExpression) ||
+        node.argument.properties.length > 0) {
+      return;
+    }
+
+    this.context.report({
+      node,
+      messageId: 'emptyPropertiesGetter',
+      data: {
+        className: this.name,
+      },
+    });
+  }
+
+  runEmptyLifecycleMethodCheck(node: TSESTree.MethodDefinition) {
+    if (!node.value.body) {
+      return;
+    }
+
+    assert.ok(isIdentifier(node.key));
+    const methodName = node.key.name;
+    const statements = node.value.body.body;
+    const isOnlySuperCall = statements.length === 1 &&
+        isSuperLifecycleCall(statements[0]!, methodName);
+    if (statements.length === 0 || isOnlySuperCall) {
+      this.context.report({
+        node,
+        messageId: 'emptyLifecycleMethod',
+        data: {
+          className: this.name,
+          methodName,
+        },
+      });
+    }
+  }
+
   visitHtmlElementTagNameMapProperty(node: TSESTree.TSPropertySignature) {
     if (this.isTest || this.hasTagNameRegistration) {
       return;
@@ -117,6 +156,22 @@ class ClassInfo {
         isIdentifier(arg0.property) && arg0.property.name === 'is';
     const arg1Correct = isIdentifier(arg1) && arg1.name === this.name;
     this.hasCustomElementRegistration = arg0Correct && arg1Correct;
+  }
+
+  runConstructorParamsCheck(node: TSESTree.MethodDefinition) {
+    // Mixins are excluded because TypeScript requires any mixin class
+    // constructor to declare a single '...args: any[]' rest parameter (TS2545).
+    if (this.isMixin || node.value.params.length === 0) {
+      return;
+    }
+
+    this.context.report({
+      node,
+      messageId: 'noConstructorParams',
+      data: {
+        className: this.name,
+      },
+    });
   }
 
   runCustomEventTypeParameterCheck(node: TSESTree.TSTypeReference) {
@@ -377,6 +432,18 @@ class ClassInfo {
   }
 }
 
+function isSuperLifecycleCall(
+    statement: TSESTree.Statement, methodName: string): boolean {
+  if (!isType(statement, Node.ExpressionStatement) ||
+      !isType(statement.expression, Node.CallExpression)) {
+    return false;
+  }
+  const callee = statement.expression.callee;
+  return isType(callee, Node.MemberExpression) &&
+      isType(callee.object, Node.Super) && isIdentifier(callee.property) &&
+      callee.property.name === methodName;
+}
+
 function isNullableOrUndefinable(typeNode: TSESTree.TypeNode): boolean {
   if (isType(typeNode, Node.TSNullKeyword) ||
       isType(typeNode, Node.TSUndefinedKeyword)) {
@@ -431,6 +498,10 @@ export const litElementStructureRule = ESLintUtils.RuleCreator.withoutDocs<
       description: 'Checks that the structure of a LitElement is correct',
     },
     messages: {
+      emptyLifecycleMethod:
+          'Unnecessary empty lifecycle method \'{{methodName}}\' in class {{className}}.',
+      emptyPropertiesGetter:
+          'Unnecessary empty \'properties()\' getter in class {{className}}. Remove it if the element has no reactive properties.',
       htmlImportInTsFile:
           'Found import of html in file containing a CrLitElement subclass definition. Templates for CrLitElement subclasses belong in the .html.ts template file, not the class definition file.',
       incorrectClassNameSuffix:
@@ -457,8 +528,10 @@ export const litElementStructureRule = ESLintUtils.RuleCreator.withoutDocs<
           'Missing CustomEvent type parameter for {{type}} \'{{name}}\' (use CustomEvent<void> or CustomEvent<SomeType>).',
       invalidDollarSignProperty:
           'Optional or nullable property \'{{propertyName}}\' is not allowed on the \'$\' interface of \'{{className}}\'. Elements accessed via \'$\' are expected to always exist in the DOM.',
-      noReExport:
-          'Re-exporting \'{{exportName}}\' from a file containing a CrLitElement subclass/mixin definition is not allowed. Import directly from the original source file instead.',
+      noConstructorParams:
+          'Constructor in CrLitElement subclass {{className}} must not accept parameters.',
+      noNewCrLitElement:
+          'Do not instantiate CrLitElement subclass \'{{className}}\' using \'new\'. Use document.createElement() or an HTML template instead.',
     },
     schema: [],
   },
@@ -466,8 +539,6 @@ export const litElementStructureRule = ESLintUtils.RuleCreator.withoutDocs<
   create(context) {
     let importsRender = false;
     let htmlImportNode: TSESTree.Node|null = null;
-    const importedNames = new Set<string>();
-    const exportSpecifiers: TSESTree.ExportSpecifier[] = [];
 
     // Dollar sign property signatures in this file, keyed by interface name.
     const dollarProperties = new Map<string, TSESTree.TSPropertySignature>();
@@ -482,6 +553,12 @@ export const litElementStructureRule = ESLintUtils.RuleCreator.withoutDocs<
     const METHOD_DEFINITION_SELECTOR =
         METHOD_DEFINITION_SELECTOR_TEMPLATE.replace(
             '{{methodDefinition}}', METHOD_DEFINITION_ORDER_REGEX);
+
+    const ALL_LIFECYCLE_METHODS_REGEX =
+        '^(connectedCallback|disconnectedCallback|willUpdate|firstUpdated|updated)$';
+    const ALL_LIFECYCLE_METHOD_DEFINITION_SELECTOR =
+        METHOD_DEFINITION_SELECTOR_TEMPLATE.replace(
+            '{{methodDefinition}}', ALL_LIFECYCLE_METHODS_REGEX);
 
     const SUPER_CALL_REQUIRED_REGEX =
         '^(connectedCallback|disconnectedCallback|willUpdate|updated)$';
@@ -530,6 +607,14 @@ export const litElementStructureRule = ESLintUtils.RuleCreator.withoutDocs<
 
         currentClassInfo.visitStaticGetIs(node);
       },
+      'ClassDeclaration > ClassBody > MethodDefinition[key.name="properties"] > FunctionExpression > BlockStatement > ReturnStatement'(
+          node: TSESTree.ReturnStatement) {
+        if (!currentClassInfo) {
+          return;
+        }
+
+        currentClassInfo.runEmptyPropertiesGetterCheck(node);
+      },
       [METHOD_DEFINITION_SELECTOR](node: TSESTree.MethodDefinition) {
         if (!currentClassInfo) {
           return;
@@ -538,6 +623,22 @@ export const litElementStructureRule = ESLintUtils.RuleCreator.withoutDocs<
         assert.ok(isIdentifier(node.key));
         currentClassInfo.methodDefinitionOrder.push(
             {name: node.key.name, node});
+      },
+      'ClassDeclaration > ClassBody > MethodDefinition[kind="constructor"]'(
+          node: TSESTree.MethodDefinition) {
+        if (!currentClassInfo) {
+          return;
+        }
+
+        currentClassInfo.runConstructorParamsCheck(node);
+      },
+      [ALL_LIFECYCLE_METHOD_DEFINITION_SELECTOR](
+          node: TSESTree.MethodDefinition) {
+        if (!currentClassInfo) {
+          return;
+        }
+
+        currentClassInfo.runEmptyLifecycleMethodCheck(node);
       },
       [LIFECYCLE_METHOD_DEFINITION_SELECTOR](node: TSESTree.MethodDefinition) {
         if (!currentClassInfo) {
@@ -609,12 +710,22 @@ export const litElementStructureRule = ESLintUtils.RuleCreator.withoutDocs<
         assert.ok(isType(node.parent.parent, Node.TSInterfaceDeclaration));
         dollarProperties.set(node.parent.parent.id.name, node);
       },
-      'ImportDeclaration > ImportSpecifier'(node: TSESTree.ImportSpecifier) {
-        importedNames.add(node.local.name);
-      },
-      'ExportNamedDeclaration > ExportSpecifier'(
-          node: TSESTree.ExportSpecifier) {
-        exportSpecifiers.push(node);
+      'NewExpression'(node: TSESTree.NewExpression) {
+        const services = ESLintUtils.getParserServices(context);
+        const checker = services.program.getTypeChecker();
+        const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+        assert.ok(tsNode);
+        const type = checker.getTypeAtLocation(tsNode);
+        if (isCrLitElementType(type, checker)) {
+          assert.ok(isIdentifier(node.callee));
+          context.report({
+            node,
+            messageId: 'noNewCrLitElement',
+            data: {
+              className: node.callee.name,
+            },
+          });
+        }
       },
       'Program:exit'(_node: TSESTree.Program) {
         if (classInfos.size === 0) {
@@ -638,22 +749,6 @@ export const litElementStructureRule = ESLintUtils.RuleCreator.withoutDocs<
             node: htmlImportNode,
             messageId: 'htmlImportInTsFile',
           });
-        }
-
-        for (const node of exportSpecifiers) {
-          assert.ok(isType(node.parent, Node.ExportNamedDeclaration));
-          assert.ok(isIdentifier(node.local));
-          assert.ok(isIdentifier(node.exported));
-          if (node.parent.source !== null ||
-              importedNames.has(node.local.name)) {
-            context.report({
-              node,
-              messageId: 'noReExport',
-              data: {
-                exportName: node.exported.name,
-              },
-            });
-          }
         }
       },
     };

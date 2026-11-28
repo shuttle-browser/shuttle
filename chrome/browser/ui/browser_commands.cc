@@ -17,6 +17,7 @@
 #include "base/check_deref.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "base/functional/bind.h"
 #include "base/i18n/rtl.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
@@ -94,7 +95,6 @@
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/browsing_data/content/browsing_data_helper.h"
-#include "components/dom_distiller/core/url_utils.h"
 #include "components/embedder_support/user_agent_utils.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/find_in_page/find_tab_helper.h"
@@ -104,6 +104,7 @@
 #include "components/omnibox/browser/autocomplete_classifier.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/omnibox_prefs.h"
+#include "components/omnibox/browser/omnibox_text_util.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/sessions/core/live_tab_context.h"
@@ -121,7 +122,6 @@
 #include "components/zoom/page_zoom.h"
 #include "components/zoom/zoom_controller.h"
 #include "content/public/browser/browsing_data_remover.h"
-#include "content/public/browser/child_process_security_policy.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -136,13 +136,14 @@
 #include "pdf/buildflags.h"
 #include "printing/buildflags/buildflags.h"
 #include "rlz/buildflags/buildflags.h"
+#include "third_party/metrics_proto/omnibox_event.pb.h"
 #include "ui/base/clipboard/clipboard.h"
 #include "ui/base/clipboard/clipboard_buffer.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/list_selection_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/views/focus/focus_manager.h"
 #include "ui/views/views_features.h"
@@ -498,28 +499,28 @@ namespace {
 // revert any omnibox edits in the |current_tab|.
 tabs::TabInterface* GetTabAndRevertIfNecessaryHelper(
     BrowserWindowInterface* browser,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     tabs::TabInterface* current_tab) {
   CHECK(current_tab);
   WebContents* current_contents = current_tab->GetContents();
 
   switch (disposition) {
-    case WindowOpenDisposition::kNewForegroundTab:
-    case WindowOpenDisposition::kNewBackgroundTab: {
+    case ui::mojom::WindowOpenDisposition::kNewForegroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewBackgroundTab: {
       std::unique_ptr<WebContents> new_tab = current_contents->Clone();
       WebContents* raw_new_tab = new_tab.get();
-      if (disposition == WindowOpenDisposition::kNewBackgroundTab) {
+      if (disposition == ui::mojom::WindowOpenDisposition::kNewBackgroundTab) {
         new_tab->WasHidden();
       }
       browser->GetTabStripModel()->AddWebContents(
           std::move(new_tab), -1, ui::PAGE_TRANSITION_LINK,
-          (disposition == WindowOpenDisposition::kNewForegroundTab)
+          (disposition == ui::mojom::WindowOpenDisposition::kNewForegroundTab)
               ? AddTabTypes::ADD_ACTIVE
               : AddTabTypes::ADD_NONE,
           current_tab->GetGroup());
       return browser->GetTabStripModel()->GetTabForWebContents(raw_new_tab);
     }
-    case WindowOpenDisposition::kNewWindow: {
+    case ui::mojom::WindowOpenDisposition::kNewWindow: {
       std::unique_ptr<WebContents> new_tab = current_contents->Clone();
       WebContents* raw_new_tab = new_tab.get();
       BrowserWindowInterface* new_browser = CreateNewBrowser(browser, true);
@@ -538,13 +539,13 @@ tabs::TabInterface* GetTabAndRevertIfNecessaryHelper(
 // Like the above, but auto-computes the current tab
 tabs::TabInterface* GetTabAndRevertIfNecessary(
     BrowserWindowInterface* browser,
-    WindowOpenDisposition disposition) {
+    ui::mojom::WindowOpenDisposition disposition) {
   tabs::TabInterface* active_tab = browser->GetTabStripModel()->GetActiveTab();
   return GetTabAndRevertIfNecessaryHelper(browser, disposition, active_tab);
 }
 
 void ReloadInternal(BrowserWindowInterface* browser,
-                    WindowOpenDisposition disposition,
+                    ui::mojom::WindowOpenDisposition disposition,
                     bool bypass_cache) {
   TabStripModel* const tab_strip_model = browser->GetTabStripModel();
   tabs::TabInterface* const active_tab = tab_strip_model->GetActiveTab();
@@ -668,7 +669,7 @@ bool ExecuteCommandWithContext(BrowserWindowInterface* browser,
 
 bool ExecuteCommandWithDisposition(BrowserWindowInterface* browser,
                                    int command,
-                                   WindowOpenDisposition disposition,
+                                   ui::mojom::WindowOpenDisposition disposition,
                                    base::TimeTicks time_stamp) {
   return BrowserCommandController::From(browser)->ExecuteCommandWithDisposition(
       command, disposition, std::nullopt, time_stamp);
@@ -677,7 +678,7 @@ bool ExecuteCommandWithDisposition(BrowserWindowInterface* browser,
 bool ExecuteCommandWithDispositionAndContext(
     BrowserWindowInterface* browser,
     int command,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     actions::ActionInvocationContext context,
     base::TimeTicks time_stamp) {
   return BrowserCommandController::From(browser)->ExecuteCommandWithDisposition(
@@ -806,7 +807,7 @@ bool ShouldEnableBackButton(const BrowserWindowInterface* browser) {
 }
 
 void GoBack(BrowserWindowInterface* browser,
-            WindowOpenDisposition disposition) {
+            ui::mojom::WindowOpenDisposition disposition) {
   tabs::TabInterface* tab = GetTabAndRevertIfNecessary(browser, disposition);
   CHECK(tab);
   GoBack(tab->GetContents());
@@ -848,7 +849,7 @@ bool ShouldEnableForwardButton(const BrowserWindowInterface* browser) {
 }
 
 void GoForward(BrowserWindowInterface* browser,
-               WindowOpenDisposition disposition) {
+               ui::mojom::WindowOpenDisposition disposition) {
   base::RecordAction(UserMetricsAction("Forward"));
   if (CanGoForward(browser)) {
     tabs::TabInterface* tab = GetTabAndRevertIfNecessary(browser, disposition);
@@ -864,9 +865,10 @@ void GoForward(content::WebContents* web_contents) {
   }
 }
 
-void NavigateToIndexWithDisposition(BrowserWindowInterface* browser,
-                                    int index,
-                                    WindowOpenDisposition disposition) {
+void NavigateToIndexWithDisposition(
+    BrowserWindowInterface* browser,
+    int index,
+    ui::mojom::WindowOpenDisposition disposition) {
   tabs::TabInterface* tab = GetTabAndRevertIfNecessary(browser, disposition);
   CHECK(tab);
   WebContents* web_contents = tab->GetContents();
@@ -878,13 +880,13 @@ void NavigateToIndexWithDisposition(BrowserWindowInterface* browser,
 }
 
 void Reload(BrowserWindowInterface* browser,
-            WindowOpenDisposition disposition) {
+            ui::mojom::WindowOpenDisposition disposition) {
   base::RecordAction(UserMetricsAction("Reload"));
   ReloadInternal(browser, disposition, false);
 }
 
 void ReloadBypassingCache(BrowserWindowInterface* browser,
-                          WindowOpenDisposition disposition) {
+                          ui::mojom::WindowOpenDisposition disposition) {
   base::RecordAction(UserMetricsAction("ReloadBypassingCache"));
   ReloadInternal(browser, disposition, true);
 }
@@ -895,7 +897,8 @@ bool CanReload(const BrowserWindowInterface* browser) {
          !DesktopBrowserWindowCapabilities::IsDocumentPictureInPicture(browser);
 }
 
-void Home(BrowserWindowInterface* browser, WindowOpenDisposition disposition) {
+void Home(BrowserWindowInterface* browser,
+          ui::mojom::WindowOpenDisposition disposition) {
   base::RecordAction(UserMetricsAction("Home"));
 
   std::string extra_headers;
@@ -920,8 +923,8 @@ void Home(BrowserWindowInterface* browser, WindowOpenDisposition disposition) {
     return;
   }
 
-  if (disposition == WindowOpenDisposition::kCurrentTab ||
-      disposition == WindowOpenDisposition::kNewForegroundTab) {
+  if (disposition == ui::mojom::WindowOpenDisposition::kCurrentTab ||
+      disposition == ui::mojom::WindowOpenDisposition::kNewForegroundTab) {
     extensions::MaybeShowExtensionControlledHomeNotification(
         browser, browser->GetTabStripModel()->GetActiveWebContents());
   }
@@ -1087,32 +1090,38 @@ void NewTabToRight(BrowserWindowInterface* browser) {
 
 void NewTabFromClipboardURL(BrowserWindowInterface* browser) {
 #if BUILDFLAG(IS_LINUX)
-  if (ui::Clipboard::IsSupportedClipboardBuffer(
+  if (ui::Clipboard::IsMiddleClickPasteEnabled() &&
+      ui::Clipboard::IsSupportedClipboardBuffer(
           ui::ClipboardBuffer::kSelection)) {
-    ui::Clipboard* clipboard = ui::Clipboard::GetForCurrentThread();
+    ui::Clipboard* const clipboard = ui::Clipboard::GetForCurrentThread();
     CHECK(clipboard)
         << "Clipboard instance is not available, cannot proceed with "
            "middle mouse button action.";
     clipboard->ReadText(
-        ui::ClipboardBuffer::kSelection, /* data_dst = */ std::nullopt,
+        ui::ClipboardBuffer::kSelection, /*data_dst=*/std::nullopt,
         base::BindOnce(
             [](base::WeakPtr<BrowserWindowInterface> browser_weak,
                std::u16string text) {
-              if (!browser_weak || text.empty()) {
+              const std::u16string sanitized_text =
+                  omnibox::SanitizeTextForPaste(text);
+              if (!browser_weak || sanitized_text.empty()) {
+                return;
+              }
+              AutocompleteClassifier* const autocomplete_classifier =
+                  AutocompleteClassifierFactory::GetForProfile(
+                      browser_weak->GetProfile());
+              if (!autocomplete_classifier) {
                 return;
               }
               base::RecordAction(
                   base::UserMetricsAction("NewTabButton_PasteAndNavigate"));
               AutocompleteMatch match;
-              AutocompleteClassifierFactory::GetForProfile(
-                  browser_weak->GetProfile())
-                  ->Classify(text, false, false,
-                             metrics::OmniboxEventProto::BLANK, &match,
-                             nullptr);
+              autocomplete_classifier->Classify(
+                  sanitized_text, /*in_keyword_mode=*/false,
+                  /*allow_exact_keyword_match=*/false,
+                  metrics::OmniboxEventProto::BLANK, &match, nullptr);
               if (match.destination_url.is_valid() &&
-                  content::ChildProcessSecurityPolicy::GetInstance()
-                      ->IsWebSafeScheme(
-                          std::string(match.destination_url.scheme()))) {
+                  match.destination_url.SchemeIsHTTPOrHTTPS()) {
                 browser_weak->GetTabStripModel()->delegate()->AddTabAt(
                     match.destination_url, -1, true);
               }
@@ -1349,14 +1358,16 @@ void MoveTabsToNewWindow(BrowserWindowInterface* browser,
 }
 
 bool CanCloseTabsToRight(const BrowserWindowInterface* browser) {
+  tabs::TabInterface* active_tab = browser->GetTabStripModel()->GetActiveTab();
   return browser->GetTabStripModel()->IsContextMenuCommandEnabled(
-      browser->GetTabStripModel()->active_index(),
+      active_tab ? active_tab->GetHandle() : tabs::TabHandle::Null(),
       TabStripModel::CommandCloseTabsToRight);
 }
 
 bool CanCloseOtherTabs(const BrowserWindowInterface* browser) {
+  tabs::TabInterface* active_tab = browser->GetTabStripModel()->GetActiveTab();
   return browser->GetTabStripModel()->IsContextMenuCommandEnabled(
-      browser->GetTabStripModel()->active_index(),
+      active_tab ? active_tab->GetHandle() : tabs::TabHandle::Null(),
       TabStripModel::CommandCloseOtherTabs);
 }
 
@@ -1477,14 +1488,15 @@ void CreateNewTabGroup(BrowserWindowInterface* browser) {
 }
 
 void CloseTabGroup(BrowserWindowInterface* browser) {
-  const int index = browser->GetTabStripModel()->active_index();
+  TabStripModel* const tab_strip_model = browser->GetTabStripModel();
+  const int index = tab_strip_model->active_index();
   std::optional<tab_groups::TabGroupId> group_id =
-      browser->GetTabStripModel()->GetTabGroupForTab(index);
-  if (!group_id) {
+      tab_strip_model->GetTabGroupForTab(index);
+  if (!group_id || tab_strip_model->IsEphemeralTabGroup(group_id.value())) {
     return;
   }
 
-  browser->GetTabStripModel()->CloseAllTabsInGroup(group_id.value());
+  tab_strip_model->CloseAllTabsInGroup(group_id.value());
 }
 
 void FocusNextTabGroup(BrowserWindowInterface* browser) {
@@ -1793,9 +1805,6 @@ void FindInPage(BrowserWindowInterface* browser,
 void ToggleTabSearchPin(BrowserWindowInterface* browser) {
   PrefService* prefs = browser->GetProfile()->GetPrefs();
   const bool is_pinned = prefs->GetBoolean(prefs::kTabSearchPinnedToTabstrip);
-  base::RecordAction(base::UserMetricsAction(
-      is_pinned ? "TabStripComboButton.TabSearch.Unpinned"
-                : "TabStripComboButton.TabSearch.Pinned"));
   prefs->SetBoolean(prefs::kTabSearchPinnedToTabstrip, !is_pinned);
 }
 

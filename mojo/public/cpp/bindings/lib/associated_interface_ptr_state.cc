@@ -103,20 +103,26 @@ void AssociatedInterfacePtrStateBase::Swap(
 MessageReceiverWithResponder* AssociatedInterfacePtrStateBase::Bind(
     ScopedInterfaceEndpointHandle handle,
     uint32_t version,
-    std::unique_ptr<MessageReceiver> validator,
+    MessageValidatorFunc validator,
     scoped_refptr<base::SequencedTaskRunner> runner,
     const char* interface_name,
     MessageToMethodInfoCallback method_info_callback,
     MessageToMethodNameCallback method_name_callback) {
   DCHECK(!endpoint_client_);
   DCHECK_EQ(0u, version_);
-  DCHECK(handle.is_valid());
+  // Handled here rather than in AssociatedRemote<T>::Bind() to avoid
+  // duplicating the check across every interface template instantiation.
+  // Passing an invalid handle (e.g. via NullAssociatedRemote) is a supported
+  // no-op that returns a null responder, leaving the remote unbound.
+  if (!handle.is_valid()) {
+    return nullptr;
+  }
 
   version_ = version;
   // The version is only queried from the client so the value passed here
   // will not be used.
   endpoint_client_ = std::make_unique<InterfaceEndpointClient>(
-      std::move(handle), nullptr, std::move(validator),
+      std::move(handle), nullptr, validator,
       /*sync_method_ordinals=*/base::span<const uint32_t>(),
       GetTaskRunnerToUseFromUserProvidedTaskRunner(std::move(runner)), 0u,
       interface_name, method_info_callback, method_name_callback);

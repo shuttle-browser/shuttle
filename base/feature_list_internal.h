@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 
+#include <atomic>
 #include <functional>
 #include <limits>
 #include <optional>
@@ -27,7 +28,23 @@ inline uint16_t NextCachingContext(uint16_t& next_context) {
   return context;
 }
 
-// Masks for the fields in the 32-bit `cached_value`.
+// Returns an atomic reference to the packed state word that `tagged_state`
+// (i.e. `Feature::tagged_state`) points into. All accesses to the word must go
+// through this, since it may be accessed concurrently from multiple threads.
+inline std::atomic_ref<Feature::FeatureStateCache> GetFeatureStateCache(
+    void* tagged_state) {
+  return std::atomic_ref<Feature::FeatureStateCache>(
+      *GetFeatureStateWord(tagged_state));
+}
+
+// std::atomic_ref must work on the plain, naturally aligned word, and must be
+// lock-free so that it interoperates with the `AtomicU32` that base/feature.rs
+// defines for Rust features.
+static_assert(std::atomic_ref<Feature::FeatureStateCache>::required_alignment ==
+              alignof(Feature::FeatureStateCache));
+static_assert(std::atomic_ref<Feature::FeatureStateCache>::is_always_lock_free);
+
+// Masks for the fields in the 32-bit feature state.
 enum : Feature::FeatureStateCache {
   // The bottom 16 bits of the 32-bit cached value are used for the caching
   // context ID.
@@ -44,7 +61,11 @@ enum : Feature::FeatureStateCache {
 
   // The feature has been declared as runtime mutable. The feature's state may
   // be subject to change at runtime.
-  kRuntimeMutabilityMask = 1 << 18,
+  kRuntimeMutabilityMask = feature_state_masks::kRuntimeMutabilityMask,
+
+  // The bits that are fixed when the feature is defined. The default state is
+  // not stored here, but in the low bits of `Feature::tagged_state`.
+  kFeatureImmutableStateMask = kRuntimeMutabilityMask,
 
   // The resolved enabled state and explicit override marker are cached
   // separately so the enabled state can be read without decoding an override.

@@ -14,17 +14,23 @@
 
 namespace blink {
 
+// TODO(crbug.com/578573238): Consolidate these aliases. Keep in sync with
+// css_property_value_set.h for now.
 using PrivateNameMap = HashMap<AtomicString, AtomicString>;
 
 class CORE_EXPORT PropertyRegistry : public GarbageCollected<PropertyRegistry> {
  public:
+  static constexpr char kPrivatePropertyNamePrefix[] = "-ua-private-";
+
   using RegistrationMap =
       HeapHashMap<AtomicString, Member<PropertyRegistration>>;
 
   // Registers a property (CSS.registerProperty).
   void RegisterProperty(const AtomicString&, PropertyRegistration&);
-  // Registers a property (@property).
-  void DeclareProperty(const AtomicString&, PropertyRegistration&);
+  // Updates the @property declarations, preserving registrations created from
+  // the same rule when their descriptors are unchanged. Returns whether any
+  // declaration changed.
+  bool UpdateDeclaredProperties(RegistrationMap registrations);
 
   static AtomicString AllocatePrivatePropertyName();
   // Registers a private property under a name from
@@ -37,10 +43,6 @@ class CORE_EXPORT PropertyRegistry : public GarbageCollected<PropertyRegistry> {
   const PropertyRegistration* PrivateRegistration(
       const AtomicString& private_name) const;
   PropertyRegistry* CopyPrivateRegistry() const;
-
-  // Removes all registrations originating from @property. Has no effect on
-  // properties originating from CSS.registerProperty.
-  void RemoveDeclaredProperties();
 
   // Register property for devtools inspector.
   void AddRegistrationForInspector(const AtomicString&, PropertyRegistration&);

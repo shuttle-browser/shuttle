@@ -2,34 +2,24 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {HistoryEmbeddingsUserActions, QUERY_RESULT_MINIMUM_AGE} from 'chrome://resources/cr_components/history/constants.js';
-import type {QueryResult, QueryState} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
+import type {QueryResult, QueryState, TimePeriodOption} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
+import {TimePeriodOptionId} from 'chrome://resources/cr_components/history/history.mojom-webui.js';
 import {EventTracker} from 'chrome://resources/js/event_tracker.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
+import type {Time} from 'chrome://resources/mojo/mojo/public/mojom/base/time.mojom-webui.js';
 
 import {BrowserProxyImpl} from './browser_proxy.js';
 import {RESULTS_PER_PAGE} from './constants.js';
 
-// Converts a JS Date object to a human readable string in the format of
-// YYYY-MM-DD for the query.
-export function convertDateToQueryValue(date: Date) {
-  const fullYear = date.getFullYear();
-  const month = date.getMonth() + 1; /* Month is 0-indexed. */
-  const day = date.getDate();
-
-  function twoDigits(value: number): string {
-    return value >= 10 ? `${value}` : `0${value}`;
-  }
-
-  return `${fullYear}-${twoDigits(month)}-${twoDigits(day)}`;
-}
-
 export type ChangeQueryEvent = CustomEvent<{
   search: string | null,
-  after: string | null,
+  after?: string | null,
   includeUserVisits?: boolean,
   includeActorVisits?: boolean,
   clientIds?: string[],
+  // The selected predefined time period. kAllTime means no time period
+  // filtering is applied.
+  timePeriodOptionId?: TimePeriodOptionId,
 }>;
 
 declare global {
@@ -57,6 +47,10 @@ export class HistoryQueryManagerElement extends CrLitElement {
       queryResult: {
         type: Object,
       },
+
+      timePeriodOptions: {
+        type: Array,
+      },
     };
   }
 
@@ -68,19 +62,16 @@ export class HistoryQueryManagerElement extends CrLitElement {
     includeUserVisits: true,
     includeActorVisits: true,
     clientIds: [],
+    timePeriodOptionId: TimePeriodOptionId.kAllTime,
   };
   accessor queryResult: QueryResult = {
     info: null,
     value: [],
   };
+  // The available predefined time periods, used to resolve
+  // `queryState.timePeriodOptionId` into concrete query bounds.
+  accessor timePeriodOptions: TimePeriodOption[] = [];
   private eventTracker_: EventTracker = new EventTracker();
-  /**
-   * When this is non-null, that means there's a QueryResult that's pending
-   * metrics logging since this debouncer timestamp. The debouncing is needed
-   * because queries are issued as the user types, and we want to skip logging
-   * these trivial queries the user typed through.
-   */
-  private resultPendingMetricsTimestamp_: number|null = null;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -88,16 +79,10 @@ export class HistoryQueryManagerElement extends CrLitElement {
         document, 'change-query', this.onChangeQuery_.bind(this));
     this.eventTracker_.add(
         document, 'query-history', this.onQueryHistory_.bind(this));
-    this.eventTracker_.add(document, 'visibilitychange', () => {
-      if (document.visibilityState === 'hidden') {
-        this.flushDebouncedQueryResultMetric_();
-      }
-    });
   }
 
   override disconnectedCallback() {
     super.disconnectedCallback();
-    this.flushDebouncedQueryResultMetric_();
     this.eventTracker_.removeAll();
   }
 
@@ -112,12 +97,17 @@ export class HistoryQueryManagerElement extends CrLitElement {
       incremental: incremental,
     };
 
+    // Resolve the selected time period into concrete bounds. An unknown id
+    // (e.g. options not loaded yet) is treated as "all time".
+    const timePeriodOption = this.timePeriodOptions.find(
+        option => option.id === this.queryState.timePeriodOptionId);
+    const beginTime: Time|null = timePeriodOption?.beginTime ?? null;
+    const endTime: Time|null = timePeriodOption?.endTime ?? null;
     const browserProxy = BrowserProxyImpl.getInstance();
     const promise = incremental ?
         browserProxy.handler.queryHistoryContinuation() :
         browserProxy.handler.queryHistory(
-            this.queryState.searchTerm, RESULTS_PER_PAGE,
-            null,
+            this.queryState.searchTerm, RESULTS_PER_PAGE, beginTime, endTime,
             this.queryState.includeUserVisits,
             this.queryState.includeActorVisits, this.queryState.clientIds);
     // Ignore rejected (cancelled) queries.
@@ -167,6 +157,15 @@ export class HistoryQueryManagerElement extends CrLitElement {
       }
     }
 
+    if (changes.timePeriodOptionId !== undefined &&
+        changes.timePeriodOptionId !== this.queryState.timePeriodOptionId) {
+      this.queryState = {
+        ...this.queryState,
+        timePeriodOptionId: changes.timePeriodOptionId,
+      };
+      needsUpdate = true;
+    }
+
     if (needsUpdate) {
       this.queryHistory_(false);
     }
@@ -191,31 +190,10 @@ export class HistoryQueryManagerElement extends CrLitElement {
   }
 
   private searchTermChanged_() {
-    this.flushDebouncedQueryResultMetric_();
-
     // TODO(tsergeant): Ignore incremental searches in this metric.
     if (this.queryState.searchTerm) {
       BrowserProxyImpl.getInstance().recordAction('Search');
-      this.resultPendingMetricsTimestamp_ = performance.now();
     }
-  }
-
-  /**
-   * Flushes any pending query result metric waiting to be logged.
-   */
-  private flushDebouncedQueryResultMetric_() {
-    if (this.resultPendingMetricsTimestamp_ &&
-        (performance.now() - this.resultPendingMetricsTimestamp_) >=
-            QUERY_RESULT_MINIMUM_AGE) {
-      BrowserProxyImpl.getInstance().recordHistogram(
-          'History.Embeddings.UserActions',
-          HistoryEmbeddingsUserActions.NON_EMPTY_QUERY_HISTORY_SEARCH,
-          HistoryEmbeddingsUserActions.END);
-    }
-
-    // Clear this regardless if it was recorded or not, because we don't want
-    // to "try again" to record the same query.
-    this.resultPendingMetricsTimestamp_ = null;
   }
 }
 

@@ -31,11 +31,14 @@ class UnpinnedTabContainerViewHorizontalLayout
   gfx::Size GetMinimumSize(const views::View* host) const override;
 
  protected:
-  // views::LayoutManagerBase:
+  // UnpinnedTabContainerView::LayoutManager:
+  using UnpinnedTabContainerView::LayoutManager::CalculateProposedLayout;
   views::ProposedLayout CalculateProposedLayout(
-      const views::SizeBounds& size_bounds) const override;
+      const views::SizeBounds& size_bounds,
+      std::optional<tab_groups::TabGroupId> focused_group_id) const override;
 
  private:
+  gfx::Range GetDetachedDragRange() const;
   std::optional<int> GetClosingModeOverrideWidth() const;
 };
 

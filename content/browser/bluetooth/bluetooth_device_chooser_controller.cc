@@ -312,12 +312,13 @@ void BluetoothDeviceChooserController::GetDevice(
 
   BluetoothChooser::EventHandler chooser_event_handler = base::BindRepeating(
       &BluetoothDeviceChooserController::OnBluetoothChooserEvent,
-      base::Unretained(this));
+      weak_ptr_factory_.GetWeakPtr());
 
   // The delegate's chooser implementation may spin a nested message loop (e.g.
   // to drop fullscreen), during which the frame may be detached and the
-  // controller destroyed. Check that the controller is still alive before
-  // accessing member variables.
+  // controller destroyed. In addition, the chooser event handler could be
+  // invoked synchronously. Check that the controller is still alive and that
+  // the request hasn't already completed before assigning `chooser_`.
   base::WeakPtr<BluetoothDeviceChooserController> weak_this =
       weak_ptr_factory_.GetWeakPtr();
   std::unique_ptr<BluetoothChooser> chooser;
@@ -326,7 +327,7 @@ void BluetoothDeviceChooserController::GetDevice(
                                             std::move(chooser_event_handler));
   }
 
-  if (!weak_this) {
+  if (!weak_this || !callback_) {
     return;
   }
 
@@ -555,7 +556,9 @@ void BluetoothDeviceChooserController::OnBluetoothChooserEvent(
 
 void BluetoothDeviceChooserController::PostSuccessCallback(
     const std::string& device_address) {
-  CHECK(callback_, base::NotFatalUntil::M160);
+  // TODO(crbug.com/578149381): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(callback_);
 
   if (!base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
           FROM_HERE,

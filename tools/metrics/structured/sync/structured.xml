@@ -3728,6 +3728,9 @@
     <variant value="10">CLIENT_ERROR</variant>
     <variant value="11">CLIENT_LOAD_TIMEOUT</variant>
     <variant value="12">WARMED_TIMEOUT</variant>
+    <variant value="13">GUEST_ORIGIN_BLOCKED</variant>
+    <variant value="14">GUEST_API_NOT_ALLOWED</variant>
+    <variant value="15">PENDING_PROVIDER_CHANGE</variant>
   </enum>
 
   <enum name="GlicEmbedderType">
@@ -3803,7 +3806,9 @@
     <metric name="Outcome" type="GlicCuiOutcome">
       <summary>
         The high level outcome of the invocation natively mapped from
-        GlicCuiOutcome.
+        GlicCuiOutcome. FAILED_LATENCY is not recorded from M159: a slow
+        success is SUCCESS and a timeout is FAILED, with the duration in
+        TimeSinceStart.
       </summary>
     </metric>
     <metric name="InvokeError" type="int">

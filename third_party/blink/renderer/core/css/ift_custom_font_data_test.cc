@@ -20,6 +20,7 @@
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/text.h"
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
+#include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_item.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/layout_text.h"
@@ -51,9 +52,9 @@ namespace blink {
 namespace {
 
 // Table-keyed patch for 'b' applied to the base font.
-constexpr char kPatchBTableUrl[] = "https://example.com/fonts/0K.ift_tk";
+constexpr char kPatchBTableUrl[] = "https://example.com/fonts/1K.ift_tk";
 // Table-keyed patch for 'c' applied after `kPatchBTableUrl`.
-constexpr char kPatchCAfterBTableUrl[] = "https://example.com/fonts/0C.ift_tk";
+constexpr char kPatchCAfterBTableUrl[] = "https://example.com/fonts/14.ift_tk";
 // Glyph-keyed patch with the outline for 'b'.
 constexpr char kPatchBGlyphUrl[] = "https://example.com/fonts/04.1.ift_gk";
 // Glyph-keyed patch with the outline for 'c'.
@@ -81,19 +82,19 @@ class IftCustomFontDataTest : public SimTest {
   }
 
   // Loads a document with an IFT `@font-face` and returns the resulting
-  // `IftCustomFontData`. `text` is set as the content of the element styled
-  // with the font.
+  // `IftFont`. `text` is set as the content of the element styled with the
+  // font.
   //
   // The font is `roboto-ift.ttf`, a Roboto subset whose base font contains
-  // only codepoint 'a'. Codepoints 'b' and 'c' are added through table-keyed
-  // and glyph-keyed patches.
+  // codepoint 'a', feature 'smcp' (GSUB table), and the wght [100, 400] design
+  // space. Codepoints 'b' and 'c', 'smcp' outlines, and wght [500, 900] are
+  // added through table-keyed and glyph-keyed patches.
   //
   // If `world` is set, the `@font-face` rule is parsed in `world`. If
   // `font_redirect_url` is set, the font request is redirected to it.
-  const IftCustomFontData* LoadCustomFontData(
-      const String& text = "a",
-      DOMWrapperWorld* world = nullptr,
-      const String& font_redirect_url = String()) {
+  const IftFont* LoadIftFont(const String& text = "a",
+                             DOMWrapperWorld* world = nullptr,
+                             const String& font_redirect_url = String()) {
     SimRequest main_resource("https://example.com/index.html", "text/html");
     SimRequest::Params font_params;
     font_params.redirect_url = font_redirect_url;
@@ -155,38 +156,56 @@ class IftCustomFontDataTest : public SimTest {
     const SimpleFontData* font_data =
         css_font_face->GetFontData(layout_object->Style().GetFontDescription());
     initial_font_data_ = font_data;
-    return font_data ? static_cast<const IftCustomFontData*>(
-                           font_data->GetCustomFontData())
-                     : nullptr;
+    return font_data ? GetIftFont(font_data) : nullptr;
   }
 
-  // Returns true if all of `#target` was shaped with `custom_font_data`.
-  bool IsShapedWith(const IftCustomFontData* custom_font_data) {
-    HeapVector<ShapeResult::RunFontData> run_fonts = TargetRunFonts();
-    return !run_fonts.empty() &&
-           std::ranges::all_of(
-               run_fonts, [&](const ShapeResult::RunFontData& run) {
-                 return run.font_data_->GetCustomFontData() == custom_font_data;
-               });
+  // Returns the `IftCustomFontData` of `font_data`, or nullptr if it is not a
+  // custom font. The only `@font-face` in these tests is an IFT font, so every
+  // custom font is assumed to be backed by an `IftCustomFontData`.
+  static const IftCustomFontData* GetIftCustomFontData(
+      const SimpleFontData* font_data) {
+    return static_cast<const IftCustomFontData*>(
+        font_data->GetCustomFontData());
   }
 
-  // Returns true if all of `#target` was shaped with `custom_font_data` using
-  // font data other than `initial_font_data_`, i.e. the font data rebuilt after
-  // patches were applied.
-  bool IsShapedWithUpdated(const IftCustomFontData* custom_font_data) {
+  // Returns the shared `IftFont` of `font_data`, or nullptr if it is not a
+  // custom font.
+  static const IftFont* GetIftFont(const SimpleFontData* font_data) {
+    const IftCustomFontData* custom_font_data = GetIftCustomFontData(font_data);
+    return custom_font_data ? custom_font_data->GetIftFont() : nullptr;
+  }
+
+  // Returns true if all of `#target` was shaped with `ift_font`.
+  bool IsShapedWith(const IftFont* ift_font) {
     HeapVector<ShapeResult::RunFontData> run_fonts = TargetRunFonts();
     return !run_fonts.empty() &&
            std::ranges::all_of(run_fonts,
                                [&](const ShapeResult::RunFontData& run) {
-                                 return run.font_data_->GetCustomFontData() ==
-                                            custom_font_data &&
-                                        run.font_data_ != initial_font_data_;
+                                 return GetIftFont(run.font_data_) == ift_font;
                                });
   }
 
-  // The font data returned when the font was first loaded by
-  // `LoadCustomFontData()`.
+  // Returns true if all of `#target` was shaped with `ift_font` using font data
+  // other than `initial_font_data_`, i.e. the font data rebuilt after patches
+  // were applied.
+  bool IsShapedWithUpdated(const IftFont* ift_font) {
+    HeapVector<ShapeResult::RunFontData> run_fonts = TargetRunFonts();
+    return !run_fonts.empty() &&
+           std::ranges::all_of(
+               run_fonts, [&](const ShapeResult::RunFontData& run) {
+                 return GetIftFont(run.font_data_) == ift_font &&
+                        run.font_data_ != initial_font_data_;
+               });
+  }
+
+  // The font data returned when the font was first loaded by `LoadIftFont()`.
   Persistent<const SimpleFontData> initial_font_data_;
+
+  // Sets the inline style of `#target` to `style`.
+  void SetTargetStyle(const char* style) {
+    GetElementById("target")->setAttribute(html_names::kStyleAttr,
+                                           AtomicString(style));
+  }
 
   // Returns the font data used to shape all of `#target`, or nullptr if
   // `#target` was shaped with more than one font data.
@@ -206,7 +225,7 @@ class IftCustomFontDataTest : public SimTest {
 
   // Returns the font of each glyph run in the shaped text of `#target`.
   HeapVector<ShapeResult::RunFontData> TargetRunFonts() {
-    Element* target = GetDocument().getElementById(AtomicString("target"));
+    Element* target = GetElementById("target");
     CHECK(target);
     const auto* layout_text = To<Text>(target->firstChild())->GetLayoutObject();
     CHECK(layout_text);
@@ -223,16 +242,16 @@ class IftCustomFontDataTest : public SimTest {
 };
 
 TEST_F(IftCustomFontDataTest, SupportedTextDoesNotRequireFetch) {
-  const IftCustomFontData* custom_font_data = LoadCustomFontData();
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font = LoadIftFont();
+  ASSERT_NE(ift_font, nullptr);
 
-  EXPECT_TRUE(custom_font_data->IftRequireSubset(""));
-  EXPECT_TRUE(custom_font_data->IftRequireSubset("a"));
+  EXPECT_TRUE(ift_font->RequireSubset(""));
+  EXPECT_TRUE(ift_font->RequireSubset("a"));
 
   // No work was scheduled, so the font is still usable.
   test::RunPendingTasks();
-  EXPECT_TRUE(custom_font_data->IftRequireSubset(""));
-  EXPECT_TRUE(custom_font_data->IftRequireSubset("a"));
+  EXPECT_TRUE(ift_font->RequireSubset(""));
+  EXPECT_TRUE(ift_font->RequireSubset("a"));
 }
 
 TEST_F(IftCustomFontDataTest, NewUnsupportedCodepointsTriggersCollection) {
@@ -240,12 +259,11 @@ TEST_F(IftCustomFontDataTest, NewUnsupportedCodepointsTriggersCollection) {
                                       "application/octet-stream");
   SimSubresourceRequest patch_b_glyph(kPatchBGlyphUrl,
                                       "application/octet-stream");
-  const IftCustomFontData* custom_font_data = LoadCustomFontData();
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font = LoadIftFont();
+  ASSERT_NE(ift_font, nullptr);
 
-  EXPECT_FALSE(custom_font_data->IftRequireSubset("b"));
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kCollecting);
+  EXPECT_FALSE(ift_font->RequireSubset("b"));
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kCollecting);
 
   test::RunPendingTasks();
   patch_b_table.Complete(PatchPayload(kPatchBTableUrl));
@@ -253,31 +271,29 @@ TEST_F(IftCustomFontDataTest, NewUnsupportedCodepointsTriggersCollection) {
 }
 
 TEST_F(IftCustomFontDataTest, CoveredCodepointsAreShapedWithFont) {
-  const IftCustomFontData* custom_font_data = LoadCustomFontData("a");
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font = LoadIftFont("a");
+  ASSERT_NE(ift_font, nullptr);
 
   // Codepoint 'a' is already covered by the base font, so it is shaped with it
   // immediately without triggering collection.
   Compositor().BeginFrame();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kIdle);
-  EXPECT_TRUE(IsShapedWith(custom_font_data));
-  EXPECT_FALSE(IsShapedWithUpdated(custom_font_data));
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kIdle);
+  EXPECT_TRUE(IsShapedWith(ift_font));
+  EXPECT_FALSE(IsShapedWithUpdated(ift_font));
 }
 
 TEST_F(IftCustomFontDataTest,
        UnpatchableCodepointsFallBackWithoutBlockingSupportedText) {
   // 'a' is in the base font; 'z' is neither in the base font nor in any patch.
-  const IftCustomFontData* custom_font_data = LoadCustomFontData("az");
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font = LoadIftFont("az");
+  ASSERT_NE(ift_font, nullptr);
 
   Compositor().BeginFrame();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kIdle);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kIdle);
   HeapVector<ShapeResult::RunFontData> run_fonts = TargetRunFonts();
   ASSERT_EQ(run_fonts.size(), 2u);
-  EXPECT_EQ(run_fonts[0].font_data_->GetCustomFontData(), custom_font_data);
-  EXPECT_NE(run_fonts[1].font_data_->GetCustomFontData(), custom_font_data);
+  EXPECT_EQ(GetIftFont(run_fonts[0].font_data_), ift_font);
+  EXPECT_NE(GetIftFont(run_fonts[1].font_data_), ift_font);
 }
 
 TEST_F(IftCustomFontDataTest, MissingCodepointsAppliesPatch) {
@@ -285,28 +301,25 @@ TEST_F(IftCustomFontDataTest, MissingCodepointsAppliesPatch) {
                                       "application/octet-stream");
   SimSubresourceRequest patch_b_glyph(kPatchBGlyphUrl,
                                       "application/octet-stream");
-  const IftCustomFontData* custom_font_data = LoadCustomFontData("b");
-  ASSERT_NE(custom_font_data, nullptr);
-  const Vector<uint8_t> original_font(
-      custom_font_data->GetFontDataForTesting());
+  const IftFont* ift_font = LoadIftFont("b");
+  ASSERT_NE(ift_font, nullptr);
+  const Vector<uint8_t> original_font(ift_font->GetFontDataForTesting());
 
   // Text is shaped with a fallback font until the patches are applied.
   Compositor().BeginFrame();
-  EXPECT_FALSE(IsShapedWith(custom_font_data));
+  EXPECT_FALSE(IsShapedWith(ift_font));
 
   test::RunPendingTasks();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFetching);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
 
   // Once the patches are applied, the text is shaped with the patched font.
   patch_b_table.Complete(PatchPayload(kPatchBTableUrl));
   patch_b_glyph.Complete(PatchPayload(kPatchBGlyphUrl));
   test::RunPendingTasks();
-  EXPECT_NE(custom_font_data->GetFontDataForTesting(),
-            base::span(original_font));
+  EXPECT_NE(ift_font->GetFontDataForTesting(), base::span(original_font));
   Compositor().BeginFrame();
-  EXPECT_TRUE(IsShapedWithUpdated(custom_font_data));
-  EXPECT_TRUE(custom_font_data->IftRequireSubset("b"));
+  EXPECT_TRUE(IsShapedWithUpdated(ift_font));
+  EXPECT_TRUE(ift_font->RequireSubset("b"));
 }
 
 TEST_F(IftCustomFontDataTest, AppliesPatchesAfterAllPatchesFetched) {
@@ -320,10 +333,9 @@ TEST_F(IftCustomFontDataTest, AppliesPatchesAfterAllPatchesFetched) {
                                       "application/octet-stream");
 
   // Load with text that requires both "b" and "c" patches.
-  const IftCustomFontData* custom_font_data = LoadCustomFontData("bc");
-  ASSERT_NE(custom_font_data, nullptr);
-  const Vector<uint8_t> original_font(
-      custom_font_data->GetFontDataForTesting());
+  const IftFont* ift_font = LoadIftFont("bc");
+  ASSERT_NE(ift_font, nullptr);
+  const Vector<uint8_t> original_font(ift_font->GetFontDataForTesting());
 
   // Completing "b" patch will still wait on "c" patch.
   Compositor().BeginFrame();
@@ -331,22 +343,19 @@ TEST_F(IftCustomFontDataTest, AppliesPatchesAfterAllPatchesFetched) {
   patch_b_glyph.Complete(PatchPayload(kPatchBGlyphUrl));
   patch_b_table.Complete(PatchPayload(kPatchBTableUrl));
   test::RunPendingTasks();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFetching);
-  EXPECT_EQ(custom_font_data->GetFontDataForTesting(),
-            base::span(original_font));
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
+  EXPECT_EQ(ift_font->GetFontDataForTesting(), base::span(original_font));
   EXPECT_FALSE(Compositor().NeedsBeginFrame());
-  EXPECT_FALSE(IsShapedWith(custom_font_data));
+  EXPECT_FALSE(IsShapedWith(ift_font));
 
   // Completing "c" patch applies patch and the text is shaped with it.
   patch_c_glyph.Complete(PatchPayload(kPatchCGlyphUrl));
   patch_c_table.Complete(PatchPayload(kPatchCAfterBTableUrl));
   test::RunPendingTasks();
-  EXPECT_NE(custom_font_data->GetFontDataForTesting(),
-            base::span(original_font));
+  EXPECT_NE(ift_font->GetFontDataForTesting(), base::span(original_font));
   Compositor().BeginFrame();
-  EXPECT_TRUE(IsShapedWithUpdated(custom_font_data));
-  EXPECT_TRUE(custom_font_data->IftRequireSubset("bc"));
+  EXPECT_TRUE(IsShapedWithUpdated(ift_font));
+  EXPECT_TRUE(ift_font->RequireSubset("bc"));
 }
 
 TEST_F(IftCustomFontDataTest, CodepointsRequestedWhileFetchingAreFetched) {
@@ -360,49 +369,44 @@ TEST_F(IftCustomFontDataTest, CodepointsRequestedWhileFetchingAreFetched) {
                                       "application/octet-stream");
 
   // Start initial fetch for "b".
-  const IftCustomFontData* custom_font_data = LoadCustomFontData("b");
-  ASSERT_NE(custom_font_data, nullptr);
-  const Vector<uint8_t> original_font(
-      custom_font_data->GetFontDataForTesting());
+  const IftFont* ift_font = LoadIftFont("b");
+  ASSERT_NE(ift_font, nullptr);
+  const Vector<uint8_t> original_font(ift_font->GetFontDataForTesting());
   Compositor().BeginFrame();
   test::RunPendingTasks();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFetching);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
 
   // Request support for "c" by adding it to the text.
   GetDocument()
       .getElementById(AtomicString("target"))
       ->setTextContent(String("bc"));
   Compositor().BeginFrame();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFetching);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
 
   // Patches for "b" are applied even though we still need to wait for "c". The
   // patched font is not rendered until all patches are applied.
   patch_b_table.Complete(PatchPayload(kPatchBTableUrl));
   patch_b_glyph.Complete(PatchPayload(kPatchBGlyphUrl));
   test::RunPendingTasks();
-  const Vector<uint8_t> font_data_b(custom_font_data->GetFontDataForTesting());
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFetching);
+  const Vector<uint8_t> font_data_b(ift_font->GetFontDataForTesting());
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
   EXPECT_NE(font_data_b, original_font);
   EXPECT_FALSE(Compositor().NeedsBeginFrame());
-  EXPECT_FALSE(IsShapedWithUpdated(custom_font_data));
+  EXPECT_FALSE(IsShapedWithUpdated(ift_font));
   // "b" is patched but not rendered yet, so the font is not ready for it.
   // Text the rendered font already supports is unaffected.
-  EXPECT_FALSE(custom_font_data->IftRequireSubset("b"));
-  EXPECT_TRUE(custom_font_data->IftRequireSubset("a"));
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFetching);
+  EXPECT_FALSE(ift_font->RequireSubset("b"));
+  EXPECT_TRUE(ift_font->RequireSubset("a"));
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
 
   // Patches for "c" are applied and the text is shaped with the patched font.
   patch_c_table.Complete(PatchPayload(kPatchCAfterBTableUrl));
   patch_c_glyph.Complete(PatchPayload(kPatchCGlyphUrl));
   test::RunPendingTasks();
-  EXPECT_NE(custom_font_data->GetFontDataForTesting(), base::span(font_data_b));
+  EXPECT_NE(ift_font->GetFontDataForTesting(), base::span(font_data_b));
   Compositor().BeginFrame();
-  EXPECT_TRUE(IsShapedWithUpdated(custom_font_data));
-  EXPECT_TRUE(custom_font_data->IftRequireSubset("bc"));
+  EXPECT_TRUE(IsShapedWithUpdated(ift_font));
+  EXPECT_TRUE(ift_font->RequireSubset("bc"));
 }
 
 TEST_F(IftCustomFontDataTest, InvalidPatchDataFails) {
@@ -410,23 +414,21 @@ TEST_F(IftCustomFontDataTest, InvalidPatchDataFails) {
                                       "application/octet-stream");
   SimSubresourceRequest patch_b_glyph(kPatchBGlyphUrl,
                                       "application/octet-stream");
-  const IftCustomFontData* custom_font_data = LoadCustomFontData("b");
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font = LoadIftFont("b");
+  ASSERT_NE(ift_font, nullptr);
 
   Compositor().BeginFrame();
   test::RunPendingTasks();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFetching);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
 
   patch_b_table.Complete(PatchPayload(kPatchBTableUrl));
   patch_b_glyph.Complete("not-a-patch");
   test::RunPendingTasks();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFailed);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFailed);
 
   // A failed font is never used.
   EXPECT_FALSE(Compositor().NeedsBeginFrame());
-  EXPECT_FALSE(IsShapedWith(custom_font_data));
+  EXPECT_FALSE(IsShapedWith(ift_font));
 }
 
 TEST_F(IftCustomFontDataTest, PatchFetchFailureFails) {
@@ -438,24 +440,21 @@ TEST_F(IftCustomFontDataTest, PatchFetchFailureFails) {
                                       "application/octet-stream");
   SimSubresourceRequest patch_c_glyph(kPatchCGlyphUrl,
                                       "application/octet-stream");
-  const IftCustomFontData* custom_font_data = LoadCustomFontData("bc");
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font = LoadIftFont("bc");
+  ASSERT_NE(ift_font, nullptr);
 
   Compositor().BeginFrame();
   test::RunPendingTasks();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFetching);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
 
   // A failed patch fails the font, even if other patches succeed.
   patch_b_table.Complete();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFailed);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFailed);
 
   patch_b_glyph.Complete(PatchPayload(kPatchBGlyphUrl));
   patch_c_glyph.Complete(PatchPayload(kPatchCGlyphUrl));
   test::RunPendingTasks();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFailed);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFailed);
 }
 
 TEST_F(IftCustomFontDataTest, SecondPatchRoundIsRendered) {
@@ -469,15 +468,15 @@ TEST_F(IftCustomFontDataTest, SecondPatchRoundIsRendered) {
                                       "application/octet-stream");
 
   // First round: patches for "b" are applied and rendered.
-  const IftCustomFontData* custom_font_data = LoadCustomFontData("b");
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font = LoadIftFont("b");
+  ASSERT_NE(ift_font, nullptr);
   Compositor().BeginFrame();
   test::RunPendingTasks();
   patch_b_table.Complete(PatchPayload(kPatchBTableUrl));
   patch_b_glyph.Complete(PatchPayload(kPatchBGlyphUrl));
   test::RunPendingTasks();
   Compositor().BeginFrame();
-  ASSERT_TRUE(IsShapedWithUpdated(custom_font_data));
+  ASSERT_TRUE(IsShapedWithUpdated(ift_font));
   Persistent<const SimpleFontData> font_data_b = TargetFontData();
   ASSERT_NE(font_data_b.Get(), nullptr);
 
@@ -491,38 +490,157 @@ TEST_F(IftCustomFontDataTest, SecondPatchRoundIsRendered) {
   patch_c_glyph.Complete(PatchPayload(kPatchCGlyphUrl));
   test::RunPendingTasks();
   Compositor().BeginFrame();
-  EXPECT_TRUE(IsShapedWithUpdated(custom_font_data));
+  EXPECT_TRUE(IsShapedWithUpdated(ift_font));
   const SimpleFontData* font_data_bc = TargetFontData();
   ASSERT_NE(font_data_bc, nullptr);
   EXPECT_NE(font_data_bc, font_data_b.Get());
 }
 
+TEST_F(IftCustomFontDataTest, ExceedingTotalPatchLimitFails) {
+  const IftFont* ift_font = LoadIftFont("b");
+  ASSERT_NE(ift_font, nullptr);
+  // 'b' requires two patches.
+  ift_font->SetPatchLimitsForTesting(/*max_invalidating_patches=*/100,
+                                     /*max_total_patches=*/1);
+
+  // The font fails before fetching any patch and is never used.
+  Compositor().BeginFrame();
+  test::RunPendingTasks();
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFailed);
+  EXPECT_FALSE(Compositor().NeedsBeginFrame());
+  EXPECT_FALSE(IsShapedWith(ift_font));
+}
+
+TEST_F(IftCustomFontDataTest, ExceedingInvalidatingPatchLimitFails) {
+  SimSubresourceRequest patch_b_table(kPatchBTableUrl,
+                                      "application/octet-stream");
+  SimSubresourceRequest patch_b_glyph(kPatchBGlyphUrl,
+                                      "application/octet-stream");
+  SimSubresourceRequest patch_c_glyph(kPatchCGlyphUrl,
+                                      "application/octet-stream");
+  SimSubresourceRequest patch_c_table(kPatchCAfterBTableUrl,
+                                      "application/octet-stream");
+  const IftFont* ift_font = LoadIftFont("bc");
+  ASSERT_NE(ift_font, nullptr);
+  // "bc" requires two invalidating patches.
+  ift_font->SetPatchLimitsForTesting(/*max_invalidating_patches=*/1,
+                                     /*max_total_patches=*/2000);
+
+  Compositor().BeginFrame();
+  test::RunPendingTasks();
+  patch_b_table.Complete(PatchPayload(kPatchBTableUrl));
+  patch_b_glyph.Complete(PatchPayload(kPatchBGlyphUrl));
+  patch_c_glyph.Complete(PatchPayload(kPatchCGlyphUrl));
+  test::RunPendingTasks();
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
+
+  // Applying the second invalidating patch exceeds the limit.
+  patch_c_table.Complete(PatchPayload(kPatchCAfterBTableUrl));
+  test::RunPendingTasks();
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFailed);
+  EXPECT_FALSE(Compositor().NeedsBeginFrame());
+  EXPECT_FALSE(IsShapedWith(ift_font));
+}
+
+TEST_F(IftCustomFontDataTest, PatchLimitsResetForEachExtension) {
+  SimSubresourceRequest patch_b_table(kPatchBTableUrl,
+                                      "application/octet-stream");
+  SimSubresourceRequest patch_b_glyph(kPatchBGlyphUrl,
+                                      "application/octet-stream");
+  SimSubresourceRequest patch_c_table(kPatchCAfterBTableUrl,
+                                      "application/octet-stream");
+  SimSubresourceRequest patch_c_glyph(kPatchCGlyphUrl,
+                                      "application/octet-stream");
+  const IftFont* ift_font = LoadIftFont("b");
+  ASSERT_NE(ift_font, nullptr);
+  // "b" and "c" each require one invalidating patch.
+  ift_font->SetPatchLimitsForTesting(/*max_invalidating_patches=*/1,
+                                     /*max_total_patches=*/2000);
+
+  // First extension: "b".
+  Compositor().BeginFrame();
+  test::RunPendingTasks();
+  patch_b_table.Complete(PatchPayload(kPatchBTableUrl));
+  patch_b_glyph.Complete(PatchPayload(kPatchBGlyphUrl));
+  test::RunPendingTasks();
+  ASSERT_EQ(ift_font->GetStateForTesting(), IftFont::State::kIdle);
+  Compositor().BeginFrame();
+  ASSERT_TRUE(IsShapedWithUpdated(ift_font));
+
+  // Second extension: "c" gets its own patch limits.
+  GetDocument()
+      .getElementById(AtomicString("target"))
+      ->setTextContent(String("bc"));
+  Compositor().BeginFrame();
+  test::RunPendingTasks();
+  patch_c_table.Complete(PatchPayload(kPatchCAfterBTableUrl));
+  patch_c_glyph.Complete(PatchPayload(kPatchCGlyphUrl));
+  test::RunPendingTasks();
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kIdle);
+  Compositor().BeginFrame();
+  EXPECT_TRUE(IsShapedWithUpdated(ift_font));
+  EXPECT_TRUE(ift_font->RequireSubset("bc"));
+}
+
+TEST_F(IftCustomFontDataTest, TextAddedWhileFetchingSharesPatchLimits) {
+  SimSubresourceRequest patch_b_table(kPatchBTableUrl,
+                                      "application/octet-stream");
+  SimSubresourceRequest patch_b_glyph(kPatchBGlyphUrl,
+                                      "application/octet-stream");
+  SimSubresourceRequest patch_c_table(kPatchCAfterBTableUrl,
+                                      "application/octet-stream");
+  SimSubresourceRequest patch_c_glyph(kPatchCGlyphUrl,
+                                      "application/octet-stream");
+  const IftFont* ift_font = LoadIftFont("b");
+  ASSERT_NE(ift_font, nullptr);
+  // "b" and "c" each require one invalidating patch.
+  ift_font->SetPatchLimitsForTesting(/*max_invalidating_patches=*/1,
+                                     /*max_total_patches=*/2000);
+  Compositor().BeginFrame();
+  test::RunPendingTasks();
+  ASSERT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
+
+  // "c" is requested while "b" is fetching, so it joins the same extension.
+  GetDocument()
+      .getElementById(AtomicString("target"))
+      ->setTextContent(String("bc"));
+  Compositor().BeginFrame();
+  patch_b_table.Complete(PatchPayload(kPatchBTableUrl));
+  patch_b_glyph.Complete(PatchPayload(kPatchBGlyphUrl));
+  test::RunPendingTasks();
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
+
+  // Applying the second invalidating patch exceeds the limit.
+  patch_c_table.Complete(PatchPayload(kPatchCAfterBTableUrl));
+  patch_c_glyph.Complete(PatchPayload(kPatchCGlyphUrl));
+  test::RunPendingTasks();
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFailed);
+  EXPECT_FALSE(Compositor().NeedsBeginFrame());
+  EXPECT_FALSE(IsShapedWithUpdated(ift_font));
+}
+
 TEST_F(IftCustomFontDataTest, DocumentDetachedBeforeCollectingFails) {
-  const IftCustomFontData* custom_font_data = LoadCustomFontData();
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font = LoadIftFont();
+  ASSERT_NE(ift_font, nullptr);
 
   GetDocument().Shutdown();
-  EXPECT_FALSE(custom_font_data->IftRequireSubset("b"));
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFailed);
+  EXPECT_FALSE(ift_font->RequireSubset("b"));
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFailed);
 
   test::RunPendingTasks();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFailed);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFailed);
 }
 
 TEST_F(IftCustomFontDataTest, DocumentDetachedBeforeFetchingFails) {
-  const IftCustomFontData* custom_font_data = LoadCustomFontData("b");
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font = LoadIftFont("b");
+  ASSERT_NE(ift_font, nullptr);
 
   Compositor().BeginFrame();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kCollecting);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kCollecting);
 
   GetDocument().Shutdown();
   test::RunPendingTasks();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFailed);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFailed);
 }
 
 TEST_F(IftCustomFontDataTest, PatchRequestSettings) {
@@ -532,14 +650,12 @@ TEST_F(IftCustomFontDataTest, PatchRequestSettings) {
                                       "application/octet-stream");
   DOMWrapperWorld* isolated_world = DOMWrapperWorld::EnsureIsolatedWorld(
       GetDocument().GetExecutionContext()->GetIsolate(), /*world_id=*/1);
-  const IftCustomFontData* custom_font_data =
-      LoadCustomFontData("b", isolated_world);
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font = LoadIftFont("b", isolated_world);
+  ASSERT_NE(ift_font, nullptr);
 
   Compositor().BeginFrame();
   test::RunPendingTasks();
-  ASSERT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFetching);
+  ASSERT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
 
   for (const char* url : {kPatchBTableUrl, kPatchBGlyphUrl}) {
     SCOPED_TRACE(url);
@@ -573,21 +689,20 @@ TEST_F(IftCustomFontDataTest, PatchRequestSettings) {
 TEST_F(IftCustomFontDataTest, PatchRequestsUseRedirectedFontUrl) {
   constexpr char kRedirectedFontUrl[] = "https://example.com/v2/roboto-ift.ttf";
   constexpr char kRedirectedPatchBTableUrl[] =
-      "https://example.com/v2/0K.ift_tk";
+      "https://example.com/v2/1K.ift_tk";
   constexpr char kRedirectedPatchBGlyphUrl[] =
       "https://example.com/v2/04.1.ift_gk";
   SimSubresourceRequest patch_b_table(kRedirectedPatchBTableUrl,
                                       "application/octet-stream");
   SimSubresourceRequest patch_b_glyph(kRedirectedPatchBGlyphUrl,
                                       "application/octet-stream");
-  const IftCustomFontData* custom_font_data =
-      LoadCustomFontData("b", /*world=*/nullptr, kRedirectedFontUrl);
-  ASSERT_NE(custom_font_data, nullptr);
+  const IftFont* ift_font =
+      LoadIftFont("b", /*world=*/nullptr, kRedirectedFontUrl);
+  ASSERT_NE(ift_font, nullptr);
 
   Compositor().BeginFrame();
   test::RunPendingTasks();
-  ASSERT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kFetching);
+  ASSERT_EQ(ift_font->GetStateForTesting(), IftFont::State::kFetching);
 
   for (const char* url :
        {kRedirectedPatchBTableUrl, kRedirectedPatchBGlyphUrl}) {
@@ -602,8 +717,28 @@ TEST_F(IftCustomFontDataTest, PatchRequestsUseRedirectedFontUrl) {
   patch_b_table.Complete(PatchPayload(kRedirectedPatchBTableUrl));
   patch_b_glyph.Complete(PatchPayload(kRedirectedPatchBGlyphUrl));
   test::RunPendingTasks();
-  EXPECT_EQ(custom_font_data->GetStateForTesting(),
-            IftCustomFontData::State::kIdle);
+  EXPECT_EQ(ift_font->GetStateForTesting(), IftFont::State::kIdle);
+}
+
+TEST_F(IftCustomFontDataTest, StylesShareIftFontButNotCustomFontData) {
+  const IftFont* ift_font = LoadIftFont("a");
+  ASSERT_NE(ift_font, nullptr);
+  Compositor().BeginFrame();
+  Persistent<const SimpleFontData> regular_font_data = TargetFontData();
+  ASSERT_NE(regular_font_data.Get(), nullptr);
+
+  SetTargetStyle("font-weight: 300");
+  Compositor().BeginFrame();
+  const SimpleFontData* light_font_data = TargetFontData();
+  ASSERT_NE(light_font_data, nullptr);
+
+  const IftCustomFontData* regular = GetIftCustomFontData(regular_font_data);
+  const IftCustomFontData* light = GetIftCustomFontData(light_font_data);
+  ASSERT_NE(regular, nullptr);
+  ASSERT_NE(light, nullptr);
+  EXPECT_NE(regular, light);
+  EXPECT_EQ(regular->GetIftFont(), ift_font);
+  EXPECT_EQ(light->GetIftFont(), ift_font);
 }
 
 }  // namespace

@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_file.h"
 #include "base/functional/bind.h"
@@ -22,6 +23,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/numerics/checked_math.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/rand_util.h"
 #include "base/strings/string_util.h"
 #include "base/threading/thread_restrictions.h"
@@ -351,8 +353,9 @@ VisitedLinkWriter::Hash VisitedLinkWriter::TryToAddURL(const GURL& url) {
   // This can happen if we get thousands of new URLs and something causes
   // the table resizing to fail. This check prevents a hang in that case. Note
   // that this is *not* the resize limit, this is just a sanity check.
-  if (used_items_ / 8 > table_length_ / 10)
+  if (used_items_ / 8 > table_length() / 10) {
     return kNullHash;  // Table is more than 80% full.
+  }
 
   return AddFingerprint(fingerprint, true);
 }
@@ -393,8 +396,7 @@ void VisitedLinkWriter::DeleteAllURLs() {
 
   // Clear the hash table.
   used_items_ = 0;
-  UNSAFE_TODO(
-      memset(hash_table_, 0, this->table_length_ * sizeof(Fingerprint)));
+  std::ranges::fill(GetHashTable(), kNullFingerprint);
 
   // Resize it if it is now too empty. Resize may write the new table out for
   // us, otherwise, schedule writing the new table to disk ourselves.
@@ -451,16 +453,17 @@ void VisitedLinkWriter::DeleteURLs(const std::vector<GURL>& urls) {
 VisitedLinkWriter::Hash VisitedLinkWriter::AddFingerprint(
     Fingerprint fingerprint,
     bool send_notifications) {
-  if (!hash_table_ || table_length_ == 0) {
+  if (hash_table_.empty()) {
     UMA_HISTOGRAM_ENUMERATION("History.VisitedLinks.TryToAddFingerprint",
                               AddFingerprint::kTableError);
     NOTREACHED();  // Not initialized.
   }
 
+  base::span<Fingerprint> hash_table = GetHashTable();
   Hash cur_hash = HashFingerprint(fingerprint);
   Hash first_hash = cur_hash;
   while (true) {
-    Fingerprint cur_fingerprint = FingerprintAt(cur_hash);
+    Fingerprint& cur_fingerprint = hash_table[cur_hash];
     if (cur_fingerprint == fingerprint) {
       UMA_HISTOGRAM_ENUMERATION("History.VisitedLinks.TryToAddFingerprint",
                                 AddFingerprint::kAlreadyVisited);
@@ -469,7 +472,7 @@ VisitedLinkWriter::Hash VisitedLinkWriter::AddFingerprint(
 
     if (cur_fingerprint == kNullFingerprint) {
       // End of probe sequence found, insert here.
-      UNSAFE_TODO(hash_table_[cur_hash]) = fingerprint;
+      cur_fingerprint = fingerprint;
       used_items_++;
       // If allowed, notify listener that a new visited link was added.
       if (send_notifications)
@@ -512,7 +515,7 @@ void VisitedLinkWriter::DeleteFingerprintsFromCurrentTable(
 
 bool VisitedLinkWriter::DeleteFingerprint(Fingerprint fingerprint,
                                           bool update_file) {
-  if (!hash_table_ || table_length_ == 0) {
+  if (hash_table_.empty()) {
     NOTREACHED();  // Not initialized.
   }
   if (!IsVisited(fingerprint))
@@ -529,12 +532,13 @@ bool VisitedLinkWriter::DeleteFingerprint(Fingerprint fingerprint,
   // fingerprint. These are things that could be affected by the change in
   // the hash table. Since we use linear probing, anything after the deleted
   // item up until an empty item could be affected.
+  base::span<Fingerprint> hash_table = GetHashTable();
   Hash end_range = deleted_hash;
   while (true) {
     Hash next_hash = IncrementHash(end_range);
     if (next_hash == deleted_hash)
       break;  // We wrapped around and the whole table is full.
-    if (!UNSAFE_TODO(hash_table_[next_hash])) {
+    if (!hash_table[next_hash]) {
       break;  // Found the last spot.
     }
     end_range = next_hash;
@@ -547,8 +551,7 @@ bool VisitedLinkWriter::DeleteFingerprint(Fingerprint fingerprint,
   absl::InlinedVector<Fingerprint, 32> shuffled_fingerprints;
   Hash stop_loop = IncrementHash(end_range);  // The end range is inclusive.
   for (Hash i = deleted_hash; i != stop_loop; i = IncrementHash(i)) {
-    auto this_fingerprint =
-        std::exchange(UNSAFE_TODO(hash_table_[i]), kNullFingerprint);
+    auto this_fingerprint = std::exchange(hash_table[i], kNullFingerprint);
     if (this_fingerprint != fingerprint) {
       // Don't save the one we're deleting!
       shuffled_fingerprints.push_back(this_fingerprint);
@@ -598,15 +601,14 @@ void VisitedLinkWriter::WriteFullTable() {
   int32_t header[4];
   header[0] = kFileSignature;
   header[1] = kFileCurrentVersion;
-  header[2] = table_length_;
+  header[2] = table_length();
   header[3] = used_items_;
-  WriteToFile(scoped_file_holder_.get(), 0, header, sizeof(header));
-  WriteToFile(scoped_file_holder_.get(), sizeof(header), salt_.data(),
-              sizeof(salt_));
+  WriteToFile(scoped_file_holder_.get(), 0, base::as_byte_span(header));
+  WriteToFile(scoped_file_holder_.get(), sizeof(header), salt_);
 
   // Write the hash data.
-  WriteToFile(scoped_file_holder_.get(), kFileHeaderSize, hash_table_,
-              table_length_ * sizeof(Fingerprint));
+  WriteToFile(scoped_file_holder_.get(), kFileHeaderSize,
+              base::as_byte_span(hash_table_));
 
   // The hash table may have shrunk, so make sure this is the end.
   PostIOTask(FROM_HERE,
@@ -661,8 +663,8 @@ VisitedLinkWriter::LoadApartFromFile(const base::FilePath& filename) {
     return nullptr;
 
   if (!ReadFromFile(file_closer.get(), kFileHeaderSize,
-                    GetHashTableFromMapping(hash_table_memory.mapping),
-                    num_entries * sizeof(Fingerprint))) {
+                    base::as_writable_byte_span(
+                        GetHashTableFromMapping(hash_table_memory.mapping)))) {
     return nullptr;
   }
 
@@ -720,7 +722,6 @@ void VisitedLinkWriter::OnTableLoadComplete(
   salt_ = load_from_file_result->salt;
   mapped_table_memory_ = std::move(load_from_file_result->hash_table_memory);
   hash_table_ = GetHashTableFromMapping(mapped_table_memory_.mapping);
-  table_length_ = load_from_file_result->num_entries;
   used_items_ = load_from_file_result->used_count;
 
 #ifndef NDEBUG
@@ -734,8 +735,9 @@ void VisitedLinkWriter::OnTableLoadComplete(
     // Resize the table if the table doesn't have enough capacity.
     int32_t new_used_items =
         used_items_ + static_cast<int32_t>(added_since_load_.size());
-    if (new_used_items >= table_length_)
+    if (new_used_items >= table_length()) {
       ResizeTable(NewTableSizeForCount(new_used_items));
+    }
 
     // Also add anything that was added while we were asynchronously
     // loading the table.
@@ -794,8 +796,9 @@ bool VisitedLinkWriter::ReadFileHeader(FILE* file,
     return false;
 
   uint8_t header[kFileHeaderSize];
-  if (!ReadFromFile(file, 0, &header, kFileHeaderSize))
+  if (!ReadFromFile(file, 0, header)) {
     return false;
+  }
 
   // Verify the signature.
   int32_t signature;
@@ -856,7 +859,6 @@ bool VisitedLinkWriter::CreateURLTable(int32_t num_entries) {
       CreateApartURLTable(num_entries, salt_, &table_memory)) {
     mapped_table_memory_ = std::move(table_memory);
     hash_table_ = GetHashTableFromMapping(mapped_table_memory_.mapping);
-    table_length_ = num_entries;
     used_items_ = 0;
     return true;
   }
@@ -910,7 +912,7 @@ void VisitedLinkWriter::FreeURLTable() {
 }
 
 bool VisitedLinkWriter::ResizeTableIfNecessary() {
-  DCHECK(table_length_ > 0) << "Must have a table";
+  DCHECK(table_length() > 0) << "Must have a table";
 
   // Load limits for good performance/space. We are pretty conservative about
   // keeping the table not very full. This is because we use linear probing
@@ -921,14 +923,14 @@ bool VisitedLinkWriter::ResizeTableIfNecessary() {
 
   float load = ComputeTableLoad();
   if (load < kMaxTableLoad &&
-      (table_length_ <= kDefaultTableSize || load > kMinTableLoad)) {
+      (table_length() <= kDefaultTableSize || load > kMinTableLoad)) {
     return false;
   }
 
   // Table needs to grow or shrink.
   int32_t new_size = NewTableSizeForCount(used_items_);
   DCHECK(new_size > used_items_);
-  DCHECK(load <= kMinTableLoad || new_size > table_length_);
+  DCHECK(load <= kMinTableLoad || new_size > table_length());
   ResizeTable(new_size);
   return true;
 }
@@ -942,22 +944,17 @@ void VisitedLinkWriter::ResizeTable(int32_t new_size) {
 #endif
 
   auto old_hash_table_mapping = std::move(mapped_table_memory_.mapping);
-  int32_t old_table_length = table_length_;
   if (!CreateURLTable(new_size)) {
     // Restore modified members.
     mapped_table_memory_.mapping = std::move(old_hash_table_mapping);
     return;
   }
 
-  {
-    Fingerprint* old_hash_table =
-        GetHashTableFromMapping(old_hash_table_mapping);
-    // Now we have two tables, our local copy which is the old one, and the new
-    // one loaded into this object where we need to copy the data.
-    for (int32_t i = 0; i < old_table_length; i++) {
-      Fingerprint cur = UNSAFE_TODO(old_hash_table[i]);
-      if (cur)
-        AddFingerprint(cur, false);
+  // Now we have two tables, our local copy which is the old one, and the new
+  // one loaded into this object where we need to copy the data.
+  for (Fingerprint cur : GetHashTableFromMapping(old_hash_table_mapping)) {
+    if (cur) {
+      AddFingerprint(cur, false);
     }
   }
 
@@ -1074,15 +1071,13 @@ void VisitedLinkWriter::OnTableRebuildComplete(
 
 void VisitedLinkWriter::WriteToFile(base::ScopedFILE* file,
                                     off_t offset,
-                                    void* data,
-                                    int32_t data_size) {
+                                    base::span<const uint8_t> data) {
   DCHECK(file);
   DCHECK(persist_to_disk_);
   DCHECK(!table_is_loading_from_file_);
-  PostIOTask(
-      FROM_HERE,
-      base::BindOnce(&AsyncWrite, file, offset,
-                     std::string(static_cast<const char*>(data), data_size)));
+  PostIOTask(FROM_HERE,
+             base::BindOnce(&AsyncWrite, file, offset,
+                            std::string(base::as_string_view(data))));
 }
 
 void VisitedLinkWriter::WriteUsedItemCountToFile() {
@@ -1091,8 +1086,8 @@ void VisitedLinkWriter::WriteUsedItemCountToFile() {
     return;  // See comment on the scoped_file_holder_ variable for why this
              // might happen.
   }
-  WriteToFile(scoped_file_holder_.get(), kFileHeaderUsedOffset, &used_items_,
-              sizeof(used_items_));
+  WriteToFile(scoped_file_holder_.get(), kFileHeaderUsedOffset,
+              base::byte_span_from_ref(used_items_));
 }
 
 void VisitedLinkWriter::WriteHashRangeToFile(Hash first_hash, Hash last_hash) {
@@ -1102,35 +1097,37 @@ void VisitedLinkWriter::WriteHashRangeToFile(Hash first_hash, Hash last_hash) {
     return;  // See comment on the scoped_file_holder_ variable for why this
              // might happen.
   }
+  const size_t first = base::checked_cast<size_t>(first_hash);
+  const size_t last = base::checked_cast<size_t>(last_hash);
   if (last_hash < first_hash) {
     // Handle wraparound at 0. This first write is first_hash->EOF
     WriteToFile(scoped_file_holder_.get(),
                 first_hash * sizeof(Fingerprint) + kFileHeaderSize,
-                &UNSAFE_TODO(hash_table_[first_hash]),
-                (table_length_ - first_hash) * sizeof(Fingerprint));
+                base::as_byte_span(hash_table_.subspan(first)));
 
     // Now do 0->last_lash.
-    WriteToFile(scoped_file_holder_.get(), kFileHeaderSize, hash_table_,
-                (last_hash + 1) * sizeof(Fingerprint));
+    WriteToFile(scoped_file_holder_.get(), kFileHeaderSize,
+                base::as_byte_span(hash_table_.first(last + 1)));
   } else {
     // Normal case, just write the range.
-    WriteToFile(scoped_file_holder_.get(),
-                first_hash * sizeof(Fingerprint) + kFileHeaderSize,
-                &UNSAFE_TODO(hash_table_[first_hash]),
-                (last_hash - first_hash + 1) * sizeof(Fingerprint));
+    WriteToFile(
+        scoped_file_holder_.get(),
+        first_hash * sizeof(Fingerprint) + kFileHeaderSize,
+        base::as_byte_span(hash_table_.subspan(first, last - first + 1)));
   }
 }
 
 // static
 bool VisitedLinkWriter::ReadFromFile(FILE* file,
                                      off_t offset,
-                                     void* data,
-                                     size_t data_size) {
+                                     base::span<uint8_t> data) {
   if (fseek(file, offset, SEEK_SET) != 0)
     return false;
 
-  size_t num_read = UNSAFE_TODO(fread(data, 1, data_size, file));
-  return num_read == data_size;
+  // SAFETY: `data` is a span, so `data.data()` points to `data.size()`
+  // writable bytes.
+  size_t num_read = UNSAFE_BUFFERS(fread(data.data(), 1, data.size(), file));
+  return num_read == data.size();
 }
 
 // VisitedLinkTableBuilder ----------------------------------------------------
@@ -1169,13 +1166,20 @@ void VisitedLinkWriter::TableBuilder::OnCompleteMainThread() {
     writer_->OnTableRebuildComplete(success_, fingerprints_);
 }
 
+base::span<VisitedLinkCommon::Fingerprint> VisitedLinkWriter::GetHashTable() {
+  return GetHashTableFromMapping(mapped_table_memory_.mapping);
+}
+
 // static
-VisitedLinkCommon::Fingerprint* VisitedLinkWriter::GetHashTableFromMapping(
+base::span<VisitedLinkCommon::Fingerprint>
+VisitedLinkWriter::GetHashTableFromMapping(
     base::WritableSharedMemoryMapping& hash_table_mapping) {
+  static_assert(sizeof(SharedHeader) % sizeof(Fingerprint) == 0,
+                "Header size must be a multiple of Fingerprint size");
   DCHECK(hash_table_mapping.IsValid());
   // Our table pointer is just the data immediately following the header.
-  return reinterpret_cast<Fingerprint*>(
-      UNSAFE_TODO(hash_table_mapping.data() + sizeof(SharedHeader)));
+  return hash_table_mapping.GetMemoryAsSpan<Fingerprint>()
+      .subspan<sizeof(SharedHeader) / sizeof(Fingerprint)>();
 }
 
 }  // namespace visitedlink

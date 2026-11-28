@@ -22,7 +22,7 @@
 #include "ui/base/x/selection_requester.h"
 #include "ui/base/x/selection_utils.h"
 #include "ui/base/x/x11_util.h"
-#include "ui/gfx/x/atom_cache.h"
+#include "ui/gfx/x/connection.h"
 #include "ui/gfx/x/event.h"
 #include "ui/gfx/x/window_event_manager.h"
 #include "ui/gfx/x/xfixes.h"
@@ -67,7 +67,7 @@ class SelectionChangeObserver : public x11::EventObserver {
 };
 
 SelectionChangeObserver::SelectionChangeObserver()
-    : clipboard_atom_(x11::GetAtom(kClipboard)) {
+    : clipboard_atom_(x11::Connection::Get()->GetAtom(kClipboard)) {
   auto* connection = x11::Connection::Get();
   auto& xfixes = connection->xfixes();
   if (!xfixes.present()) {
@@ -144,7 +144,8 @@ class XClipboardHelper::TargetList {
   }
 
   bool ContainsFormat(const ClipboardFormatType& format_type) const {
-    x11::Atom atom = x11::GetAtom(format_type.GetName().c_str());
+    x11::Atom atom =
+        x11::Connection::Get()->GetAtom(format_type.GetName().c_str());
     return std::ranges::contains(target_list_, atom);
   }
 
@@ -159,9 +160,11 @@ XClipboardHelper::XClipboardHelper(
       x_window_(connection_->CreateDummyWindow("Chromium Clipboard Window")),
       selection_requester_(
           std::make_unique<SelectionRequester>(x_window_, this)),
-      clipboard_owner_(connection_.get(), x_window_, x11::GetAtom(kClipboard)),
+      clipboard_owner_(connection_.get(),
+                       x_window_,
+                       connection_->GetAtom(kClipboard)),
       primary_owner_(connection_.get(), x_window_, x11::Atom::PRIMARY) {
-  DCHECK(selection_requester_);
+  CHECK(selection_requester_, base::NotFatalUntil::M163);
 
   connection_->SetStringProperty(x_window_, x11::Atom::WM_NAME,
                                  x11::Atom::STRING, "Chromium clipboard");
@@ -188,7 +191,7 @@ void XClipboardHelper::CreateNewClipboardData() {
 void XClipboardHelper::InsertMapping(
     const std::string& key,
     const scoped_refptr<base::RefCountedMemory>& memory) {
-  x11::Atom atom_key = x11::GetAtom(key.c_str());
+  x11::Atom atom_key = connection_->GetAtom(key.c_str());
   clipboard_data_.Insert(atom_key, memory);
 }
 
@@ -359,7 +362,7 @@ std::vector<x11::Atom> XClipboardHelper::GetTextAtoms() const {
 
 std::vector<x11::Atom> XClipboardHelper::GetAtomsForFormat(
     const ClipboardFormatType& format) {
-  return {x11::GetAtom(format.GetName().c_str())};
+  return {connection_->GetAtom(format.GetName().c_str())};
 }
 
 void XClipboardHelper::Clear(ClipboardBuffer buffer) {
@@ -397,7 +400,7 @@ void XClipboardHelper::OnGetTargetList(
   }
 
   selection_requester_->PerformConvertSelectionAsync(
-      selection_name, x11::GetAtom(kTargets),
+      selection_name, connection_->GetAtom(kTargets),
       base::BindOnce(&XClipboardHelper::OnGetTargetListResponse, GetWeakPtr(),
                      selection_name, std::move(callback)));
 }
@@ -410,7 +413,8 @@ void XClipboardHelper::OnGetTargetListResponse(
     x11::Atom out_type) {
   if (success) {
     // Some apps return an |out_type| of "TARGETS". (crbug.com/377893)
-    if (out_type == x11::Atom::ATOM || out_type == x11::GetAtom(kTargets)) {
+    if (out_type == x11::Atom::ATOM ||
+        out_type == connection_->GetAtom(kTargets)) {
       // SAFETY: `data` is populated by the X11 server and is expected
       // to be a series of atoms since we already checked `out_type`
       // is an ATOM or GetAtom(kTargets).
@@ -463,7 +467,8 @@ bool XClipboardHelper::DispatchEvent(const x11::Event& xev) {
     } else {
       // We should not get requests for the CLIPBOARD_MANAGER selection
       // because we never take ownership of it.
-      DCHECK_EQ(GetCopyPasteSelection(), request->selection);
+      CHECK_EQ(GetCopyPasteSelection(), request->selection,
+               base::NotFatalUntil::M163);
       clipboard_owner_.OnSelectionRequest(*request);
     }
   } else if (auto* notify = xev.As<x11::SelectionNotifyEvent>()) {
@@ -481,7 +486,8 @@ bool XClipboardHelper::DispatchEvent(const x11::Event& xev) {
     } else {
       // We should not get requests for the CLIPBOARD_MANAGER selection
       // because we never take ownership of it.
-      DCHECK_EQ(GetCopyPasteSelection(), clear->selection);
+      CHECK_EQ(GetCopyPasteSelection(), clear->selection,
+               base::NotFatalUntil::M163);
       clipboard_owner_.OnSelectionClear(*clear);
     }
   } else if (auto* prop = xev.As<x11::PropertyNotifyEvent>()) {
@@ -522,7 +528,7 @@ x11::Atom XClipboardHelper::LookupSelectionForClipboardBuffer(
 }
 
 x11::Atom XClipboardHelper::GetCopyPasteSelection() const {
-  return x11::GetAtom(kClipboard);
+  return connection_->GetAtom(kClipboard);
 }
 
 const SelectionFormatMap& XClipboardHelper::LookupStorageForAtom(
@@ -531,7 +537,7 @@ const SelectionFormatMap& XClipboardHelper::LookupStorageForAtom(
     return primary_owner_.selection_format_map();
   }
 
-  DCHECK_EQ(GetCopyPasteSelection(), atom);
+  CHECK_EQ(GetCopyPasteSelection(), atom, base::NotFatalUntil::M163);
   return clipboard_owner_.selection_format_map();
 }
 

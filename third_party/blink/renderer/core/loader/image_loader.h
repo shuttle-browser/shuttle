@@ -24,6 +24,7 @@
 #define THIRD_PARTY_BLINK_RENDERER_CORE_LOADER_IMAGE_LOADER_H_
 
 #include <memory>
+
 #include "base/memory/weak_ptr.h"
 #include "services/network/public/mojom/referrer_policy.mojom-blink.h"
 #include "third_party/blink/public/platform/task_type.h"
@@ -35,6 +36,10 @@
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/heap/prefinalizer.h"
 #include "third_party/blink/renderer/platform/wtf/text/atomic_string.h"
+
+namespace base {
+class TimeTicks;
+}  // namespace base
 
 namespace blink {
 
@@ -64,6 +69,10 @@ class CORE_EXPORT ImageLoader : public GarbageCollected<ImageLoader>,
     // mechanism. We can't update synchronously, because doing so may invalidate
     // style, which is forbidden from lazy load callbacks.
     kUpdateFromMicrotask,
+    // This is the behavior when the update is triggered during style recalc
+    // (HTMLPlugInElement::CustomStyleForLayoutObject). Queue a task rather than
+    // updating synchronously during style recalc.
+    kUpdateFromTask,
     // This should be the update behavior when the resource was changed (via
     // 'src', 'srcset' or 'sizes'). Starts a new load even if a previous load of
     // the same resource have failed, to match Firefox's behavior.
@@ -184,7 +193,11 @@ class CORE_EXPORT ImageLoader : public GarbageCollected<ImageLoader>,
 
   bool HasPendingEvent() const;
 
-  void DispatchPendingLoadEvent(std::unique_ptr<IncrementLoadEventDelayCount>);
+  // Executed asynchronously on `TaskType::kDOMManipulation` after
+  // `ImageNotifyFinished` queues the load event at `queue_time`.
+  void DispatchPendingLoadEvent(
+      std::unique_ptr<IncrementLoadEventDelayCount> count,
+      base::TimeTicks queue_time);
   void DispatchPendingErrorEvent(std::unique_ptr<IncrementLoadEventDelayCount>);
 
   LayoutImageResource* GetLayoutImageResource() const;

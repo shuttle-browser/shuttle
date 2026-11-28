@@ -12,6 +12,7 @@
 #include "third_party/blink/renderer/core/layout/disable_layout_side_effects_scope.h"
 #include "third_party/blink/renderer/core/layout/exclusions/exclusion_space.h"
 #include "third_party/blink/renderer/core/layout/fragmentation_utils.h"
+#include "third_party/blink/renderer/core/layout/fragmented_oof_container.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_break_token.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_node.h"
 #include "third_party/blink/renderer/core/layout/inline/physical_line_box_fragment.h"
@@ -120,8 +121,7 @@ const LayoutResult& BoxFragmentBuilder::LayoutResultForPropagation(
 
 void BoxFragmentBuilder::AddBreakBeforeChild(LayoutInputNode child,
                                              std::optional<BreakAppeal> appeal,
-                                             bool is_forced_break,
-                                             LogicalOffset oof_start_offset) {
+                                             bool is_forced_break) {
   // If there's a pre-set break token, we shouldn't be here.
   DCHECK(!break_token_);
 
@@ -172,9 +172,22 @@ void BoxFragmentBuilder::AddBreakBeforeChild(LayoutInputNode child,
     }
     return;
   }
-  auto* token = BlockBreakToken::CreateBreakBefore(child, is_forced_break,
-                                                   oof_start_offset);
+  auto* token = BlockBreakToken::CreateBreakBefore(child, is_forced_break);
   child_break_tokens_.push_back(token);
+}
+
+void BoxFragmentBuilder::AddBreakBeforeOofChild(
+    BlockNode child,
+    LayoutUnit oof_block_start_offset,
+    LogicalOffset oof_post_layout_offset) {
+  DCHECK(RuntimeEnabledFeatures::FragmentedOofInCbEnabled());
+  DCHECK(child.IsOutOfFlowPositioned());
+  // If there's a pre-set break token, we shouldn't be here.
+  DCHECK(!break_token_);
+
+  const auto* break_token = BlockBreakToken::CreateBreakBeforeOof(
+      child, oof_block_start_offset, oof_post_layout_offset);
+  child_break_tokens_.push_back(break_token);
 }
 
 void BoxFragmentBuilder::AddResult(
@@ -370,6 +383,11 @@ void BoxFragmentBuilder::AddChild(
   }
 
   DCHECK(relative_insets);
+  if (child.IsCSSBox() && child.Style().GetPosition() == EPosition::kRelative) {
+    To<PhysicalBoxFragment>(child)
+        .GetMutableForPositioned()
+        .SetUsedPositionInsets(*relative_insets);
+  }
   const LogicalOffset relative_offset =
       relative_insets->ConvertToLogical(GetWritingDirection()).StartOffset();
   PropagateFromFragment(child, child_offset, relative_offset, inline_container);
@@ -384,6 +402,18 @@ void BoxFragmentBuilder::AddBreakToken(const BreakToken* token,
   DCHECK(token);
   child_break_tokens_.push_back(token);
   has_inflow_child_break_inside_ |= !is_in_parallel_flow;
+}
+
+void BoxFragmentBuilder::UpdateConsumedBlockSizeToFragmentainerEnd() {
+  LayoutUnit fragmentainer_end =
+      FragmentainerSpaceLeft(*this, /*is_for_children=*/false);
+  if (!GetConstraintSpace().HasKnownFragmentainerBlockSize()) {
+    return;
+  }
+  if (const BlockBreakToken* token = PreviousBreakToken()) {
+    fragmentainer_end += token->ConsumedBlockSize();
+  }
+  consumed_block_size_ = std::max(consumed_block_size_, fragmentainer_end);
 }
 
 EBreakBetween BoxFragmentBuilder::JoinedBreakBetweenValue(
@@ -662,17 +692,24 @@ void BoxFragmentBuilder::PropagateChildBreakValues(
   SetPageNameIfNeeded(child_page_name);
 }
 
-void BoxFragmentBuilder::HandleOofsAndSpecialDescendants() {
+LayoutResult::EStatus BoxFragmentBuilder::HandleOofsAndSpecialDescendants() {
   has_final_size_ = true;
 
   // There may be OOFs with anchors. So be sure to propagate any anchors that
   // we've found so far.
   PropagateSizeDependentData();
 
-  OutOfFlowLayoutPart::Run(this);
+  LayoutResult::EStatus status = OutOfFlowLayoutPart::Run(this);
+  if (status != LayoutResult::kSuccess) {
+    DCHECK(RuntimeEnabledFeatures::FragmentedOofInCbEnabled());
+    return status;
+  }
+
   if (!Style().ScrollMarkerGroupNone() && !GetConstraintSpace().IsAnonymous()) {
     Node().HandleScrollMarkerGroup();
   }
+
+  return status;
 }
 
 const LayoutResult* BoxFragmentBuilder::ToBoxFragment(
@@ -847,6 +884,87 @@ void BoxFragmentBuilder::AdjustFixedposContainingBlockForInnerMulticols() {
       value.multicol_offset.block_offset += previous_consumed_block_size;
     }
   }
+}
+
+const FragmentedOofContainer*
+BoxFragmentBuilder::FragmentedOofContainerForChildNode(BlockNode child) const {
+  if (!fragmented_oof_container_) {
+    return nullptr;
+  }
+  return fragmented_oof_container_->GetChild(*child.GetLayoutBox());
+}
+
+void BoxFragmentBuilder::AddPendingUnstartedOofs() {
+  DCHECK(fragmented_oof_container_);
+  LayoutUnit stitched_block_start = -GetConstraintSpace().FragmentainerOffset();
+  LayoutUnit stitched_block_end =
+      FragmentainerSpaceLeft(*this, /*is_for_children=*/true);
+  LayoutUnit previously_consumed_block_size;
+  bool is_break_inside = false;
+  if (const BlockBreakToken* token = PreviousBreakToken()) {
+    previously_consumed_block_size = token->ConsumedBlockSize();
+    stitched_block_start += previously_consumed_block_size;
+    stitched_block_end += previously_consumed_block_size;
+    is_break_inside = IsBreakInside(token);
+  }
+
+  for (LogicalOofPositionedNode oof_node :
+       fragmented_oof_container_->OofPositionedNodes()) {
+    if (oof_node.InlineContainer()) {
+      // If the containing block is a non-atomic inline, all bets are off unless
+      // we can detect changes more properly. Start in the first fragment. We'll
+      // be pushed to the right fragment with break-before break tokens.
+      if (is_break_inside) {
+        continue;
+      }
+    } else {
+      LayoutUnit offset =
+          oof_node.GetFragmentedOofInfo()->OffsetInContainingBlock();
+      if (is_break_inside && offset < stitched_block_start) {
+        // This OOF starts in an earlier fragmentainer.
+        continue;
+      }
+      if (offset >= stitched_block_end &&
+          GetConstraintSpace().HasBlockFragmentation()) {
+        // This OOF starts in a later fragmentainer. It may be that no in-flow
+        // content requires a break, so that we need to insert one now, in order
+        // to actually get to the fragmentainer where this OOF starts.
+        SetDidBreakSelf();
+        continue;
+      }
+    }
+
+    oof_candidates_may_have_anchors_ |= oof_node.Node().MayContainAnchor();
+
+    // Having a path means that the node has escaped the containing block, which
+    // isn't true anymore, since we want to place it in its containing block
+    // again. So reset it.
+    oof_node.SetPath(nullptr);
+
+    oof_node.IncreaseStaticPositionOffset(
+        LogicalOffset(LayoutUnit(), -previously_consumed_block_size));
+    oof_positioned_candidates_.push_back(oof_node);
+  }
+}
+
+void BoxFragmentBuilder::CollectUnfragmentedOofs() {
+  // This should only be done on a fragmentation context root.
+  DCHECK(IsBlockFragmentationContextRoot());
+  // And it should be the outermost fragmentation context root.
+  DCHECK(!GetConstraintSpace().HasBlockFragmentation());
+
+  for (const LogicalOofPositionedNode& descendant :
+       oof_positioned_candidates_) {
+    if (!descendant.HasEscapedContainingBlock()) {
+      unfragmented_oofs_.push_back(descendant);
+    }
+  }
+}
+
+void BoxFragmentBuilder::SetupRelayoutDataForOofFragmentation(
+    const BoxFragmentBuilder& previous_fragment_builder) {
+  // Carry over OOFs that don't participate in block fragmentation.
+  oof_positioned_candidates_ = previous_fragment_builder.unfragmented_oofs_;
 }
 
 #if DCHECK_IS_ON()

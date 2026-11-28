@@ -77,6 +77,9 @@ This step can be disabled via GN arg: `use_errorprone_java_compiler = false`
   patterns, including some [custom to Chromium][ep_plugins].
 * ErrorProne used to replace step 1a, but was changed to a concurrent step after
   being identified as being slower.
+* Large targets are split across multiple concurrent ErrorProne processes
+  (based on their size and on the number of CPUs). Each process finds
+  classes from the other shards via the target's header jar.
 
 [ErrorProne]: https://errorprone.info/
 [ep_plugins]: /tools/android/errorprone_plugin/
@@ -118,8 +121,6 @@ This step happens only when targets have `supports_android = true`.
 
 * [d8] converts `.jar` files containing `.class` files into `.dex.jar` files
   containing `classes.dex` files.
-* Dexing is incremental - it will reuse dex'ed classes from a previous build if
-  the corresponding `.class` file is unchanged.
 * Desugaring some constructs (e.g. Java `record` classes) makes d8 emit
   "global synthetics": classes shared by the whole app rather than owned by one
   library. Per-library dexing discards them (`--ignore-globals` in

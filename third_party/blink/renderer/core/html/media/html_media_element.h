@@ -347,7 +347,6 @@ class CORE_EXPORT HTMLMediaElement
   using HTMLElement::GetExecutionContext;
 
   bool IsFullscreen() const;
-  virtual bool UsesOverlayFullscreenVideo() const { return false; }
 
   bool HasClosedCaptions() const;
   bool TextTracksVisible() const;
@@ -807,6 +806,10 @@ class CORE_EXPORT HTMLMediaElement
 
   void OnRemovedFromDocumentTimerFired(TimerBase*);
 
+  // Checks whether the muted content attribute is present but muted_ is false,
+  // and triggers a use counter if that is the case.
+  void CheckMutedAttributeWouldMute();
+
   void SetError(MediaError* error);
   void ReportCurrentTimeToMediaSource();
 
@@ -1083,7 +1086,6 @@ class CORE_EXPORT HTMLMediaElement
   friend class AutoplayPolicy;
   friend class AutoplayUmaHelperTest;
   friend class Internals;
-  friend class TrackDisplayUpdateScope;
   friend class MediaControlsImplTest;
   friend class HTMLMediaElementTest;
   friend class HTMLMediaElementEventListenersTest;

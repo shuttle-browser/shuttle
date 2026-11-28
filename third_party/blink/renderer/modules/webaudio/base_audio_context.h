@@ -76,7 +76,6 @@ class PeriodicWave;
 class PeriodicWaveConstraints;
 class ScriptProcessorNode;
 class ScriptState;
-class SecurityOrigin;
 class StereoPannerNode;
 class WaveShaperNode;
 class WorkerThread;
@@ -289,9 +288,6 @@ class MODULES_EXPORT BaseAudioContext
   //  - it has been stopped by its execution context.
   virtual bool IsContextCleared() const { return is_cleared_; }
 
-  // Get the security origin for this audio context.
-  const SecurityOrigin* GetSecurityOrigin() const;
-
   // Get the PeriodicWave for the specified oscillator type.  The table is
   // initialized internally if necessary.
   PeriodicWave* GetPeriodicWave(int type);
@@ -365,8 +361,10 @@ class MODULES_EXPORT BaseAudioContext
   void ResolvePendingPromiseResolver(ScriptPromiseResolver<IDLUndefined>*);
   virtual void RejectPendingPromiseResolversWithException(
       const String& message);
+  void RemovePendingPromiseResolver(ScriptPromiseResolver<IDLUndefined>*);
   void RemovePendingPromiseResolvers(
       const HeapVector<Member<ScriptPromiseResolver<IDLUndefined>>>&);
+  bool HasPendingPromiseResolver(ScriptPromiseResolver<IDLUndefined>*) const;
 
   Member<AudioDestinationNode> destination_node_;
 

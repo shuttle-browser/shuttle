@@ -115,8 +115,6 @@ class ChromeAutocompleteProviderClient : public AutocompleteProviderClient {
   const TabMatcher& GetTabMatcher() const override;
   bool IsIncognitoModeAvailable() const override;
   bool IsSharingHubAvailable() const override;
-  bool IsHistoryEmbeddingsEnabled() const override;
-  bool IsHistoryEmbeddingsSettingVisible() const override;
   bool IsLensEnabled() const override;
   bool AreLensEntrypointsVisible() const override;
   std::optional<bool> IsPagePaywalled() const override;

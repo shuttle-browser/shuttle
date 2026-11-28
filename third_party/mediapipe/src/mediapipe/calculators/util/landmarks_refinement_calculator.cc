@@ -17,16 +17,16 @@
 #include <set>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/calculators/util/landmarks_refinement_calculator.pb.h"
 #include "mediapipe/framework/api3/calculator.h"
 #include "mediapipe/framework/api3/calculator_context.h"
 #include "mediapipe/framework/port/proto_ns.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 
 namespace mediapipe::api3 {
 
@@ -136,8 +136,8 @@ class LandmarksRefinementNodeImpl
     }
 
     // Validate indexes mapping and get total number of refined landmarks.
-    MP_ASSIGN_OR_RETURN(n_refined_landmarks_,
-                        GetNumberOfRefinedLandmarks(options_.refinement()));
+    ABSL_ASSIGN_OR_RETURN(n_refined_landmarks_,
+                          GetNumberOfRefinedLandmarks(options_.refinement()));
 
     // Validate that number of refinements and landmark streams is the same.
     RET_CHECK_EQ(cc.landmarks.Count(), options_.refinement_size())

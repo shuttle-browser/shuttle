@@ -13,13 +13,28 @@ export function getHtml(this: HistoryItemElement) {
   <div id="background-clip" aria-hidden="true">
     <div id="background"></div>
   </div>
-  <div id="date-accessed" class="card-title" role="row">
+  <div id="date-accessed" class="card-title" role="row"
+      aria-expanded="${this.isCollapsibleDayCardsEnabled_ ?
+          !this.isCardCollapsed : ''}"
+      aria-controls="${this.isCollapsibleDayCardsEnabled_ ?
+          'card-collapse' : ''}"
+      @click="${this.onCardHeadingClick_}">
     <div role="rowheader">
       <div role="heading" aria-level="2">
         ${this.cardTitle_()}
       </div>
     </div>
+    ${this.isCollapsibleDayCardsEnabled_ ? html`
+      <cr-icon-button id="cardCollapseButton"
+          iron-icon="${this.getCardCollapseIcon_()}"
+          title="${this.getCardCollapseTitle_()}"
+          aria-label="${this.getCardCollapseTitle_()}"
+          aria-expanded="${!this.isCardCollapsed}">
+      </cr-icon-button>
+    ` : ''}
   </div>
+  <cr-collapse id="card-collapse" ?opened="${!this.isCardCollapsed}"
+      no-animation>
   <div role="row" @mousedown="${this.onRowMousedown_}"
       @click="${this.onRowClick_}">
     <div id="item-container" focus-row-container>
@@ -103,6 +118,7 @@ export function getHtml(this: HistoryItemElement) {
     ` : ''}
     <div id="time-gap-separator" ?hidden="${!this.hasTimeGap}"></div>
   </div>
+  </cr-collapse>
 </div>
 <!--_html_template_end_-->`;
   // clang-format on

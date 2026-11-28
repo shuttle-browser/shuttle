@@ -361,9 +361,11 @@
 #include "third_party/blink/renderer/core/scroll/snap_event.h"
 #include "third_party/blink/renderer/core/speculation_rules/document_speculation_rules.h"
 #include "third_party/blink/renderer/core/svg/svg_document_extensions.h"
+#include "third_party/blink/renderer/core/svg/svg_foreign_object_element.h"
 #include "third_party/blink/renderer/core/svg/svg_script_element.h"
 #include "third_party/blink/renderer/core/svg/svg_svg_element.h"
 #include "third_party/blink/renderer/core/svg/svg_title_element.h"
+#include "third_party/blink/renderer/core/svg/svg_tree_scope_resources.h"
 #include "third_party/blink/renderer/core/svg/svg_unknown_element.h"
 #include "third_party/blink/renderer/core/svg/svg_use_element.h"
 #include "third_party/blink/renderer/core/svg_element_factory.h"
@@ -526,12 +528,14 @@ bool HasSelectInNameAttribute(Element& element) {
 }
 
 bool IsRoleCombobox(Element& element) {
-  DEFINE_STATIC_LOCAL(const AtomicString, combobox, ("combobox"));
+  DEFINE_STATIC_LOCAL(const AtomicString, combobox,
+                      (AtomicString::FromLiteral<"combobox">()));
   return element.getAttribute(html_names::kRoleAttr) == combobox;
 }
 
 bool IsAriaHasPopupListbox(Element& element) {
-  DEFINE_STATIC_LOCAL(const AtomicString, listbox, ("listbox"));
+  DEFINE_STATIC_LOCAL(const AtomicString, listbox,
+                      (AtomicString::FromLiteral<"listbox">()));
   return element.getAttribute(html_names::kAriaHaspopupAttr) == listbox;
 }
 
@@ -3337,6 +3341,49 @@ void Document::InvalidatePendingSVGResources() {
   DCHECK(svg_resources_needing_invalidation_.empty());
 }
 
+void Document::RegisterSVGTreeScopeResources(SVGTreeScopeResources& resources) {
+  svg_tree_scope_resources_.insert(&resources);
+}
+
+void Document::UnregisterSVGTreeScopeResources(
+    SVGTreeScopeResources& resources) {
+  svg_tree_scope_resources_.erase(&resources);
+}
+
+void Document::NotifyDisplayLockChangedForSVGResources(const Element& element) {
+  if (lifecycle_.GetState() >= DocumentLifecycle::kStopping ||
+      svg_tree_scope_resources_.empty()) {
+    return;
+  }
+  // Among SVG elements, only outermost <svg> roots can be display-locked, so
+  // `element` can only be a descendant of an SVG resource target if it has a
+  // <foreignObject> flat-tree ancestor.
+  const SVGForeignObjectElement* enclosing_foreign_object = nullptr;
+  if (element.isConnected() && !IsFlatTreeTraversalForbidden() &&
+      !IsSlotAssignmentDirty()) {
+    if (svg_extensions_ && svg_extensions_->MayContainForeignObjects()) {
+      for (const Node& ancestor : FlatTreeTraversal::AncestorsOf(element)) {
+        if (const auto* foreign_object =
+                DynamicTo<SVGForeignObjectElement>(ancestor)) {
+          enclosing_foreign_object = foreign_object;
+          break;
+        }
+      }
+    }
+    // A childless non-SVG element outside <foreignObject> cannot be or contain
+    // an SVG resource target.
+    if (!enclosing_foreign_object && !element.IsSVGElement() &&
+        !FlatTreeTraversal::HasChildren(element)) {
+      return;
+    }
+  }
+  HeapVector<Member<SVGTreeScopeResources>, 16> scope_resources(
+      svg_tree_scope_resources_);
+  for (SVGTreeScopeResources* resources : scope_resources) {
+    resources->NotifyDisplayLockChanged(element, enclosing_foreign_object);
+  }
+}
+
 StyleResolver& Document::GetStyleResolver() const {
   return style_engine_->GetStyleResolver();
 }
@@ -3776,6 +3823,9 @@ bool Document::InitiateStyleOrLayoutDependentLoadForPrint() {
     GetStyleEngine().UpdateViewportSize();
     UpdateStyleAndLayout(DocumentUpdateReason::kPrinting);
 
+    if (RuntimeEnabledFeatures::HTMLPlugInDeferStyleRecalcImageLoadEnabled()) {
+      return fetcher_->BlockingRequestCount() > 0 || IsDelayingLoadEvent();
+    }
     return fetcher_->BlockingRequestCount() > 0;
   }
 
@@ -4227,8 +4277,8 @@ void Document::WillInsertBody() {
 
   // Clear the last natural size of the owner `<iframe>` if this document isn't
   // opted-in to responsive iframes.
-  if (RuntimeEnabledFeatures::ResponsiveIframesEnabled() && GetFrame() &&
-      GetFrame()->Tree().Parent() && !responsive_embedded_sizing_) {
+  if (GetFrame() && GetFrame()->Tree().Parent() &&
+      !responsive_embedded_sizing_) {
     if (FrameOwner* owner = GetFrame()->Owner()) {
       owner->ClearLastNaturalSizingInfo();
     }
@@ -4411,9 +4461,7 @@ void Document::DispatchLoadEventAndFinalize() {
   if (SvgExtensions())
     AccessSVGExtensions().StartAnimations();
 
-  if (RuntimeEnabledFeatures::ResponsiveIframesEnabled()) {
-    RequestResizeResponsiveIframe();
-  }
+  RequestResizeResponsiveIframe();
 }
 
 static bool AllDescendantsAreComplete(Document* document) {
@@ -5867,8 +5915,7 @@ static Element* SkipDisplayNoneAncestors(Element* element) {
     // own, but it is painted as part of the <img> that uses its <map>, and hit
     // testing resolves image map hits to it, so it can be hovered/activated
     // like a rendered element.
-    if (IsA<HTMLAreaElement>(*element) &&
-        RuntimeEnabledFeatures::HTMLAreaElementDisplayNoneEnabled()) {
+    if (IsA<HTMLAreaElement>(*element)) {
       return element;
     }
   }
@@ -6696,6 +6743,20 @@ void Document::EnqueueScrollEndEventForNode(Node* target) {
           : Event::Create(event_type_names::kScrollend);
   scroll_end_event->SetTarget(target);
   scripted_animation_controller_->EnqueuePerFrameEvent(scroll_end_event);
+
+  if (RuntimeEnabledFeatures::AnchorPositionRelayoutOnScrollEndEnabled() &&
+      GetFrame()) {
+    const LayoutBox* box = nullptr;
+    if (const auto* element = DynamicTo<Element>(target)) {
+      box = element->GetLayoutBoxForScrolling();
+    } else if (target->IsDocumentNode()) {
+      box = GetLayoutView();
+    }
+    if (box && box->GetScrollableArea()) {
+      GetFrame()->NotifyScrollEndForAnchorPositioning(
+          box->GetScrollableArea()->GetScrollElementId());
+    }
+  }
 }
 
 void Document::EnqueueScrollSnapChangeEvent(Node* target,
@@ -8177,9 +8238,7 @@ void Document::FinishedParsing() {
       }
     }
 
-    if (RuntimeEnabledFeatures::ResponsiveIframesEnabled()) {
-      RequestResizeResponsiveIframe();
-    }
+    RequestResizeResponsiveIframe();
 
     BeginLifecycleUpdatesIfRenderingReady();
 
@@ -8397,7 +8456,6 @@ void Document::ColorSchemeMetaChanged() {
 }
 
 void Document::RequestResizeResponsiveIframe(ExceptionState* exception_state) {
-  DCHECK(RuntimeEnabledFeatures::ResponsiveIframesEnabled());
   if (!IsHTMLDocument() || !responsive_embedded_sizing_) {
     if (exception_state) {
       exception_state->ThrowDOMException(
@@ -8407,8 +8465,14 @@ void Document::RequestResizeResponsiveIframe(ExceptionState* exception_state) {
     }
     return;
   }
-  if (auto* owner = GetFrame()->Owner()) {
-    LocalFrameView* view = View();
+  LocalFrame* frame = GetFrame();
+  if (FrameOwner* owner = frame ? frame->Owner() : nullptr) {
+    LocalFrameView* view = frame->View();
+    CHECK(view);
+    if (RuntimeEnabledFeatures::ResponsiveIframesAsyncResizeEnabled()) {
+      view->ScheduleResponsiveIframeResize();
+      return;
+    }
     LocalFrameView::NaturalSizeLayoutScope natural_size_scope(view);
     UpdateStyleAndLayout(DocumentUpdateReason::kUnknown);
     if (view->RecordNaturalDimensions()) {
@@ -9658,6 +9722,7 @@ void Document::Trace(Visitor* visitor) const {
   visitor->Trace(element_data_cache_);
   visitor->Trace(use_elements_needing_update_);
   visitor->Trace(svg_resources_needing_invalidation_);
+  visitor->Trace(svg_tree_scope_resources_);
   visitor->Trace(template_document_);
   visitor->Trace(template_document_host_);
   visitor->Trace(user_action_elements_);
@@ -10531,6 +10596,30 @@ void Document::RemoveOverscrollCommandInvoker(Element& invoker) {
   if (overscroll_command_invokers_.Contains(&invoker)) {
     overscroll_command_invokers_.erase(&invoker);
     MarkOverscrollCommandTargetsDirty();
+  }
+}
+
+void Document::DidHaveFormEdit() {
+  // Value changes caused by `document.execCommand` calls should not be
+  // interpreted as a user edit. See https://crbug.com/764760.
+  if (had_form_edit_ || IsRunningExecCommand()) {
+    return;
+  }
+  had_form_edit_ = true;
+  if (GetFrame()) {
+    GetFrame()->GetLocalFrameHostRemote().DidHaveFormEdit();
+  }
+}
+
+void Document::DidHaveUserEdit() {
+  // Value changes caused by `document.execCommand` calls should not be
+  // interpreted as a user edit. See https://crbug.com/764760.
+  if (had_user_edit_ || IsRunningExecCommand()) {
+    return;
+  }
+  had_user_edit_ = true;
+  if (GetFrame()) {
+    GetFrame()->GetLocalFrameHostRemote().DidHaveUserEdit();
   }
 }
 

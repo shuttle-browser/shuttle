@@ -69,8 +69,6 @@ const SettingsSecurityPageElementBase =
     SettingsViewMixinLit(WebUiListenerMixinLit(
         I18nMixinLit(PrefServiceObserverMixinLit(CrLitElement))));
 
-export type SecurityPageElement = SettingsSecurityPageElement;
-
 export class SettingsSecurityPageElement extends
     SettingsSecurityPageElementBase {
   static get is() {
@@ -127,7 +125,7 @@ export class SettingsSecurityPageElement extends
   protected accessor enableSecurityKeysSubpage_: boolean =
       loadTimeData.getBoolean('enableSecurityKeysSubpage');
   protected accessor showDisableSafebrowsingDialog_: boolean = false;
-  protected accessor enableHashPrefixRealTimeLookups_: boolean =
+  private accessor enableHashPrefixRealTimeLookups_: boolean =
       loadTimeData.getBoolean('enableHashPrefixRealTimeLookups');
   protected accessor httpsFirstModeUncheckedValues_: HttpsFirstModeSetting[] =
       [HttpsFirstModeSetting.DISABLED];
@@ -137,9 +135,9 @@ export class SettingsSecurityPageElement extends
   protected accessor hideExtendedReportingRadioButton_: boolean =
       loadTimeData.getBoolean('extendedReportingRemovePrefDependency') &&
       loadTimeData.getBoolean('hashPrefixRealTimeLookupsSamplePing');
-  protected accessor safeBrowsingPref_:
+  private accessor safeBrowsingPref_:
       chrome.settingsPrivate.PrefObject<SafeBrowsingSetting>|undefined;
-  protected accessor httpsFirstModePref_:
+  private accessor httpsFirstModePref_:
       chrome.settingsPrivate.PrefObject<HttpsFirstModeSetting>|undefined;
 
   private metricsBrowserProxy_: MetricsBrowserProxy =

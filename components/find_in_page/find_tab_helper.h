@@ -67,12 +67,17 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper>,
   //
   // `scroll_to_match`: Controls whether the viewport should scroll to the
   // activated match. Only applicable when `find_match` is true.
+  //
+  // `skip_viewport`: Controls whether find-next/previous should skip matches
+  // currently visible in the viewport and jump to the first match outside the
+  // viewport.
   void StartFinding(std::u16string search_string,
                     bool forward_direction,
                     bool case_sensitive,
                     bool find_match,
                     bool scroll_to_match = true,
-                    bool run_synchronously_for_testing = false);
+                    bool run_synchronously_for_testing = false,
+                    bool skip_viewport = false);
 
   // Stops the current Find operation.
   void StopFinding(SelectionAction selection_action);
@@ -129,6 +134,16 @@ class FindTabHelper : public content::WebContentsUserData<FindTabHelper>,
 
   bool should_find_match() const { return should_find_match_; }
   bool should_scroll_to_match() const { return should_scroll_to_match_; }
+
+  // TODO(crbug.com/41298878): Confirm with PM/UX whether the Match Case toggle
+  // state should persist per-tab across tab switches (including when the search
+  // box is empty) or be shared/reset.
+  bool last_search_case_sensitive() const {
+    return last_search_case_sensitive_;
+  }
+  void set_last_search_case_sensitive(bool last_search_case_sensitive) {
+    last_search_case_sensitive_ = last_search_case_sensitive;
+  }
 
 #if BUILDFLAG(IS_ANDROID)
   // Selects and zooms to the find result nearest to the point (x, y)

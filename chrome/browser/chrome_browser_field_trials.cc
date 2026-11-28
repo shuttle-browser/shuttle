@@ -39,7 +39,6 @@
 #include "chrome/browser/flags/android/chrome_feature_list.h"
 #include "chrome/browser/media/webrtc/desktop_media_picker.h"
 #include "chrome/common/chrome_features.h"
-#include "components/download/public/common/download_features.h"
 #include "content/common/features.h"
 #include "content/public/common/content_features.h"
 #include "gpu/config/gpu_finch_features.h"
@@ -57,9 +56,13 @@
 #endif
 
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#include "base/check_deref.h"
 #include "chrome/browser/first_run/first_run.h"
 #endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+
+#if BUILDFLAG(IS_POSIX)
+#include "base/check_deref.h"
+#include "chrome/browser/metrics/client_id_backup_correctness_fix_field_trial.h"
+#endif  // BUILDFLAG(IS_POSIX)
 
 ChromeBrowserFieldTrials::ChromeBrowserFieldTrials(PrefService* local_state)
     : local_state_(local_state) {
@@ -91,6 +94,10 @@ void ChromeBrowserFieldTrials::SetUpClientSideFieldTrials(
   }
 #endif
 
+#if BUILDFLAG(IS_POSIX)
+  metrics::CreateClientIdBackupCorrectnessFixFieldTrial(
+      CHECK_DEREF(feature_list), entropy_providers.default_entropy());
+#endif  // BUILDFLAG(IS_POSIX)
 }
 
 void ChromeBrowserFieldTrials::RegisterSyntheticTrials() {
@@ -126,19 +133,10 @@ void ChromeBrowserFieldTrials::RegisterFeatureOverrides(
   feature_overrides.EnableFeature(kAndroidMediaPicker);
   feature_overrides.EnableFeature(features::kUserMediaScreenCapturing);
 
-  // Enable open download in new tab.
-  // TODO(crbug.com/531944280): Remove when rollout is complete to all form
-  // factors.
-  feature_overrides.EnableFeature(download::features::kOpenDownloadInNewTab);
-
-  // Enable`save as`context menu.
-  feature_overrides.EnableFeature(
-      download::features::kEnableDownloadSaveAsContextMenu);
-
-  // Enable open download in preferred app.
-  // TODO(crbug.com/539965859): Remove when rollout is complete to all form
-  // factors.
-  feature_overrides.EnableFeature(chrome::android::kOpenDownloadInPreferredApp);
+  // Enables the tab sharing toolbar on Desktop Android.
+  // TODO(crbug.com/552925889): Remove when rollout to other form factors is
+  // complete.
+  feature_overrides.EnableFeature(chrome::android::kTabSharingToolbarAndroid);
 
   // Enable background media capturing on desktop devices.
   // TODO(crbug.com/426461170): Remove once we enable this feature for all form

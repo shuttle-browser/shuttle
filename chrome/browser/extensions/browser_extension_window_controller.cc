@@ -29,8 +29,8 @@
 #include "extensions/common/manifest_handlers/options_page_info.h"
 #include "extensions/common/mojom/context_type.mojom.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 // TODO(http://crbug.com/453008083): Stop including
 // "android/chrome_feature_list.h".
@@ -177,7 +177,10 @@ int BrowserExtensionWindowController::GetTabCount() const {
 
 content::WebContents* BrowserExtensionWindowController::GetWebContentsAt(
     int i) const {
-  return tab_list_->GetTab(i)->GetContents();
+  // On Android a tab slot can be null when the native tab was destroyed while
+  // still referenced by the Java tab model (crbug.com/578128713).
+  tabs::TabInterface* tab = tab_list_->GetTab(i);
+  return tab ? tab->GetContents() : nullptr;
 }
 
 bool BrowserExtensionWindowController::IsVisibleToTabsAPIForExtension(
@@ -252,7 +255,12 @@ base::ListValue BrowserExtensionWindowController::CreateTabList(
   const int tab_count = tab_list_->GetTabCount();
 
   for (int i = 0; i < tab_count; ++i) {
-    content::WebContents* web_contents = tab_list_->GetTab(i)->GetContents();
+    tabs::TabInterface* tab = tab_list_->GetTab(i);
+    // See GetWebContentsAt() for why the tab can be null.
+    if (!tab) {
+      continue;
+    }
+    content::WebContents* web_contents = tab->GetContents();
 
 #if BUILDFLAG(IS_ANDROID)
     // TODO(http://crbug.com/453008083): Remove feature flags
@@ -303,8 +311,8 @@ bool BrowserExtensionWindowController::OpenOptionsPage(
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           url,
-          open_in_tab ? WindowOpenDisposition::kNewForegroundTab
-                      : WindowOpenDisposition::kCurrentTab,
+          open_in_tab ? ui::mojom::WindowOpenDisposition::kNewForegroundTab
+                      : ui::mojom::WindowOpenDisposition::kCurrentTab,
           ui::PAGE_TRANSITION_LINK);
   browser_->OpenURL(params, /*navigation_handle_callback=*/{});
 #else

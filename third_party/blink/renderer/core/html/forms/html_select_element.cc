@@ -113,8 +113,10 @@ FormControlType HTMLSelectElement::FormControlType() const {
 }
 
 const AtomicString& HTMLSelectElement::FormControlTypeAsString() const {
-  DEFINE_STATIC_LOCAL(const AtomicString, select_multiple, ("select-multiple"));
-  DEFINE_STATIC_LOCAL(const AtomicString, select_one, ("select-one"));
+  DEFINE_STATIC_LOCAL(const AtomicString, select_multiple,
+                      (AtomicString::FromLiteral<"select-multiple">()));
+  DEFINE_STATIC_LOCAL(const AtomicString, select_one,
+                      (AtomicString::FromLiteral<"select-one">()));
   return is_multiple_ ? select_multiple : select_one;
 }
 
@@ -882,6 +884,8 @@ void HTMLSelectElement::IncreaseContentModelViolationCount() {
   bool dialog_mode_changed = !content_model_violations_count_;
   ++content_model_violations_count_;
   if (dialog_mode_changed) {
+    UseCounter::Count(GetDocument(),
+                      WebFeature::kCustomizableSelectBadContentModel);
     if (AXObjectCache* cache = GetDocument().ExistingAXObjectCache()) {
       cache->MarkElementDirty(this);
     }

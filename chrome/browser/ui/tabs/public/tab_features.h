@@ -56,6 +56,7 @@ class HttpAuthCacheStatus;
 class JsOptimizationsPageActionController;
 class NavigationMetricsRecorder;
 class NavigationPredictorPreconnectClient;
+class PrewarmTabHelper;
 class Profile;
 class QwacWebContentsObserver;
 class SadTabHelper;
@@ -182,7 +183,6 @@ class TabInterface;
 //
 // Do not add more public accessors. Instead use the UnownedUserData design
 // pattern, see ui/base/unowned_user_data/README.md.
-// TODO(crbug.com/481268779): Remove existing public accessors.
 class TabFeatures {
  public:
   TabFeatures();
@@ -191,44 +191,11 @@ class TabFeatures {
   TabFeatures(const TabFeatures&) = delete;
   TabFeatures& operator=(const TabFeatures&) = delete;
 
-
-  permissions::PermissionIndicatorsTabData* permission_indicators_tab_data() {
-    return permission_indicators_tab_data_.get();
-  }
-
-  TabDialogManager* tab_dialog_manager() { return tab_dialog_manager_.get(); }
-
-  page_actions::PageActionController* page_action_controller() {
-    return page_action_controller_.get();
-  }
-
-  JsOptimizationsPageActionController*
-  js_optimizations_page_action_controller() {
-    return js_optimizations_page_action_controller_.get();
-  }
-
-  FileSystemAccessPageActionController*
-  file_system_access_page_action_controller() {
-    return file_system_access_page_action_controller_.get();
-  }
-
-  zoom::ZoomViewController* zoom_view_controller() {
-    return zoom_view_controller_.get();
-  }
-
-  InactiveWindowMouseEventController* inactive_window_mouse_event_controller() {
-    return inactive_window_mouse_event_controller_.get();
-  }
-
   TabUIHelper* SetTabUIHelperForTesting(
       std::unique_ptr<TabUIHelper> tab_ui_helper);
 
   TabAlertController* SetTabAlertControllerForTesting(
       std::unique_ptr<TabAlertController> tab_alert_controller);
-
-  site_engagement::SiteEngagementService::Helper* site_engagement_helper() {
-    return site_engagement_helper_.get();
-  }
 
   // Called exactly once to initialize features.
   void Init(TabInterface& tab, Profile* profile);
@@ -369,6 +336,11 @@ class TabFeatures {
   // Prefetches zero-prefix suggestions on opening or switching to an NTP.
   std::unique_ptr<ZeroSuggestPrefetchTabHelper>
       zero_suggest_prefetch_tab_helper_;
+
+  // Observes page load completion, first paint, and visibility changes to
+  // trigger Default Search Engine prewarm when
+  // `kPrewarmPageLoadAndTabSwitchAfterPaintTrigger` is enabled.
+  std::unique_ptr<PrewarmTabHelper> prewarm_tab_helper_;
 
   // Maintains the thumbnail shown in e.g. tab hover cards. Null when no
   // feature that needs thumbnails is enabled.

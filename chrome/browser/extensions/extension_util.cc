@@ -32,6 +32,7 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_system.h"
 #include "extensions/browser/extension_util.h"
+#include "extensions/browser/extensions_browser_client.h"
 #include "extensions/browser/management_policy.h"
 #include "extensions/browser/permissions/permissions_updater.h"
 #include "extensions/browser/pref_names.h"
@@ -140,6 +141,75 @@ bool IsPolicyInstalled(const ExtensionId& extension_id,
   return Manifest::IsPolicyLocation(extension->location());
 }
 #endif
+
+void SetIsIncognitoEnabledImpl(const ExtensionId& extension_id,
+                               content::BrowserContext* context,
+                               bool enabled,
+                               bool isolated_mode) {
+  ExtensionRegistry* registry = ExtensionRegistry::Get(context);
+  const Extension* extension =
+      registry->GetExtensionById(extension_id, ExtensionRegistry::EVERYTHING);
+
+  if (extension) {
+    if (!util::CanBeIncognitoEnabled(extension)) {
+      return;
+    }
+    if (isolated_mode && MustRemainIsolatedModeEnabled(extension, context)) {
+      return;
+    }
+
+    // TODO(crbug.com/356905053): Enable handling component extensions on
+    // desktop android.
+#if !BUILDFLAG(IS_ANDROID)
+    // TODO(treib,kalman): Should this be Manifest::IsComponentLocation(..)?
+    // (which also checks for kExternalComponent).
+    if (extension->location() == mojom::ManifestLocation::kComponent) {
+      // This shouldn't be called for component extensions.
+      CHECK(!isolated_mode);
+      // If we are here, make sure the we aren't trying to change the value.
+      CHECK_EQ(enabled, IsIncognitoEnabledForSync(extension_id, context),
+               base::NotFatalUntil::M161);
+      return;
+    }
+#endif  // !BUILDFLAG(IS_ANDROID)
+  }
+
+  ExtensionPrefs* extension_prefs = ExtensionPrefs::Get(context);
+#if BUILDFLAG(IS_CHROMEOS)
+  // Admin installed extensions should not be restartable, so we will apply the
+  // change when Chrome restarts.
+  if (IsPolicyInstalled(extension_id, context)) {
+    // TODO(crbug.com/573504328): Add isolated mode support.
+    extension_prefs->SetIsIncognitoEnabledDelayed(extension_id, enabled);
+    return;
+  }
+#endif
+  // Broadcast unloaded and loaded events to update browser state. Only bother
+  // if the value changed and the extension is actually enabled, since there is
+  // no UI otherwise.
+  const bool old_enabled =
+      isolated_mode ? extension_prefs->IsIsolatedModeEnabled(extension_id)
+                    : extension_prefs->IsIncognitoEnabled(extension_id);
+  if (enabled == old_enabled) {
+    return;
+  }
+
+  if (isolated_mode) {
+    extension_prefs->SetIsIsolatedModeEnabled(extension_id, enabled);
+  } else {
+    extension_prefs->SetIsIncognitoEnabled(extension_id, enabled);
+  }
+
+  // If the updated setting is not for the currently active mode
+  // (which can happen during sync), skip reloading the extension.
+  if (isolated_mode !=
+      ExtensionsBrowserClient::Get()->IsolatedModeReplacesIncognito(context)) {
+    return;
+  }
+
+  ReloadExtensionIfEnabled(extension_id, context);
+}
+
 }  // namespace
 
 bool HasIsolatedStorage(const ExtensionId& extension_id,
@@ -185,50 +255,17 @@ bool IsExtensionForceInstalled(const std::string& extension_id,
 void SetIsIncognitoEnabled(const std::string& extension_id,
                            content::BrowserContext* context,
                            bool enabled) {
-  ExtensionRegistry* registry = ExtensionRegistry::Get(context);
-  const Extension* extension =
-      registry->GetExtensionById(extension_id, ExtensionRegistry::EVERYTHING);
+  SetIsIncognitoEnabledImpl(
+      extension_id, context, enabled,
+      /*isolated_mode=*/
+      ExtensionsBrowserClient::Get()->IsolatedModeReplacesIncognito(context));
+}
 
-  if (extension) {
-    if (!util::CanBeIncognitoEnabled(extension)) {
-      return;
-    }
-
-    // TODO(crbug.com/356905053): Enable handling component extensions on
-    // desktop android.
-#if !BUILDFLAG(IS_ANDROID)
-    // TODO(treib,kalman): Should this be Manifest::IsComponentLocation(..)?
-    // (which also checks for kExternalComponent).
-    if (extension->location() == mojom::ManifestLocation::kComponent) {
-      // This shouldn't be called for component extensions.
-      // If we are here, make sure the we aren't trying to change the value.
-      CHECK_EQ(enabled, IsIncognitoEnabled(extension_id, context),
-               base::NotFatalUntil::M161);
-      return;
-    }
-#endif  // !BUILDFLAG(IS_ANDROID)
-  }
-
-  ExtensionPrefs* extension_prefs = ExtensionPrefs::Get(context);
-#if BUILDFLAG(IS_CHROMEOS)
-  // Admin installed extensions should not be restartable, so we will apply the
-  // change when Chrome restarts.
-  if (IsPolicyInstalled(extension_id, context)) {
-    extension_prefs->SetIsIncognitoEnabledDelayed(extension_id, enabled);
-    return;
-  }
-#endif
-  // Broadcast unloaded and loaded events to update browser state. Only bother
-  // if the value changed and the extension is actually enabled, since there is
-  // no UI otherwise.
-  bool old_enabled = extension_prefs->IsIncognitoEnabled(extension_id);
-  if (enabled == old_enabled) {
-    return;
-  }
-
-  extension_prefs->SetIsIncognitoEnabled(extension_id, enabled);
-
-  ReloadExtensionIfEnabled(extension_id, context);
+void SetIsIncognitoEnabledForSync(const ExtensionId& extension_id,
+                                  content::BrowserContext* context,
+                                  bool enabled) {
+  SetIsIncognitoEnabledImpl(extension_id, context, enabled,
+                            /*isolated_mode=*/false);
 }
 
 void SetAllowFileAccess(const std::string& extension_id,

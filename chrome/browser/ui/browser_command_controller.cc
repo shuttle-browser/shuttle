@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <string>
+#include <string_view>
 
 #include "base/check_deref.h"
 #include "base/command_line.h"
@@ -73,7 +74,6 @@
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/dom_distiller/core/dom_distiller_features.h"
 #include "components/input/native_web_keyboard_event.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -102,8 +102,8 @@
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/actions/actions.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -463,7 +463,7 @@ bool BrowserCommandController::IsCommandEnabled(int id) const {
 
 bool BrowserCommandController::ExecuteCommandWithDispositionAndContext(
     int id,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     std::optional<actions::ActionInvocationContext> context,
     base::TimeTicks time_stamp) {
   if (!SupportsCommand(id) || !IsCommandEnabled(id)) {
@@ -489,7 +489,7 @@ bool BrowserCommandController::ExecuteCommandWithDispositionAndContext(
 
 void BrowserCommandController::HandleCommandWithDisposition(
     int id,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     base::TimeTicks time_stamp) {
   DCHECK(IsCommandEnabled(id)) << "Invalid/disabled command " << id;
 
@@ -975,9 +975,7 @@ void BrowserCommandController::HandleCommandWithDisposition(
       ShowBetaForum(browser_);
       break;
     case IDC_CHROME_ENTERPRISE_RELEASE_NOTES:
-      if (base::FeatureList::IsEnabled(features::kEnterpriseReleaseNotes)) {
-        chrome::ShowChromeEnterpriseReleaseNotes(browser_);
-      }
+      chrome::ShowChromeEnterpriseReleaseNotes(browser_);
       break;
     case IDC_WINDOW_MUTE_SITE:
       MuteSite(browser_);
@@ -1298,9 +1296,8 @@ void BrowserCommandController::InitCommandState() {
   command_updater_->UpdateCommandEnabled(IDC_HELP_PAGE_VIA_KEYBOARD, true);
   command_updater_->UpdateCommandEnabled(IDC_HELP_PAGE_VIA_MENU, true);
   command_updater_->UpdateCommandEnabled(IDC_SHOW_BETA_FORUM, true);
-  command_updater_->UpdateCommandEnabled(
-      IDC_CHROME_ENTERPRISE_RELEASE_NOTES,
-      base::FeatureList::IsEnabled(features::kEnterpriseReleaseNotes));
+  command_updater_->UpdateCommandEnabled(IDC_CHROME_ENTERPRISE_RELEASE_NOTES,
+                                         true);
 #if !BUILDFLAG(IS_CHROMEOS)
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -1521,6 +1518,48 @@ void BrowserCommandController::UpdateCommandsForZoomState() {
 
   content::WebContents* contents =
       browser_->tab_strip_model()->GetActiveWebContents();
+  const zoom::ZoomController* const zoom_controller =
+      contents ? zoom::ZoomController::FromWebContents(contents) : nullptr;
+
+  // Zoom in/out carry the active tab's zoom level as their secondary text
+  // ("Zoom - 110%"), shown by views bound to them such as app menu search
+  // results. Clear it when there is no zoomable active tab rather than keep the
+  // previous tab's level.
+  const std::u16string zoom_percent =
+      zoom_controller ? base::FormatPercent(zoom_controller->GetZoomPercent())
+                      : std::u16string();
+  std::u16string zoom_secondary_text;
+  if (!zoom_percent.empty()) {
+    const actions::ActionItem* const zoom_submenu =
+        FindAction(kActionZoomSubmenu, browser_);
+    zoom_secondary_text =
+        (zoom_submenu && !zoom_submenu->GetText().empty())
+            ? l10n_util::GetStringFUTF16(
+                  IDS_APP_MENU_SEARCH_SECONDARY_TEXT_WITH_VALUE,
+                  std::u16string(zoom_submenu->GetText()), zoom_percent)
+            : zoom_percent;
+  }
+  for (const actions::ActionId action_id :
+       {kActionZoomMinus, kActionZoomPlus}) {
+    auto* const zoom_action = FindAction(action_id, browser_);
+    if (!zoom_action) {
+      continue;
+    }
+    const std::u16string* const secondary_text =
+        zoom_action->GetProperty(chrome::kActionSecondaryTextKey);
+    const std::u16string_view current =
+        secondary_text ? *secondary_text : std::u16string_view();
+    if (current == zoom_secondary_text) {
+      continue;
+    }
+    if (zoom_secondary_text.empty()) {
+      zoom_action->ClearProperty(chrome::kActionSecondaryTextKey);
+    } else {
+      zoom_action->SetProperty(chrome::kActionSecondaryTextKey,
+                               zoom_secondary_text);
+    }
+  }
+
   if (!contents) {
     return;
   }
@@ -1529,11 +1568,9 @@ void BrowserCommandController::UpdateCommandsForZoomState() {
                                          CanResetZoom(contents));
   command_updater_->UpdateCommandEnabled(IDC_ZOOM_MINUS, CanZoomOut(contents));
 
-  if (const auto* zoom_controller =
-          zoom::ZoomController::FromWebContents(contents)) {
+  if (zoom_controller) {
     if (auto* const zoom_action = FindAction(kActionZoomNormal, browser_)) {
-      zoom_action->SetText(
-          base::FormatPercent(zoom_controller->GetZoomPercent()));
+      zoom_action->SetText(zoom_percent);
     }
   }
 }

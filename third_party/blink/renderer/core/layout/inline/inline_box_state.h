@@ -83,7 +83,7 @@ struct InlineBoxState {
   LayoutUnit text_height;
 
   // SVG alignment-baseline presentation property resolved to a FontBaseline.
-  FontBaseline alignment_type = FontBaseline::kAlphabeticBaseline;
+  FontBaseline alignment_type = FontBaseline::kAlphabetic;
 
   // These values are to create a box fragment. Set only when needs_box_fragment
   // is set.
@@ -143,11 +143,6 @@ struct InlineBoxState {
 
   // 'text-top' offset for 'vertical-align'.
   LayoutUnit TextTop(FontBaseline baseline_type) const;
-
-  // Returns if the text style can be added without open-tag.
-  // Text with different font or vertical-align needs to be wrapped with an
-  // inline box.
-  bool CanAddTextOfStyle(const ComputedStyle&) const;
 
   // Adjust `metrics` for `text-box-trim` and `text-box-edge` properties.
   static void AdjustEdges(const ComputedStyle& style,
@@ -341,7 +336,8 @@ class CORE_EXPORT InlineLayoutStateStack {
         : fragment_start(start),
           fragment_end(end),
           item(other.item),
-          rect(other.rect) {}
+          rect(other.rect),
+          relative_insets(other.relative_insets) {}
 
     void SetFragmentRange(unsigned start_index, unsigned end_index) {
       fragment_start = start_index;
@@ -361,6 +357,7 @@ class CORE_EXPORT InlineLayoutStateStack {
     bool has_line_right_edge = false;
     LineBoxStrut borders;
     LineBoxStrut padding;
+    PhysicalBoxStrut relative_insets;
     LayoutUnit margin_line_over;
     LayoutUnit margin_line_under;
     // |CreateBoxFragment()| needs margin, border+padding, and the sum of them.

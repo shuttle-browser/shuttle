@@ -95,7 +95,6 @@ Response BrowserHandler::Disable() {
   // TODO: this leaks context ids for all contexts with overridden permissions.
   for (auto& browser_context_id : contexts_with_overridden_permissions_) {
     content::BrowserContext* browser_context = nullptr;
-    std::string error;
     std::optional<std::string> context_id =
         browser_context_id == ""
             ? std::nullopt
@@ -212,8 +211,6 @@ Response PermissionDescriptorToPermissionType(
     *permission_type = PermissionType::DISPLAY_CAPTURE;
   } else if (name == "storage-access") {
     *permission_type = PermissionType::STORAGE_ACCESS_GRANT;
-  } else if (name == "top-level-storage-access") {
-    *permission_type = PermissionType::TOP_LEVEL_STORAGE_ACCESS;
   } else if (name == "captured-surface-control") {
     *permission_type = PermissionType::CAPTURED_SURFACE_CONTROL;
   } else if (name == "speaker-selection") {
@@ -306,9 +303,6 @@ Response FromProtocolPermissionType(
     *out_type = PermissionType::LOCAL_FONTS;
   } else if (type == protocol::Browser::PermissionTypeEnum::DisplayCapture) {
     *out_type = PermissionType::DISPLAY_CAPTURE;
-  } else if (type ==
-             protocol::Browser::PermissionTypeEnum::TopLevelStorageAccess) {
-    *out_type = PermissionType::TOP_LEVEL_STORAGE_ACCESS;
   } else if (type ==
              protocol::Browser::PermissionTypeEnum::CapturedSurfaceControl) {
     *out_type = PermissionType::CAPTURED_SURFACE_CONTROL;

@@ -1,7 +1,7 @@
 <!-- mdformat off(generated) -->
 <!-- mdlint off(generated) -->
 # Chrome Root Store
-Version: 43
+Version: 45
 
 [TOC]
 
@@ -14,7 +14,6 @@ e35d28419ed02025cfa69038cd623962458da5c695fbdea3c22b0bfb25897092 | CN=Amazon Roo
 657cfe2fa73faa38462571f332a2363a46fce7020951710702cdfbb6eeda3305 | OU=certSIGN ROOT CA G2,O=CERTSIGN SA,C=RO | 2017-02-06 | 2042-02-06
 5cc3d78e4e1d5e45547a04e6873e64f90cf9536d1ccc2ef800f355c4c5fd70fd | CN=CFCA EV ROOT,O=China Financial Certification Authority,C=CN | 2012-08-08 | 2029-12-31
 e23d4a036d7b70e9f595b1422079d2b91edfbb1fb651a0633eaa8a9dc5f80703 | CN=CA Disig Root R2,O=Disig a.s.,L=Bratislava,C=SK | 2012-07-19 | 2042-07-19
-40f6af0346a99aa1cd1d555a4e9cce62c7f9634603ee406615833dc8c8d00367 | CN=emSign Root CA - G1,OU=emSign PKI,O=eMudhra Technologies Limited,C=IN | 2018-02-18 | 2043-02-18
 bfff8fd04433487d6a8aa60c1a29767a9fc2bbb05e420f713a13b992891d3893 | CN=GDCA TrustAUTH R5 ROOT,O=GUANG DONG CERTIFICATE AUTHORITY CO.\,LTD.,C=CN | 2014-11-26 | 2040-12-31
 2ce1cb0bf9d2f9e102993fbe215152c3b2dd0cabde1c68e5319b839154dbb7f5 | CN=Starfield Root Certificate Authority - G2,O=Starfield Technologies\, Inc.,L=Scottsdale,ST=Arizona,C=US | 2009-09-01 | 2037-12-31
 45140b3247eb9cc8c5b4f0d7b53091f73292089e6e5a63e2749dd3aca9198eda | CN=Go Daddy Root Certificate Authority - G2,O=GoDaddy.com\, Inc.,L=Scottsdale,ST=Arizona,C=US | 2009-09-01 | 2037-12-31
@@ -69,15 +68,13 @@ SHA 256 Hash | Subject | NotBefore | NotAfter
 1ba5b2aa8c65401a82960118f80bec4f62304d83cec4713a19c39c011ea46db4 | CN=Amazon Root CA 2,O=Amazon,C=US | 2015-05-26 | 2040-05-26
 5c58468d55f58e497e743982d2b50010b6d165374acf83a7d4a32db768c4408e | CN=Certum Trusted Network CA,OU=Certum Certification Authority,O=Unizeto Technologies S.A.,C=PL | 2008-10-22 | 2029-12-31
 57de0583efd2b26e0361da99da9df4648def7ee8441c3b728afa9bcde0f9b26a | CN=Autoridad de Certificacion Firmaprofesional CIF A62634068,C=ES | 2014-09-23 | 2036-05-05
-9a114025197c5bb95d94e63d55cd43790847b646b23cdf11ada4a00eff15fb48 | CN=Buypass Class 2 Root CA,O=Buypass AS-983163327,C=NO | 2010-10-26 | 2040-10-26
-edf7ebbca27a2a384d387b7d4010c666e2edb4843e4c29b4ae1d5b9332e6b24d | CN=Buypass Class 3 Root CA,O=Buypass AS-983163327,C=NO | 2010-10-26 | 2040-10-26
 49e7a442acf0ea6287050054b52564b650e4f49e42e348d6aa38e039e957b1c1 | CN=D-TRUST Root Class 3 CA 2 2009,O=D-Trust GmbH,C=DE | 2009-11-05 | 2029-11-05
 eec5496b988ce98625b934092eec2908bed0b0f316c2d4730c84eaf1f3d34881 | CN=D-TRUST Root Class 3 CA 2 EV 2009,O=D-Trust GmbH,C=DE | 2009-11-05 | 2029-11-05
 91e2f5788d5810eba7ba58737de1548a8ecacd014598bc0b143e041b17052552 | CN=T-TeleSec GlobalRoot Class 2,OU=T-Systems Trust Center,O=T-Systems Enterprise Services GmbH,C=DE | 2008-10-01 | 2033-10-01
 fd73dad31c644ff1b43bef0ccdda96710b9cd9875eca7e31707af3e96d522bbd | CN=T-TeleSec GlobalRoot Class 3,OU=T-Systems Trust Center,O=T-Systems Enterprise Services GmbH,C=DE | 2008-10-01 | 2033-10-01
-d48d3d23eedb50a459e55197601c27774b9d7b18c94d5a059511a10250b93168 | CN=Certigna Root CA,OU=0002 48146308100036,O=Dhimyotis,C=FR | 2013-10-01 | 2033-10-01
 31ad6648f8104138c738f39ea4320133393e3a18cc02296ef97c2ac9ef6731d0 | CN=DigiCert Global Root G3,OU=www.digicert.com,O=DigiCert Inc,C=US | 2013-08-01 | 2038-01-15
 cb3ccbb76031e5e0138f8dd39a23f9de47ffc35e43c1144cea27d46a5ab1cb5f | CN=DigiCert Global Root G2,OU=www.digicert.com,O=DigiCert Inc,C=US | 2013-08-01 | 2038-01-15
+40f6af0346a99aa1cd1d555a4e9cce62c7f9634603ee406615833dc8c8d00367 | CN=emSign Root CA - G1,OU=emSign PKI,O=eMudhra Technologies Limited,C=IN | 2018-02-18 | 2043-02-18
 179fbc148a3dd00fd24ea13458cc43bfa7f59c8182d783a513f6ebec100c8924 | CN=GlobalSign,OU=GlobalSign ECC Root CA - R5,O=GlobalSign | 2012-11-13 | 2038-01-19
 2cabeafe37d06ca22aba7391c0033d25982952c453647349763a3ab5ad6ccf69 | CN=GlobalSign,OU=GlobalSign Root CA - R6,O=GlobalSign | 2014-12-10 | 2034-12-10
 cbb522d7b7f127ad6a0113865bdf1cd4102e7d0759af635a7cf4720dc963c53b | CN=GlobalSign,OU=GlobalSign Root CA - R3,O=GlobalSign | 2009-03-18 | 2029-03-18
@@ -100,7 +97,6 @@ e793c9b02fd8aa13e21c31228accb08119643b749c898964b1746d46c3d4cbd2 | CN=USERTrust 
 59769007f7685d0fcd50872f9f95d5755a5b2b457d81f3692b610a98672f0e1b | CN=TWCA Global Root CA,OU=Root CA,O=TAIWAN-CA,C=TW | 2012-06-27 | 2030-12-31
 e59aaa816009c22bff5b25bad37df306f049797c1f81d85ab089e657bd8f0044 | CN=D-TRUST BR Root CA 1 2020,O=D-Trust GmbH,C=DE | 2020-02-11 | 2035-02-11
 08170d1aa36453901a2f959245e347db0c8d37abaabc56b81aa100dc958970db | CN=D-TRUST EV Root CA 1 2020,O=D-Trust GmbH,C=DE | 2020-02-11 | 2035-02-11
-f015ce3cc239bfef064be9f1d2c417e1a0264a0a94be1f0c8d121864eb6949cc | CN=HiPKI Root CA - G1,O=Chunghwa Telecom Co.\, Ltd.,C=TW | 2019-02-22 | 2037-12-31
 fb8fec759169b9106b1e511644c618c51304373f6c0643088d8beffd1b997599 | SERIALNUMBER=G63287510,CN=ANF Secure Server Root CA,OU=ANF CA Raiz,O=ANF Autoridad de Certificacion,C=ES | 2019-09-04 | 2039-08-30
 30fbba2c32238e2a98547af97931e550428b9b3f1c8eeb6633dcfa86c5b27dd3 | CN=vTrus ECC Root CA,O=iTrusChina Co.\,Ltd.,C=CN | 2018-07-31 | 2043-07-31
 8a71de6559336f426c26e53880d00d88a18da4c6a91f0dcb6194e206c5c96387 | CN=vTrus Root CA,O=iTrusChina Co.\,Ltd.,C=CN | 2018-07-31 | 2043-07-31

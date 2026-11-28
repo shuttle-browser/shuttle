@@ -368,7 +368,6 @@ class CORE_EXPORT LocalFrameView final
 
   void DidAttachDocument();
 
-  void ClearRootScroller();
   void InitializeRootScroller();
 
   void AddPartToUpdate(LayoutEmbeddedContent&);
@@ -925,6 +924,7 @@ class CORE_EXPORT LocalFrameView final
 
   // True if the recorded value has changed.
   bool RecordNaturalDimensions();
+  void ScheduleResponsiveIframeResize();
 
   void RequestSameDocumentNavigationPresentationTime(
       base::OnceCallback<void(const viz::FrameTimingDetails&)>);
@@ -1072,6 +1072,9 @@ class CORE_EXPORT LocalFrameView final
       DocumentLifecycle::LifecycleState target_state);
   void RunPaintLifecyclePhase(PaintBenchmarkMode);
 
+  bool ShouldSkipResponsiveIframeResize() const;
+  bool HasPendingResponsiveIframeResize();
+  void UpdateResponsiveIframeSizesIfNeeded();
   void UpdateStyleAndLayoutIfNeededRecursive();
   bool UpdateStyleAndLayoutInternal();
   void UpdateLayout();
@@ -1275,6 +1278,7 @@ class CORE_EXPORT LocalFrameView final
   gfx::Size layout_overflow_size_;
   gfx::Size layout_overflow_size_without_padding_box_;
   std::optional<gfx::Size> natural_size_;
+  bool needs_responsive_iframe_resize_ = false;
 
   bool root_layer_did_scroll_;
 
@@ -1453,6 +1457,11 @@ class CORE_EXPORT LocalFrameView final
 #endif
 
   FRIEND_TEST_ALL_PREFIXES(FrameThrottlingTest, ForAllThrottledLocalFrameViews);
+  FRIEND_TEST_ALL_PREFIXES(
+      HTMLIFrameElementSimTest,
+      ResponsiveIframeAsyncResizeAvoidsSyncLayoutAndLimitsLayouts);
+  FRIEND_TEST_ALL_PREFIXES(HTMLIFrameElementSimTest,
+                           ResponsiveIframeDisplayNoneSkipsUntilAttached);
 };
 
 inline void LocalFrameView::IncrementVisuallyNonEmptyCharacterCount(

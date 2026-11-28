@@ -17,13 +17,13 @@
 #include <unordered_map>
 #include <vector>
 
-#include "absl/container/node_hash_map.h"
+#include "absl/container/node_hash_map.h"  // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
 #include "mediapipe/calculators/video/tracked_detection_manager_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/detection.pb.h"
 #include "mediapipe/framework/formats/location_data.pb.h"
 #include "mediapipe/framework/formats/rect.pb.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/util/tracking/box_tracker.h"
 #include "mediapipe/util/tracking/tracked_detection.h"
 #include "mediapipe/util/tracking/tracked_detection_manager.h"
@@ -55,7 +55,7 @@ int64_t GetInputTimestampMs(::mediapipe::CalculatorContext* cc) {
 std::unique_ptr<TrackedDetection> GetTrackedDetectionFromDetection(
     const Detection& detection, int64_t timestamp) {
   std::unique_ptr<TrackedDetection> tracked_detection =
-      absl::make_unique<TrackedDetection>(detection.detection_id(), timestamp);
+      std::make_unique<TrackedDetection>(detection.detection_id(), timestamp);
   const float top = detection.location_data().relative_bounding_box().ymin();
   const float bottom =
       detection.location_data().relative_bounding_box().ymin() +
@@ -211,7 +211,7 @@ absl::Status TrackedDetectionManagerCalculator::Process(CalculatorContext* cc) {
         cc->Inputs().Tag(kTrackingBoxesTag).Get<TimedBoxProtoList>();
 
     // Collect all detections that are removed.
-    auto removed_detection_ids = absl::make_unique<std::vector<int>>();
+    auto removed_detection_ids = std::make_unique<std::vector<int>>();
     for (const TimedBoxProto& tracked_box : tracked_boxes.box()) {
       NormalizedRect bounding_box;
       bounding_box.set_x_center((tracked_box.left() + tracked_box.right()) /
@@ -263,8 +263,8 @@ absl::Status TrackedDetectionManagerCalculator::Process(CalculatorContext* cc) {
     // Output detections and corresponding bounding boxes.
     const auto& all_detections =
         tracked_detection_manager_.GetAllTrackedDetections();
-    auto output_detections = absl::make_unique<std::vector<Detection>>();
-    auto output_boxes = absl::make_unique<std::vector<NormalizedRect>>();
+    auto output_detections = std::make_unique<std::vector<Detection>>();
+    auto output_boxes = std::make_unique<std::vector<NormalizedRect>>();
 
     for (const auto& detection_ptr : all_detections) {
       const auto& detection = *detection_ptr.second;

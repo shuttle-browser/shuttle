@@ -7,7 +7,6 @@ import {html} from '//resources/lit/v3_0/lit.rollup.js';
 import type {SettingsAppearancePageElement} from './appearance_page.js';
 
 export function getHtml(this: SettingsAppearancePageElement) {
-  // clang-format off
   return html`<!--_html_template_start_-->
 <settings-section page-title="$i18n{appearancePageTitle}">
   <div route-path="default">
@@ -254,10 +253,7 @@ export function getHtml(this: SettingsAppearancePageElement) {
   </div>
   <settings-toggle-button class="hr" id="splitViewDragAndDrop"
       pref-key="browser.split_view_drag_and_drop_enabled"
-      label="${this.i18n(
-          this.splitViewHorizontalEnabled_ ?
-              'allowSplitViewDragAndDropHorizontal' :
-              'allowSplitViewDragAndDrop')}">
+      label="$i18n{allowSplitViewDragAndDrop}">
   </settings-toggle-button>
 </settings-section>
 ${this.showManagedThemeDialog_ ? html`
@@ -267,5 +263,4 @@ ${this.showManagedThemeDialog_ ? html`
   </managed-dialog>
 ` : ''}
 <!--_html_template_end_-->`;
-  // clang-format on
 }

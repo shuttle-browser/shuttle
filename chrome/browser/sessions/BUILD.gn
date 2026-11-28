@@ -85,6 +85,7 @@ source_set("impl") {
   deps = [
     "//chrome/browser:buildflags",
     "//chrome/browser/lifetime",
+    "//chrome/browser/search",
   ]
 
   if (enable_extensions_core) {
@@ -136,7 +137,6 @@ source_set("impl") {
       "//chrome/browser/notifications",
       "//chrome/browser/performance_manager",
       "//chrome/browser/profiles/keep_alive",
-      "//chrome/browser/search",
       "//chrome/browser/ui:browser_init_state",
       "//chrome/browser/ui:browser_manager_service",
       "//chrome/browser/ui:browser_tabrestore",

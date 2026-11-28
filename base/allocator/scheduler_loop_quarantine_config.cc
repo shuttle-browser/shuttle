@@ -63,7 +63,6 @@ constexpr int kJSONParserOptions =
 
 // JSON keys for parameters.
 constexpr char kKeyEnableQuarantine[] = "enable-quarantine";
-constexpr char kKeyEnableZapping[] = "enable-zapping";
 constexpr char kKeyLeakOnDestruction[] = "leak-on-destruction";
 constexpr char kKeyEnableTaskControlledPurge[] = "enable-task-controlled-purge";
 constexpr char kKeyPauseInBetweenTasks[] = "pause-in-between-tasks";
@@ -71,6 +70,7 @@ constexpr char kKeyExcludeNonIpcTasks[] = "exclude-non-ipc-tasks";
 constexpr char kKeyCapacityUnlimited[] = "capacity-unlimited";
 constexpr char kKeyBranchCapacityInBytes[] = "branch-capacity-in-bytes";
 constexpr char kKeyMaxQuarantineSize[] = "max-quarantine-size";
+constexpr char kKeyZapMax[] = "zap-max";
 constexpr char kKeyPurgeHeadroomPercent[] = "purge-headroom-percent";
 
 struct Match {
@@ -205,8 +205,6 @@ GetSchedulerLoopQuarantineConfiguration(
 
   config.enable_quarantine = config_entry->FindBool(kKeyEnableQuarantine)
                                  .value_or(config.enable_quarantine);
-  config.enable_zapping =
-      config_entry->FindBool(kKeyEnableZapping).value_or(config.enable_zapping);
   config.leak_on_destruction = config_entry->FindBool(kKeyLeakOnDestruction)
                                    .value_or(config.leak_on_destruction);
   config.enable_task_controlled_purge =
@@ -231,6 +229,11 @@ GetSchedulerLoopQuarantineConfiguration(
       config_entry->FindInt(kKeyMaxQuarantineSize).value_or(-1);
   if (0 < max_quarantine_size) {
     config.max_quarantine_size = static_cast<size_t>(max_quarantine_size);
+  }
+
+  int zap_max = config_entry->FindInt(kKeyZapMax).value_or(-1);
+  if (0 < zap_max) {
+    config.zap_max = static_cast<size_t>(zap_max);
   }
 
   int purge_headroom_percent =

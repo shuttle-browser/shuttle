@@ -19,7 +19,6 @@
 #include "third_party/blink/renderer/platform/media/buffered_data_source_host_impl.h"
 #include "third_party/blink/renderer/platform/media/multi_buffer_reader.h"
 #include "third_party/blink/renderer/platform/scheduler/public/post_cross_thread_task.h"
-#include "third_party/blink/renderer/platform/weborigin/security_origin.h"
 #include "third_party/blink/renderer/platform/wtf/cross_thread_functional.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "url/gurl.h"
@@ -126,7 +125,7 @@ MultiBufferDataSource::MultiBufferDataSource(
   DCHECK(host_);
   DCHECK(downloading_cb_);
   DCHECK(render_task_runner_->BelongsToCurrentThread());
-  DCHECK(url_data_);
+  CHECK(url_data_);
   url_data_->Use();
   url_data_->OnRedirect(
       blink::BindOnce(&MultiBufferDataSource::OnRedirected, weak_ptr_));
@@ -152,18 +151,6 @@ void MultiBufferDataSource::SetReader(
   reader_ = std::move(reader);
 }
 
-void MultiBufferDataSource::CreateResourceLoader(int64_t first_byte_position,
-                                                 int64_t last_byte_position) {
-  DCHECK(render_task_runner_->BelongsToCurrentThread());
-
-  SetReader(std::make_unique<MultiBufferReader>(
-      url_data_->multibuffer(), first_byte_position, last_byte_position,
-      is_client_audio_element_,
-      blink::BindRepeating(&MultiBufferDataSource::ProgressCallback, weak_ptr_),
-      render_task_runner_));
-  UpdateBufferSizes();
-}
-
 void MultiBufferDataSource::CreateResourceLoader_Locked(
     int64_t first_byte_position,
     int64_t last_byte_position) {
@@ -185,7 +172,8 @@ void MultiBufferDataSource::Initialize(InitializeCB init_cb) {
 
   init_cb_ = std::move(init_cb);
 
-  CreateResourceLoader(0, kPositionNotSpecified);
+  base::AutoLock auto_lock(lock_);
+  CreateResourceLoader_Locked(0, kPositionNotSpecified);
 
   // We're not allowed to call Wait() if data is already available.
   if (reader_->Available()) {
@@ -211,7 +199,7 @@ void MultiBufferDataSource::OnRedirected(
     const scoped_refptr<UrlData>& new_destination) {
   did_redirect_ = true;
 
-  if (!new_destination || !url_data_) {
+  if (!new_destination) {
     // A failure occurred.
     failed_ = true;
     if (init_cb_) {
@@ -226,36 +214,35 @@ void MultiBufferDataSource::OnRedirected(
     StopLoader();
     return;
   }
-  if (!SecurityOrigin::AreSameOrigin(url_data_->url(),
-                                     new_destination->url())) {
-    single_origin_ = false;
-  }
   SetReader(nullptr);
   url_data_ = std::move(new_destination);
 
   url_data_->OnRedirect(
       blink::BindOnce(&MultiBufferDataSource::OnRedirected, weak_ptr_));
 
-  if (init_cb_) {
-    CreateResourceLoader(0, kPositionNotSpecified);
-    if (reader_->Available()) {
-      PostCrossThreadTask(
-          *render_task_runner_, FROM_HERE,
-          CrossThreadBindOnce(&MultiBufferDataSource::StartCallback,
-                              weak_ptr_));
-    } else {
-      reader_->Wait(
-          1, blink::BindOnce(&MultiBufferDataSource::StartCallback, weak_ptr_));
-    }
-  } else if (read_op_) {
-    CreateResourceLoader(read_op_->position(), kPositionNotSpecified);
-    if (reader_->Available()) {
-      PostCrossThreadTask(
-          *render_task_runner_, FROM_HERE,
-          CrossThreadBindOnce(&MultiBufferDataSource::ReadTask, weak_ptr_));
-    } else {
-      reader_->Wait(
-          1, blink::BindOnce(&MultiBufferDataSource::ReadTask, weak_ptr_));
+  {
+    base::AutoLock auto_lock(lock_);
+    if (init_cb_) {
+      CreateResourceLoader_Locked(0, kPositionNotSpecified);
+      if (reader_->Available()) {
+        PostCrossThreadTask(
+            *render_task_runner_, FROM_HERE,
+            CrossThreadBindOnce(&MultiBufferDataSource::StartCallback,
+                                weak_ptr_));
+      } else {
+        reader_->Wait(1, blink::BindOnce(&MultiBufferDataSource::StartCallback,
+                                         weak_ptr_));
+      }
+    } else if (read_op_) {
+      CreateResourceLoader_Locked(read_op_->position(), kPositionNotSpecified);
+      if (reader_->Available()) {
+        PostCrossThreadTask(
+            *render_task_runner_, FROM_HERE,
+            CrossThreadBindOnce(&MultiBufferDataSource::ReadTask, weak_ptr_));
+      } else {
+        reader_->Wait(
+            1, blink::BindOnce(&MultiBufferDataSource::ReadTask, weak_ptr_));
+      }
     }
   }
 
@@ -286,12 +273,6 @@ bool MultiBufferDataSource::PassedTimingAllowOriginCheck() {
 }
 
 bool MultiBufferDataSource::WouldTaintOrigin() const {
-  // When the resource is redirected to another origin we think of it as
-  // tainted. This is actually not specified, and is under discussion.
-  // See https://github.com/whatwg/fetch/issues/737.
-  if (!single_origin_ && cors_mode() == UrlData::CORS_UNSPECIFIED) {
-    return true;
-  }
   return url_data_->is_cors_cross_origin();
 }
 
@@ -633,10 +614,6 @@ void MultiBufferDataSource::StartCallback() {
         host_->AddBufferedByteRange(0, total_bytes_);
     }
 
-    // Progress callback might be called after the start callback,
-    // make sure that we update single_origin_ now.
-    media_log_->SetProperty<media::MediaLogProperty::kIsSingleOrigin>(
-        single_origin_);
     media_log_->SetProperty<media::MediaLogProperty::kIsRangeHeaderSupported>(
         url_data_->range_supported());
 

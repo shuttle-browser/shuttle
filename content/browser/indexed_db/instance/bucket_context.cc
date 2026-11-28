@@ -105,6 +105,10 @@ BASE_FEATURE_ENUM_PARAM(SqliteRolloutStage,
 // the backing store.
 constexpr base::TimeDelta kBackingStoreGracePeriod = base::Seconds(2);
 
+// SQLite connections close independently. Keep the lightweight backing store
+// around longer to track how soon destroyed connections are needed again.
+constexpr base::TimeDelta kSqliteBackingStoreGracePeriod = base::Minutes(3);
+
 // If this switch is present, the backing store is shut down near-synchronously
 // when the last `Database` closes. Used by blink perf tests to exercise
 // database cold-open.
@@ -236,10 +240,7 @@ SqliteRolloutStage GetSqliteRolloutStage(bool in_memory) {
   if (in_memory) {
     return SqliteRolloutStage::kUseSqliteOnly;
   }
-  if (base::FeatureList::IsEnabled(features::kIdbSqliteOnDiskRollout)) {
-    return kIdbSqliteOnDiskRolloutStage.Get();
-  }
-  return SqliteRolloutStage::kUseLevelDbOnly;
+  return kIdbSqliteOnDiskRolloutStage.Get();
 }
 
 bool DoesLevelDbStoreExist(const storage::BucketLocator& bucket_locator,
@@ -539,9 +540,8 @@ void BucketContext::CheckCanUseDiskSpace(
             base::BindOnce(&BucketContext::OnGotBucketSpaceRemaining,
                            weak_factory_.GetWeakPtr())));
 
-    quota_manager()->GetBucketSpaceRemaining(
-        bucket_locator(), base::SequencedTaskRunner::GetCurrentDefault(),
-        std::move(callback_with_logging));
+    quota_manager()->GetBucketSpaceRemaining(bucket_locator(),
+                                             std::move(callback_with_logging));
   }
 }
 
@@ -797,7 +797,7 @@ void BucketContext::Open(
         transaction_receiver,
     int64_t transaction_id,
     int scheduling_priority,
-    bool request_shared_connection) {
+    std::optional<int64_t> shared_connection_id) {
   base::ElapsedTimer timer;
   TRACE_EVENT0("IndexedDB", "BucketContext::Open");
   auto scoper = ScopedHandlingRequest();
@@ -844,7 +844,7 @@ void BucketContext::Open(
       transaction_id, version, std::move(transaction_receiver));
   connection->data_loss_info = data_loss_info;
   connection->scheduling_priority = scheduling_priority;
-  connection->request_shared_connection = request_shared_connection;
+  connection->shared_connection_id = shared_connection_id;
 
   ReceiverContext& client = receivers_.current_context();
   connection->client_info = client.client_info;
@@ -996,7 +996,9 @@ void BucketContext::MaybeStartClosing() {
   // in the mean time.
   CHECK(!close_timer_.IsRunning());
   closing_stage_ = ClosingState::kPreCloseGracePeriod;
-  close_timer_.Start(FROM_HERE, kBackingStoreGracePeriod,
+  close_timer_.Start(FROM_HERE,
+                     IsUsingSqlite() ? kSqliteBackingStoreGracePeriod
+                                     : kBackingStoreGracePeriod,
                      base::BindOnce(&BucketContext::StartPreCloseTasks,
                                     weak_factory_.GetWeakPtr()));
 }
@@ -1099,8 +1101,9 @@ void BucketContext::InsertTeardownStepForTesting(
 }
 
 // static
-base::TimeDelta BucketContext::GetBackingStoreGracePeriodForTesting() {
-  return kBackingStoreGracePeriod;
+base::TimeDelta BucketContext::GetBackingStoreGracePeriodForTesting(
+    bool use_sqlite) {
+  return use_sqlite ? kSqliteBackingStoreGracePeriod : kBackingStoreGracePeriod;
 }
 
 // static

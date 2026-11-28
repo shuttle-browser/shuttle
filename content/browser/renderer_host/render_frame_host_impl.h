@@ -184,6 +184,7 @@
 #include "third_party/blink/public/mojom/presentation/presentation.mojom-forward.h"
 #include "third_party/blink/public/mojom/render_accessibility.mojom.h"
 #include "third_party/blink/public/mojom/security_context/insecure_request_policy.mojom-forward.h"
+#include "third_party/blink/public/mojom/security_context/outside_context_csp_violation_reporter.mojom.h"
 #include "third_party/blink/public/mojom/sensor/web_sensor_provider.mojom-forward.h"
 #include "third_party/blink/public/mojom/serial/serial.mojom-forward.h"
 #include "third_party/blink/public/mojom/sms/webotp_service.mojom-forward.h"
@@ -195,6 +196,7 @@
 #include "third_party/blink/public/mojom/websockets/websocket_connector.mojom-forward.h"
 #include "third_party/blink/public/mojom/webtransport/web_transport_connector.mojom-forward.h"
 #include "third_party/blink/public/mojom/worker/dedicated_worker_host_factory.mojom-forward.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "third_party/perfetto/include/perfetto/tracing/track.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/accessibility/ax_action_handler_base.h"
@@ -222,7 +224,7 @@
 #include "services/device/public/mojom/nfc.mojom.h"
 #endif
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
 #include "third_party/blink/public/mojom/smart_card/smart_card.mojom-forward.h"
 #endif
 
@@ -607,6 +609,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
       blink::mojom::UserActivationNotificationType notification_type) override;
   bool Reload() override;
   bool IsDOMContentLoaded() override;
+  ScriptToolsReadyState GetScriptToolsReadyState() override;
   void UpdateToAdFrame() override;
   bool IsAdFrame() const override;
   void SetIsXrOverlaySetup() override;
@@ -633,23 +636,13 @@ class CONTENT_EXPORT RenderFrameHostImpl
   const network::CrossOriginEmbedderPolicy& GetCrossOriginEmbedderPolicy()
       const override;
   const network::ConnectionAllowlists& GetConnectionAllowlists() const override;
+  const blink::DocumentToken& GetDocumentToken() const override;
 
   // Additional non-override const version of GetMainFrame.
   const RenderFrameHostImpl* GetMainFrame() const;
 
   // Additional non-override const version of GetPage.
   const PageImpl& GetPage() const;
-
-  // Returns the token for the document currently associated with this frame.
-  // This can change over time if a `RenderFrameHost` is reused when navigating
-  // to a new document.
-  //
-  // Retrieving the document token is disallowed if:
-  // - the RenderFrameHost is pending commit, e.g. waiting for the renderer to
-  //   acknowledge the commit, since the DocumentToken will change as soon as
-  //   the navigation actually commits.
-  // - the RenderFrameHost is speculative
-  const blink::DocumentToken& GetDocumentToken() const;
 
   const blink::InitiatorStateToken& current_initiator_state_token() const {
     return current_initiator_state_token_;
@@ -1164,13 +1157,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // all the RenderFrameHosts for that FrameTreeNode.
   bool HasPendingCommitForCrossDocumentNavigation() const;
 
-  // Helper for recording metrics when another NavigationRequest is blocked by
-  // navigation queueing, i.e. because this NavigationRequest is in the process
-  // of committing a navigation in a kPendingCommit RenderFrameHost.
-  // `commit_attempt` should be true if the other NavigationRequest was also
-  // trying to commit a navigation.
-  void RecordMetricsForBlockedGetFrameHostAttempt(bool commit_attempt);
-
   // Return true if Unload() was called on the frame or one of its ancestors.
   // If true, this corresponds either to unload handlers running for this
   // RenderFrameHost (LifecycleStateImpl::kRunningUnloadHandlers) or when this
@@ -1609,9 +1595,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void BindNFCReceiver(mojo::PendingReceiver<device::mojom::NFC> receiver);
 #endif
 
-  void BindModelContextHost(
-      mojo::PendingReceiver<blink::mojom::ModelContextHost> receiver);
-
   void BindInputInjectorReceiver(
       mojo::PendingReceiver<mojom::InputInjector> receiver);
 
@@ -1637,6 +1620,9 @@ class CONTENT_EXPORT RenderFrameHostImpl
       mojo::PendingAssociatedReceiver<blink::mojom::FileBackedBlobFactory>
           receiver);
 
+  void BindModelContextHost(
+      mojo::PendingAssociatedReceiver<blink::mojom::ModelContextHost> receiver);
+
   // END IPC REVIEW BOUNDARY
 
   bool IsFocused() override;
@@ -1659,6 +1645,13 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // Returns associated remote for the blink::mojom::LocalFrame Mojo interface.
   const mojo::AssociatedRemote<blink::mojom::LocalFrame>&
   GetAssociatedLocalFrame();
+
+  // Returns associated remote for the
+  // blink::mojom::OutsideContextCSPViolationReporter Mojo interface, which
+  // reports the CSP violations checked in the frame host to the frame.
+  const mojo::AssociatedRemote<
+      blink::mojom::OutsideContextCSPViolationReporter>&
+  GetAssociatedOutsideContextCSPViolationReporter();
 
   // Returns the AgentSchedulingGroupHost associated with this
   // RenderFrameHostImpl.
@@ -2004,7 +1997,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void BindSerialService(
       mojo::PendingReceiver<blink::mojom::SerialService> receiver);
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
   void GetSmartCardService(
       mojo::PendingReceiver<blink::mojom::SmartCardService> receiver);
 #endif
@@ -2530,6 +2523,8 @@ class CONTENT_EXPORT RenderFrameHostImpl
       mojo::PendingAssociatedRemote<blink::mojom::UnboundedSurfaceClient>
           client,
       const gfx::Rect& bounds) override;
+  void DidHaveFormEdit() override;
+  void DidHaveUserEdit() override;
   enum class UnboundedElementAuth {
     kDenied,
     kAllowedOpenWeb,
@@ -3667,19 +3662,23 @@ class CONTENT_EXPORT RenderFrameHostImpl
 
   // Like CreateNetworkServiceDefaultFactoryInternal but also sets up a
   // connection error handler to detect and recover from NetworkService
-  // crashes.
+  // crashes. `committing_navigation_request` is non-null when the factory is
+  // being created for an in-flight navigation commit rather than the already
+  // committed document.
   bool CreateNetworkServiceDefaultFactoryAndObserve(
       network::mojom::URLLoaderFactoryParamsPtr params,
       ukm::SourceIdObj ukm_source_id,
       mojo::PendingReceiver<network::mojom::URLLoaderFactory>
-          default_factory_receiver);
+          default_factory_receiver,
+      NavigationRequest* committing_navigation_request = nullptr);
 
   // Asks an appropriate `NetworkService` to create a new URLLoaderFactory with
   // the given `params` and binds the factory to the `default_factory_receiver`.
   //
   // The callers typically base the `params` on either 1) the current state of
   // `this` RenderFrameHostImpl (e.g. the origin of the initial empty document,
-  // or the last committed origin) or 2) a pending NavigationRequest.
+  // or the last committed origin) or 2) a pending NavigationRequest
+  // (`committing_navigation_request`).
   //
   // If this returns true, any redirect safety checks should be bypassed in
   // downstream loaders.  (This indicates that a layer above //content has
@@ -3689,7 +3688,8 @@ class CONTENT_EXPORT RenderFrameHostImpl
       network::mojom::URLLoaderFactoryParamsPtr params,
       ukm::SourceIdObj ukm_source_id,
       mojo::PendingReceiver<network::mojom::URLLoaderFactory>
-          default_factory_receiver);
+          default_factory_receiver,
+      NavigationRequest* committing_navigation_request = nullptr);
 
   // Returns true if the ExecuteJavaScript() API can be used on this host.
   // The checks do not apply to ExecuteJavaScriptInIsolatedWorld, nor to
@@ -3946,6 +3946,13 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // exceptions involving speculative RenderFrameHosts.
   bool ShouldResetDocumentAssociatedDataAtCommit() const;
 
+  // Resets state for renderer-side Document replacements (the result of a
+  // javascript: URL, XSLT or discard, and the synchronous about:blank commit
+  // that replaces the initial about:blank Document). This is state which is
+  // strictly coupled with the renderer's Document and should be reset for
+  // each Document change.
+  void ResetStateForReplacedRendererDocument();
+
   // Called when we received the confirmation a new document committed in the
   // renderer. It was created from the |navigation|.
   void DidCommitNewDocument(const mojom::DidCommitProvisionalLoadParams& params,
@@ -4182,6 +4189,20 @@ class CONTENT_EXPORT RenderFrameHostImpl
   [[nodiscard]] bool UpdateCurrentInitiatorNavigationState(
       bool bypass_lifecycle_checks);
 
+  // Helpers to record and query `document_token_history_` for diagnosing
+  // initiator token mismatches (crbug.com/510258191).
+  void RecordNewDocumentInInitiatorTokenHistory(
+      const blink::DocumentToken& document_token);
+  void RecordInitiatorStateTokenInHistory(
+      const blink::InitiatorStateToken& state_token);
+  std::string GetInitiatorStateTokenStatusForCrashKey(
+      const blink::InitiatorStateToken& state_token) const;
+  std::string GetInitiatorDocTokenStatusForCrashKey(
+      const blink::DocumentToken& doc_token) const;
+  std::string_view GetInitiatorDocAndStateMatchForCrashKey(
+      const blink::DocumentToken& doc_token,
+      const blink::InitiatorStateToken& state_token) const;
+
   // Initializes |local_network_access_request_policy_|. Constructor helper.
   void InitializeLocalNetworkAccessRequestPolicy();
 
@@ -4233,6 +4254,23 @@ class CONTENT_EXPORT RenderFrameHostImpl
           receiver);
 
   void LogWebFeatureForCurrentPage(blink::mojom::WebFeature feature);
+
+  enum class BeforeUnloadDialogEvent {
+    // Recorded whenever a beforeunload dialog is shown to the user, regardless
+    // of whether the user chooses to proceed or stay on the page.
+    kShown,
+    // Recorded when the user cancels the beforeunload dialog to stay on the
+    // page, blocking the unload.
+    kBlockedUnload,
+  };
+
+  // Records UseCounters for whether a form edit or general user edit has
+  // occurred in the page when a beforeunload dialog is shown or when it blocks
+  // unload.
+  void RecordBeforeUnloadUserEditMetrics(
+      PageImpl::UserEditScope form_edit_scope,
+      PageImpl::UserEditScope user_edit_scope,
+      BeforeUnloadDialogEvent event);
 
   // This runs when the storage_key check fails
   // in `BlobURLStoreImpl::ResolveAsURLLoaderFactory` and increments the use
@@ -4794,6 +4832,11 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // Holder of Mojo connection with the LocalFrame in Blink.
   mojo::AssociatedRemote<blink::mojom::LocalFrame> local_frame_;
 
+  // Holder of Mojo connection with the OutsideContextCSPViolationReporter of
+  // the frame in Blink.
+  mojo::AssociatedRemote<blink::mojom::OutsideContextCSPViolationReporter>
+      outside_context_csp_violation_reporter_;
+
   // Holder of Mojo connection with the LocalMainFrame in Blink. This
   // remote will be valid when the frame is the active main frame.
   mojo::AssociatedRemote<blink::mojom::LocalMainFrame> local_main_frame_;
@@ -5330,6 +5373,30 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // the initiator of the navigation that committed inside the RenderFrameHost,
   // but the state of the RenderFrameHost itself.
   scoped_refptr<InitiatorNavigationState> current_navigation_state_;
+
+  // Tracks the history of DocumentTokens and their associated
+  // InitiatorStateTokens that have existed in this RenderFrameHostImpl, used to
+  // diagnose token mismatches in IssueKeepAliveHandle and BeginNavigation
+  // (crbug.com/510258191). Both the number of tracked documents and the number
+  // of state tokens per document are capped to bound memory usage.
+  struct DocumentInitiatorTokenHistory {
+    static constexpr size_t kMaxDocuments = 10;
+    static constexpr size_t kMaxStateTokensPerDocument = 10;
+
+    DocumentInitiatorTokenHistory(
+        const blink::DocumentToken& document_token,
+        std::vector<blink::InitiatorStateToken> state_tokens);
+    ~DocumentInitiatorTokenHistory();
+    DocumentInitiatorTokenHistory(const DocumentInitiatorTokenHistory&);
+    DocumentInitiatorTokenHistory& operator=(
+        const DocumentInitiatorTokenHistory&);
+    DocumentInitiatorTokenHistory(DocumentInitiatorTokenHistory&&);
+    DocumentInitiatorTokenHistory& operator=(DocumentInitiatorTokenHistory&&);
+
+    blink::DocumentToken document_token;
+    std::vector<blink::InitiatorStateToken> state_tokens;
+  };
+  std::vector<DocumentInitiatorTokenHistory> document_token_history_;
 
   // The current document's HTTP response head. This is used by back-forward
   // cache, for navigating a second time toward the same document.

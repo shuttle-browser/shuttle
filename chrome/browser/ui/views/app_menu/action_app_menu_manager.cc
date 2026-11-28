@@ -35,9 +35,14 @@
 #include "chrome/browser/lifetime/scheduled_restart_manager.h"
 #endif
 #if BUILDFLAG(IS_CHROMEOS)
+#include "chromeos/strings/grit/chromeos_strings.h"
+#include "chromeos/ui/frame/desks/move_to_desks_menu_delegate.h"
+#include "chromeos/ui/frame/desks/move_to_desks_menu_model.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
+#include "ui/base/base_window.h"
 #include "ui/display/screen.h"
+#include "ui/views/widget/widget.h"
 #endif
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
@@ -59,6 +64,7 @@
 #include "extensions/buildflags/buildflags.h"
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/extension_ui_util.h"
+#include "chrome/browser/ui/extensions/extensions_container.h"
 #endif
 #include "ui/actions/action_id.h"
 #include "ui/actions/actions.h"
@@ -151,6 +157,14 @@ class AppMenuBuilder {
     }
     auto item =
         AppMenuActionItem::CreateIndirect(id, scope_, std::move(params));
+    if (item && parent_) {
+      parent_->AddChild(std::move(item));
+    }
+    return *this;
+  }
+
+  // Adds a directly constructed action item.
+  AppMenuBuilder& AddActionItem(std::unique_ptr<actions::ActionItem> item) {
     if (item && parent_) {
       parent_->AddChild(std::move(item));
     }
@@ -289,8 +303,12 @@ class AppMenuBuilder {
       has_alerted_child_ = true;
     }
 
-    item->SetPopulateChildrenCallback(std::move(populate_callback));
-    item->PopulateChildItems();
+    // Skip populating children for hidden submenu actions (e.g. actions
+    // hidden behind a disabled feature flag).
+    if (item->GetActionItem()->GetVisible()) {
+      item->SetPopulateChildrenCallback(std::move(populate_callback));
+      item->PopulateChildItems();
+    }
     parent_->AddChild(std::move(item));
     return *this;
   }
@@ -328,10 +346,11 @@ class AppMenuBuilder {
 
 ActionAppMenuManager::ActionAppMenuManager(
     BrowserWindowInterface* browser_window_interface,
-    AppMenuDragAndDropDelegate::Host* /*drag_and_drop_host*/)
+    AppMenuDragAndDropDelegate::Host* drag_and_drop_host)
     : browser_window_interface_(browser_window_interface),
       recent_tabs_menu_(
-          std::make_unique<RecentTabsDynamicMenu>(browser_window_interface)) {}
+          std::make_unique<RecentTabsDynamicMenu>(browser_window_interface,
+                                                  drag_and_drop_host)) {}
 
 ActionAppMenuManager::~ActionAppMenuManager() {
   if (actions::ActionItem* root = GetAppMenuRoot()) {
@@ -493,8 +512,12 @@ void ActionAppMenuManager::AddYourChromeActions(actions::ActionItem* root) {
               /*build_submenu=*/std::nullopt,
               {.element_id = AppMenuModel::kHistoryMenuItem});
 
-          section.AddSubmenu(
-              kActionOtherDeviceTabsSubmenu, [](AppMenuBuilder& sub) {},
+          section.AddDynamicSubmenu(
+              kActionOtherDeviceTabsSubmenu,
+              base::BindRepeating(
+                  &RecentTabsDynamicMenu::BuildOtherDeviceTabsActions,
+                  recent_tabs_menu_->GetWeakPtr()),
+              /*build_submenu=*/std::nullopt,
               {.element_id = AppMenuModel::kOtherDeviceTabsMenuItem,
                .is_submenu = true});
         }
@@ -636,7 +659,6 @@ void ActionAppMenuManager::AddFooterActions(actions::ActionItem* root) {
       .AddSection(DisplayType::kFooter, [browser_window_interface =
                                              browser_window_interface_.get()](
                                             AppMenuBuilder& section) {
-        section.AddAction(kActionOptions);
 
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
         section.AddSubmenu(
@@ -659,6 +681,7 @@ void ActionAppMenuManager::AddFooterActions(actions::ActionItem* root) {
         if (browser_defaults::kShowExitMenuItem) {
           section.AddAction(kActionExit);
         }
+        section.AddAction(kActionOptions);
 
 #if !BUILDFLAG(IS_CHROMEOS)
         Profile* profile = browser_window_interface->GetProfile();

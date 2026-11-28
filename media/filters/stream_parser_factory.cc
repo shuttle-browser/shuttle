@@ -51,31 +51,35 @@ typedef bool (*CodecIDValidatorFunction)(std::string_view codecs_id,
 struct CodecInfo {
   enum Type { UNKNOWN, AUDIO, VIDEO };
 
-  // Update tools/metrics/histograms/enums.xml if new values are added.
+  // Update tools/metrics/histograms/metadata/media/enums.xml (MSECodec) if new
+  // values are added.
+  // LINT.IfChange(MSECodec)
   enum HistogramTag {
-    HISTOGRAM_UNKNOWN,
-    HISTOGRAM_VP8,
-    HISTOGRAM_VP9,
-    HISTOGRAM_VORBIS,
-    HISTOGRAM_H264,
-    HISTOGRAM_MPEG2AAC,
-    HISTOGRAM_MPEG4AAC,
-    HISTOGRAM_EAC3,
-    HISTOGRAM_MP3,
-    HISTOGRAM_OPUS,
-    HISTOGRAM_HEVC,
-    HISTOGRAM_AC3,
-    HISTOGRAM_DOLBYVISION,
-    HISTOGRAM_FLAC,
-    HISTOGRAM_AV1,
-    HISTOGRAM_MPEG_H_AUDIO,
-    HISTOGRAM_DTS,
-    HISTOGRAM_DTSXP2,
-    HISTOGRAM_DTSE,
-    HISTOGRAM_AC4,
-    HISTOGRAM_IAMF,
-    HISTOGRAM_MAX = HISTOGRAM_IAMF  // Must be equal to largest logged entry.
+    HISTOGRAM_UNKNOWN = 0,
+    HISTOGRAM_VP8 = 1,
+    HISTOGRAM_VP9 = 2,
+    HISTOGRAM_VORBIS = 3,
+    HISTOGRAM_H264 = 4,
+    HISTOGRAM_MPEG2AAC = 5,
+    HISTOGRAM_MPEG4AAC = 6,
+    HISTOGRAM_EAC3 = 7,
+    HISTOGRAM_MP3 = 8,
+    HISTOGRAM_OPUS = 9,
+    HISTOGRAM_HEVC = 10,
+    HISTOGRAM_AC3 = 11,
+    HISTOGRAM_DOLBYVISION = 12,
+    HISTOGRAM_FLAC = 13,
+    HISTOGRAM_AV1 = 14,
+    HISTOGRAM_MPEG_H_AUDIO = 15,
+    HISTOGRAM_DTS = 16,
+    HISTOGRAM_DTSXP2 = 17,
+    HISTOGRAM_DTSE = 18,
+    HISTOGRAM_AC4 = 19,
+    HISTOGRAM_IAMF = 20,
+    HISTOGRAM_AV2 = 21,
+    HISTOGRAM_MAX = HISTOGRAM_AV2  // Must be equal to largest logged entry.
   };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/media/enums.xml:MSECodec)
 
   const char* pattern;
   Type type;
@@ -303,6 +307,14 @@ static const CodecInfo kMPEG4FLACCodecInfo = {"flac", CodecInfo::AUDIO, nullptr,
                                               CodecInfo::HISTOGRAM_FLAC};
 static const CodecInfo kMPEG4FLACCodecInfo2 = {
     "fLaC", CodecInfo::AUDIO, nullptr, CodecInfo::HISTOGRAM_FLAC};
+#if BUILDFLAG(ENABLE_DAV2D_DECODER)
+static const CodecInfo kAV2CodecInfo1 = {"av2E.*", CodecInfo::VIDEO, nullptr,
+                                         CodecInfo::HISTOGRAM_AV2};
+static const CodecInfo kAV2CodecInfo2 = {"av2e.*", CodecInfo::VIDEO, nullptr,
+                                         CodecInfo::HISTOGRAM_AV2};
+static const CodecInfo kAV2CodecInfo3 = {"av02.*", CodecInfo::VIDEO, nullptr,
+                                         CodecInfo::HISTOGRAM_AV2};
+#endif  // BUILDFLAG(ENABLE_DAV2D_DECODER)
 #if BUILDFLAG(ENABLE_PLATFORM_IAMF_AUDIO) || BUILDFLAG(ENABLE_IAMF_TOOLS)
 static const CodecInfo kIAMFCodecInfo1 = {"iamf", CodecInfo::AUDIO, nullptr,
                                           CodecInfo::HISTOGRAM_IAMF};
@@ -369,6 +381,11 @@ static const auto kVideoMP4Codecs = std::to_array<const CodecInfo* const>({
 #if BUILDFLAG(ENABLE_AV1_DECODER)
     &kAV1CodecInfo,
 #endif  // BUILDFLAG(ENABLE_AV1_DECODER)
+#if BUILDFLAG(ENABLE_DAV2D_DECODER)
+    &kAV2CodecInfo1,
+    &kAV2CodecInfo2,
+    &kAV2CodecInfo3,
+#endif  // BUILDFLAG(ENABLE_DAV2D_DECODER)
 #if BUILDFLAG(ENABLE_PLATFORM_IAMF_AUDIO) || BUILDFLAG(ENABLE_IAMF_TOOLS)
     &kIAMFCodecInfo1,
     &kIAMFCodecInfo2,

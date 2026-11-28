@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/image/mask_overlay_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/gpu/gl_calculator_helper.h"
 #include "mediapipe/gpu/gl_simple_shaders.h"
 #include "mediapipe/gpu/shader_util.h"
@@ -74,7 +75,7 @@ REGISTER_CALCULATOR(MaskOverlayCalculator);
 
 // static
 absl::Status MaskOverlayCalculator::GetContract(CalculatorContract* cc) {
-  MP_RETURN_IF_ERROR(GlCalculatorHelper::UpdateContract(cc));
+  ABSL_RETURN_IF_ERROR(GlCalculatorHelper::UpdateContract(cc));
   cc->Inputs().Get("VIDEO", 0).Set<GpuBuffer>();
   cc->Inputs().Get("VIDEO", 1).Set<GpuBuffer>();
   if (cc->Inputs().HasTag("MASK"))
@@ -102,7 +103,7 @@ absl::Status MaskOverlayCalculator::Process(CalculatorContext* cc) {
       const auto& options = cc->Options<MaskOverlayCalculatorOptions>();
       const auto mask_channel = options.mask_channel();
 
-      MP_RETURN_IF_ERROR(GlSetup(mask_channel));
+      ABSL_RETURN_IF_ERROR(GlSetup(mask_channel));
       initialized_ = true;
     }
 
@@ -146,7 +147,7 @@ absl::Status MaskOverlayCalculator::Process(CalculatorContext* cc) {
       glActiveTexture(GL_TEXTURE3);
       glBindTexture(mask_tex.target(), mask_tex.name());
 
-      MP_RETURN_IF_ERROR(GlRender(mask_const));
+      ABSL_RETURN_IF_ERROR(GlRender(mask_const));
 
       glActiveTexture(GL_TEXTURE3);
       glBindTexture(mask_tex.target(), 0);
@@ -154,7 +155,7 @@ absl::Status MaskOverlayCalculator::Process(CalculatorContext* cc) {
     } else {
       const float mask_const = mask_packet.Get<float>();
 
-      MP_RETURN_IF_ERROR(GlRender(mask_const));
+      ABSL_RETURN_IF_ERROR(GlRender(mask_const));
     }
 
     glActiveTexture(GL_TEXTURE2);

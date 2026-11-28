@@ -4,6 +4,7 @@
 
 #include "chrome/browser/notifications/mac/notification_platform_bridge_mac.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "base/barrier_closure.h"
@@ -25,9 +26,12 @@
 namespace {
 
 base::RepeatingCallback<void(std::set<std::string>, bool)>
-CreateGetDisplayedBarrierCallback(size_t num_callbacks,
-                                  GetDisplayedNotificationsCallback callback) {
-  auto notifications = std::make_unique<std::set<std::string>>();
+CreateGetDisplayedBarrierCallback(
+    size_t num_callbacks,
+    GetDisplayedNotificationsCallback callback,
+    std::set<std::string> initial_notifications = {}) {
+  auto notifications =
+      std::make_unique<std::set<std::string>>(std::move(initial_notifications));
   std::set<std::string>* notifications_ptr = notifications.get();
   auto supports_synchronization = std::make_unique<bool>(true);
   bool* supports_synchronization_ptr = supports_synchronization.get();
@@ -98,8 +102,9 @@ void NotificationPlatformBridgeMac::Display(
   bool is_alert = IsAlertNotificationMac(notification);
   NotificationDispatcherMac* dispatcher =
       is_alert ? alert_dispatcher_.get() : banner_dispatcher_.get();
-  dispatcher->DisplayNotification(notification_type, profile, notification);
-  CloseImpl(profile, notification.id(), dispatcher);
+  dispatcher->DisplayNotification(notification_type, profile, notification,
+                                  base::DoNothing());
+  CloseImpl(profile, notification.id(), {dispatcher});
 }
 
 void NotificationPlatformBridgeMac::Close(Profile* profile,
@@ -110,18 +115,18 @@ void NotificationPlatformBridgeMac::Close(Profile* profile,
 void NotificationPlatformBridgeMac::CloseImpl(
     Profile* profile,
     const std::string& notification_id,
-    NotificationDispatcherMac* excluded_dispatcher) {
+    base::span<const NotificationDispatcherMac* const> excluded_dispatchers) {
   std::string profile_id = GetProfileId(profile);
   bool incognito = profile->IsOffTheRecord();
 
   // Closing across multiple dispatchers is needed because an updated
   // notification may move between dispatchers (e.g. between banner and alert,
   // or between Chrome and a web app if a PWA is installed or uninstalled).
-  if (banner_dispatcher_.get() != excluded_dispatcher) {
+  if (!std::ranges::contains(excluded_dispatchers, banner_dispatcher_.get())) {
     banner_dispatcher_->CloseNotificationWithId(
         {notification_id, profile_id, incognito});
   }
-  if (alert_dispatcher_.get() != excluded_dispatcher) {
+  if (!std::ranges::contains(excluded_dispatchers, alert_dispatcher_.get())) {
     alert_dispatcher_->CloseNotificationWithId(
         {notification_id, profile_id, incognito});
   }

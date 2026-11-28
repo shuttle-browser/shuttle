@@ -87,6 +87,7 @@
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
+#include "third_party/blink/renderer/core/layout/layout_theme.h"
 #include "third_party/blink/renderer/core/style/computed_style_constants.h"
 #include "third_party/blink/renderer/core/style/coord_box_offset_path_operation.h"
 #include "third_party/blink/renderer/core/style/geometry_box_clip_path_operation.h"
@@ -649,7 +650,7 @@ FontVariantEmoji StyleBuilderConverter::ConvertFontVariantEmoji(
   // properties. The auto generated converter does not handle this incoming
   // value.
   if (value.IsPendingSystemFontValue()) {
-    return kNormalVariantEmoji;
+    return FontVariantEmoji::kNormal;
   }
 
   return To<CSSIdentifierValue>(value).ConvertTo<FontVariantEmoji>();
@@ -664,15 +665,15 @@ OpticalSizing StyleBuilderConverter::ConvertFontOpticalSizing(
   // properties. The auto generated converter does not handle this incoming
   // value.
   if (value.IsPendingSystemFontValue()) {
-    return kAutoOpticalSizing;
+    return OpticalSizing::kAuto;
   }
 
   CSSValueID value_id = To<CSSIdentifierValue>(value).GetValueID();
   switch (value_id) {
     case CSSValueID::kAuto:
-      return kAutoOpticalSizing;
+      return OpticalSizing::kAuto;
     case CSSValueID::kNone:
-      return kNoneOpticalSizing;
+      return OpticalSizing::kNone;
     default:
       NOTREACHED();
   }
@@ -2223,10 +2224,10 @@ Length StyleBuilderConverter::ConvertLineHeight(StyleResolverState& state,
     float computed_font_size =
         state.StyleBuilder().GetFontDescription().ComputedSize();
     if (primitive_value->IsPercentage()) {
-      return Length::Fixed(
-          (computed_font_size * ClampTo<int>(primitive_value->ComputePercentage(
-                                    AdjustedZoomConversionData(state)))) /
-          100.0);
+      return Length::Fixed(ClampTo<float>(
+          (computed_font_size * primitive_value->ComputePercentage(
+                                    AdjustedZoomConversionData(state))) /
+          100.0));
     }
     if (primitive_value->IsCalculated()) {
       Length zoomed_length =
@@ -2906,10 +2907,11 @@ StyleColor ResolveColorValueImpl(const CSSValue& value,
   }
 
   if (auto* color_mix_value = DynamicTo<cssvalue::CSSColorMixValue>(value)) {
-    const StyleColor style_color1 =
-        ResolveColorValueImpl(color_mix_value->Color1(), context);
-    const StyleColor style_color2 =
-        ResolveColorValueImpl(color_mix_value->Color2(), context);
+    const HeapVector<StyleColor, 2> style_colors(
+        color_mix_value->Items(),
+        [&context](const cssvalue::CSSColorMixItem& item) {
+          return ResolveColorValueImpl(*item.color, context);
+        });
     double alpha_multiplier;
     double mix_amount;
     color_mix_value->NormalizePercentages(mix_amount, alpha_multiplier,
@@ -2917,17 +2919,21 @@ StyleColor ResolveColorValueImpl(const CSSValue& value,
     const StyleColor::UnresolvedColorMix* unresolved_color_mix =
         MakeGarbageCollected<StyleColor::UnresolvedColorMix>(
             color_mix_value->ColorInterpolationSpace(),
-            color_mix_value->HueInterpolationMethod(), style_color1,
-            style_color2, mix_amount, alpha_multiplier);
+            color_mix_value->HueInterpolationMethod(),
+            StyleColor::UnresolvedColorMix::ItemVector(
+                style_colors,
+                [](const StyleColor& style_color) {
+                  return StyleColor::UnresolvedColorMix::Item(style_color);
+                }),
+            mix_amount, alpha_multiplier);
     // https://drafts.csswg.org/css-color-5/#resolving-mix
-    // If both parameters are resolvable at computed-value time, the color-mix
+    // If all parameters are resolvable at computed-value time, the color-mix
     // function should be resolved at computed-value time as well.
     // Otherwise we need to store an unresolved value on StyleColor.
-    if (style_color1.IsAbsoluteColor() && style_color2.IsAbsoluteColor()) {
+    if (std::ranges::all_of(style_colors, &StyleColor::IsAbsoluteColor)) {
       return StyleColor(unresolved_color_mix->Resolve(Color()));
-    } else {
-      return StyleColor(unresolved_color_mix);
     }
+    return StyleColor(unresolved_color_mix);
   }
 
   if (auto* relative_color_value =
@@ -3035,18 +3041,18 @@ StyleColor StyleBuilderConverter::ConvertStyleColor(
     const StyleResolverState& state,
     const CSSValue& value,
     bool for_visited_link) {
-  mojom::blink::ColorScheme color_scheme =
-      state.StyleBuilder().UsedColorScheme();
   auto& document = state.GetDocument();
+
+  // `accent-color` is a high-priority property, so it is applied before other
+  // properties (e.g. `color`) that may use the `AccentColor`/`AccentColorText`
+  // keywords. That means the builder already holds this element's own computed
+  // `accent-color`, which is what those keywords resolve against per spec,
+  // except within the `accent-color` property itself, where the builder still
+  // holds the inherited value and the keyword resolves to the parent's value.
   const ResolveColorValueContext context{
       .length_resolver = state.CssToLengthConversionData(),
       .text_link_colors = document.GetTextLinkColors(),
-      .theme_info = {.color_provider =
-                         document.GetColorProviderForPainting(color_scheme),
-                     .color_scheme = color_scheme,
-                     .can_expose_system_accent_color =
-                         document.IsInWebAppScope() &&
-                         document.IsInitialProfile()},
+      .theme_info = state.GetColorThemeInfo(),
       .for_visited_link = for_visited_link,
   };
   return ResolveColorValue(value, context);
@@ -3500,16 +3506,11 @@ static const CSSValue& ComputeColorValue(
     const CSSToLengthConversionData& conversion_data,
     const CSSValue& color_value,
     const Document& document,
-    mojom::blink::ColorScheme color_scheme) {
+    const ColorThemeInfo& theme_info) {
   const ResolveColorValueContext context{
       .length_resolver = conversion_data,
       .text_link_colors = document.GetTextLinkColors(),
-      .theme_info = {.color_provider =
-                         document.GetColorProviderForPainting(color_scheme),
-                     .color_scheme = color_scheme,
-                     .can_expose_system_accent_color =
-                         document.IsInWebAppScope() &&
-                         document.IsInitialProfile()},
+      .theme_info = theme_info,
       .for_visited_link = false};
   const StyleColor style_color = ResolveColorValue(color_value, context);
   return *style_color.ToCSSValue();
@@ -3591,9 +3592,14 @@ static const CSSValue& ComputeRegisteredPropertyValue(
     }
   }
 
-  mojom::blink::ColorScheme color_scheme =
-      state ? state->StyleBuilder().UsedColorScheme()
-            : mojom::blink::ColorScheme::kLight;
+  const ColorThemeInfo theme_info =
+      state
+          ? state->GetColorThemeInfo()
+          : ColorThemeInfo{
+                .color_provider = document.GetColorProviderForPainting(
+                    mojom::blink::ColorScheme::kLight),
+                .can_expose_system_accent_color =
+                    document.IsInWebAppScope() && document.IsInitialProfile()};
 
   if (auto* identifier_value = DynamicTo<CSSIdentifierValue>(value)) {
     CSSValueID value_id = identifier_value->GetValueID();
@@ -3602,7 +3608,7 @@ static const CSSValue& ComputeRegisteredPropertyValue(
     }
     if (StyleColor::IsColorKeyword(value_id)) {
       return ComputeColorValue(css_to_length_conversion_data, *identifier_value,
-                               document, color_scheme);
+                               document, theme_info);
     }
   }
 
@@ -3614,7 +3620,7 @@ static const CSSValue& ComputeRegisteredPropertyValue(
 
   if (const auto* light_dark_pair = DynamicTo<CSSLightDarkValuePair>(value)) {
     const CSSValue& selected_value =
-        color_scheme == mojom::blink::ColorScheme::kLight
+        theme_info.color_scheme == mojom::blink::ColorScheme::kLight
             ? light_dark_pair->First()
             : light_dark_pair->Second();
     return ComputeRegisteredPropertyValue(document, state,
@@ -3626,7 +3632,7 @@ static const CSSValue& ComputeRegisteredPropertyValue(
       value.IsRelativeColorValue() || value.IsContrastColorValue() ||
       value.IsUnresolvedColorValue()) {
     return ComputeColorValue(css_to_length_conversion_data, value, document,
-                             color_scheme);
+                             theme_info);
   }
   if (auto* custom_ident = DynamicTo<CSSCustomIdentValue>(value)) {
     return *custom_ident->Resolve(css_to_length_conversion_data);

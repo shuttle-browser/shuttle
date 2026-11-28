@@ -374,7 +374,7 @@ bool GpuControlList::More::Contains(const GPUInfo& gpu_info) const {
     return false;
   }
 #if BUILDFLAG(IS_WIN)
-  if (d3d11_feature_level.IsSpecified()) {
+  if (d3d11_feature_level.IsSpecified() && gpu_info.d3d11_feature_level > 0) {
     std::string feature_level_string =
         D3DFeatureLevelToNumberString(gpu_info.d3d11_feature_level);
     if (!d3d11_feature_level.Contains(feature_level_string)) {
@@ -454,6 +454,12 @@ bool GpuControlList::Conditions::Contains(OsType target_os_type,
       candidates.push_back(gpu_info.gpu);
       break;
     case kMultiGpuCategoryActive:
+      if (!gpu_info.IsActiveGpuSpecified()) {
+        candidates = gpu_info.secondary_gpus;
+        candidates.push_back(gpu_info.gpu);
+        break;
+      }
+      [[fallthrough]];
     case kMultiGpuCategoryNone:
       // If gpu category is not specified, default to the active gpu.
       if (gpu_info.gpu.active || gpu_info.secondary_gpus.empty())
@@ -463,7 +469,7 @@ bool GpuControlList::Conditions::Contains(OsType target_os_type,
           candidates.push_back(gpu);
       }
       if (candidates.empty())
-        candidates.push_back(gpu_info.gpu);
+        candidates.push_back(gpu_info.active_gpu());
   }
 
   if (vendor_id != 0 || intel_conditions) {
@@ -587,6 +593,10 @@ bool GpuControlList::Entry::AppliesToTestGroup(
 }
 
 bool GpuControlList::Conditions::NeedsMoreInfo(const GPUInfo& gpu_info) const {
+  if (multi_gpu_category == kMultiGpuCategoryActive &&
+      !gpu_info.IsActiveGpuSpecified()) {
+    return true;
+  }
   // We only check for missing info that might be collected with a gl context.
   // If certain info is missing due to some error, say, we fail to collect
   // vendor_id/device_id, then even if we launch GPU process and create a gl
@@ -616,6 +626,12 @@ bool GpuControlList::Conditions::NeedsMoreInfo(const GPUInfo& gpu_info) const {
       gpu_info.pixel_shader_version.empty()) {
     return true;
   }
+#if BUILDFLAG(IS_WIN)
+  if (more && more->d3d11_feature_level.IsSpecified() &&
+      gpu_info.d3d11_feature_level == 0) {
+    return true;
+  }
+#endif
   return false;
 }
 

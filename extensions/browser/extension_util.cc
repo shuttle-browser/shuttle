@@ -27,6 +27,7 @@
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_system.h"
 #include "extensions/browser/extensions_browser_client.h"
+#include "extensions/browser/management_policy.h"
 #include "extensions/browser/process_manager.h"
 #include "extensions/browser/process_map.h"
 #include "extensions/browser/script_injection_tracker.h"
@@ -84,7 +85,8 @@ bool ExtensionIsFromWebstore(const Extension& extension) {
 // Handles logic that only requires the ExtensionId and the BrowserContext.
 // This is safe to call even when the extension is completely unloaded.
 bool IsIncognitoEnabledForIdAndContext(const ExtensionId& extension_id,
-                                       content::BrowserContext* context) {
+                                       content::BrowserContext* context,
+                                       bool isolated_mode) {
 #if BUILDFLAG(IS_CHROMEOS)
   // An OTR Profile is used for captive portal signin to hide PII from
   // captive portals (which require HTTP redirects to function).
@@ -102,19 +104,16 @@ bool IsIncognitoEnabledForIdAndContext(const ExtensionId& extension_id,
 #endif
 
   // The ultimate fallback database check.
-  return ExtensionPrefs::Get(context)->IsIncognitoEnabled(extension_id);
+  ExtensionPrefs* extension_prefs = ExtensionPrefs::Get(context);
+  if (isolated_mode) {
+    return extension_prefs->IsIsolatedModeEnabled(extension_id);
+  }
+  return extension_prefs->IsIncognitoEnabled(extension_id);
 }
 
-}  // namespace
-
-bool CanBeIncognitoEnabled(const Extension* extension) {
-  return IncognitoInfo::IsIncognitoAllowed(extension) &&
-         (!extension->is_platform_app() ||
-          extension->location() == mojom::ManifestLocation::kComponent);
-}
-
-bool IsIncognitoEnabled(const Extension* extension,
-                        content::BrowserContext* context) {
+bool IsIncognitoEnabledImpl(const Extension* extension,
+                            content::BrowserContext* context,
+                            bool isolated_mode) {
   if (extension) {
     if (!CanBeIncognitoEnabled(extension)) {
       return false;
@@ -132,23 +131,69 @@ bool IsIncognitoEnabled(const Extension* extension,
       return true;
     }
 #endif
+    if (isolated_mode && MustRemainIsolatedModeEnabled(extension, context)) {
+      return true;
+    }
   }
 
-  return IsIncognitoEnabledForIdAndContext(extension->id(), context);
+  return IsIncognitoEnabledForIdAndContext(extension->id(), context,
+                                           isolated_mode);
 }
 
-bool IsIncognitoEnabled(const ExtensionId& extension_id,
-                        content::BrowserContext* context) {
+bool IsIncognitoEnabledImpl(const ExtensionId& extension_id,
+                            content::BrowserContext* context,
+                            bool isolated_mode) {
   ExtensionRegistry* registry = ExtensionRegistry::Get(context);
   if (registry) {
     const Extension* extension =
         registry->enabled_extensions().GetByID(extension_id);
     if (extension) {
-      return IsIncognitoEnabled(extension, context);
+      return IsIncognitoEnabledImpl(extension, context, isolated_mode);
     }
   }
 
-  return IsIncognitoEnabledForIdAndContext(extension_id, context);
+  return IsIncognitoEnabledForIdAndContext(extension_id, context,
+                                           isolated_mode);
+}
+
+}  // namespace
+
+bool CanBeIncognitoEnabled(const Extension* extension) {
+  return IncognitoInfo::IsIncognitoAllowed(extension) &&
+         (!extension->is_platform_app() ||
+          extension->location() == mojom::ManifestLocation::kComponent);
+}
+
+bool IsIncognitoEnabled(const Extension* extension,
+                        content::BrowserContext* context) {
+  return IsIncognitoEnabledImpl(
+      extension, context,
+      /*isolated_mode=*/
+      ExtensionsBrowserClient::Get()->IsolatedModeReplacesIncognito(context));
+}
+
+bool IsIncognitoEnabled(const ExtensionId& extension_id,
+                        content::BrowserContext* context) {
+  return IsIncognitoEnabledImpl(
+      extension_id, context,
+      /*isolated_mode=*/
+      ExtensionsBrowserClient::Get()->IsolatedModeReplacesIncognito(context));
+}
+
+bool IsIncognitoEnabledForSync(const ExtensionId& extension_id,
+                               content::BrowserContext* context) {
+  return IsIncognitoEnabledImpl(extension_id, context, /*isolated_mode=*/false);
+}
+
+bool MustRemainIsolatedModeEnabled(const Extension* extension,
+                                   content::BrowserContext* context) {
+  auto* extension_system = ExtensionSystem::Get(context);
+  if (!extension_system) {
+    return false;
+  }
+
+  return extension_system->management_policy()->MustRemainIsolatedModeEnabled(
+      extension);
 }
 
 bool CanCrossIncognito(const Extension* extension,

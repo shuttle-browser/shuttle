@@ -11,10 +11,14 @@
                  --profile mojoLockManager
                  --minutes 20
 
-  Optionally, use --ignore-filename-regex to provide a regular
-  expression matching all the file paths to be excluded from the report.
-  Use --filters to explicitly state all the directories or files to get
-  include in the coverage report.
+  Optionally:
+  - Use --ignore-filename-regex to provide a regular expression matching all
+    the file paths to be excluded from the report.
+  - Use --filters to explicitly state all directories and files to include in
+    the coverage report.
+  - Use --debug to run a debug build of Fuzzilli.
+  - Use --jobs to set the number of parallel jobs Fuzzilli runs. Without it,
+    Fuzzilli uses its own default.
 
   The following gn args, for use with `js_in_process_fuzzer`, are a mix
   of args required for coverage and args that improve fuzzing either by
@@ -50,6 +54,7 @@ DEFAULT_FUZZILLI_FLAGS = [
   '--storagePath=/tmp/fuzzilli_storage',
   '--overwrite',
   '--engine=hybrid',
+  '--fixedMinimizationTimeout',
 ]
 SCRIPT_DIR = Path(__file__).resolve().parent
 SRC_DIR = SCRIPT_DIR.parents[1]
@@ -161,12 +166,36 @@ def _ParseCommandArguments():
     'by the key defined in Fuzzilli\'s `profiles` Dictionary.',
   )
 
+  arg_parser.add_argument(
+    '-d',
+    '--debug',
+    action='store_true',
+    required=False,
+    help='Compile Fuzzilli as a debug build.',
+  )
+
+  arg_parser.add_argument(
+    '-j',
+    '--jobs',
+    type=int,
+    required=False,
+    help='The number of parallel jobs for Fuzzilli to run. If not provided, '
+    'Fuzzilli uses its own default.',
+  )
+
   args = arg_parser.parse_args()
   return args
 
 
 def _RunFuzzilli(
-  pg_handler, fuzzilli_dir, build_out_dir, minutes, profile, profraw_dir
+  pg_handler,
+  fuzzilli_dir,
+  build_out_dir,
+  minutes,
+  profile,
+  profraw_dir,
+  is_debug,
+  jobs=None,
 ):
   """Builds and runs Fuzzilli.
 
@@ -178,8 +207,9 @@ def _RunFuzzilli(
   os.environ["LLVM_PROFILE_FILE"] = os.path.join(
     profraw_dir, "fuzzilli.%4m%c.profraw"
   )
+  build_config = 'debug' if is_debug else 'release'
 
-  build_command = ['swift', 'build', '-c', 'release']
+  build_command = ['swift', 'build', '-c', build_config]
   try:
     subprocess.run(build_command, check=True, cwd=fuzzilli_dir)
   except (subprocess.CalledProcessError, FileNotFoundError) as e:
@@ -208,11 +238,13 @@ def _RunFuzzilli(
     print(f"The temporary file is located at: {temp_wrapper.name}")
 
     fuzzilli_executable = os.path.join(
-      fuzzilli_dir, '.build/release/FuzzilliCli'
+      fuzzilli_dir, f'.build/{build_config}/FuzzilliCli'
     )
+    jobs_args = [f'--jobs={jobs}'] if jobs is not None else []
     run_command = [
       fuzzilli_executable,
       *DEFAULT_FUZZILLI_FLAGS,
+      *jobs_args,
       f'--profile={profile}',
       temp_wrapper.name,
     ]
@@ -301,6 +333,8 @@ def Main():
       args.minutes,
       args.profile,
       profraw_path,
+      args.debug,
+      args.jobs,
     ):
       sys.exit('Error: Fuzzilli failed to build or run.')
 

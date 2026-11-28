@@ -76,7 +76,7 @@ VulkanSurfaceX11::VulkanSurfaceX11(VkInstance vk_instance,
           vk_surface,
           /*acquire_next_image_timeout_ns=*/base::Time::kNanosecondsPerSecond *
               2,
-          std::make_unique<ui::XrandrIntervalOnlyVSyncProvider>()),
+          std::make_unique<ui::XrandrIntervalOnlyVSyncProvider>(parent_window)),
       parent_window_(parent_window),
       window_(window),
       event_selector_(
@@ -102,7 +102,8 @@ void VulkanSurfaceX11::Destroy() {
 
 bool VulkanSurfaceX11::Reshape(const gfx::Size& size,
                                gfx::OverlayTransform pre_transform) {
-  DCHECK_EQ(pre_transform, gfx::OVERLAY_TRANSFORM_NONE);
+  CHECK_EQ(pre_transform, gfx::OVERLAY_TRANSFORM_NONE,
+           base::NotFatalUntil::M163);
 
   // Vulkan WSI uses a separate xcb connection, so we need to synchronize
   // ConfigureWindow call.

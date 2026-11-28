@@ -16,8 +16,6 @@ group("installer_policies") {
 # Prefer adding installer policies here.
 static_library("installer_policies_no_content_deps") {
   sources = [
-    "first_party_sets_component_installer_policy.cc",
-    "first_party_sets_component_installer_policy.h",
     "origin_trials_component_installer.cc",
     "origin_trials_component_installer.h",
     "private_verification_tokens_installer_policy.cc",

@@ -27,10 +27,6 @@ namespace blink {
 struct FrameVisualProperties;
 }  // namespace blink
 
-namespace cc {
-class RenderFrameMetadata;
-}
-
 namespace input {
 class RenderWidgetHostViewInput;
 }  // namespace input
@@ -160,8 +156,8 @@ class CONTENT_EXPORT CrossProcessFrameConnector : public FrameConnector {
   bool IsSubtreeThrottled() override;
   bool IsDisplayLocked() override;
 
-  void DidUpdateVisualProperties(
-      const cc::RenderFrameMetadata& metadata) override;
+  void DidUpdateChildLocalSurfaceId(
+      const viz::LocalSurfaceId& local_surface_id) override;
 
   void SetVisibilityForChildViews(bool visible) override;
 
@@ -179,8 +175,6 @@ class CONTENT_EXPORT CrossProcessFrameConnector : public FrameConnector {
       const blink::FrameVisualProperties& visual_properties) override;
 
   Visibility EmbedderVisibility() override;
-  void SetKeepSurfaceAlive(bool keep_alive) override;
-  bool IsKeepingAlive() const override;
 
   // ChildFrameInputHelper::Delegate implementation.
   input::RenderWidgetHostViewInput* GetParentViewInput() override;

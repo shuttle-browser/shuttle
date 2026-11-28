@@ -17,7 +17,6 @@
 #include "base/notreached.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/task/thread_pool/thread_pool_instance.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/typed_macros.h"
 #include "mojo/public/cpp/bindings/lib/default_construct_tag_internal.h"
@@ -296,26 +295,18 @@ const char* ResultInterface::MessageToMethodName_(mojo::Message& message) {
 uint32_t ResultInterface::Method_Sym::IPCStableHash() {
   // This method's address is used for identifying the mojo method name after
   // symbolization. So each IPCStableHash should have a unique address.
-  // We cannot use NO_CODE_FOLDING() here - it relies on the uniqueness of
-  // __LINE__ value, which is not unique across different mojo modules.
-  // The code below is very similar to NO_CODE_FOLDING, but it uses a unique
-  // hash instead of __LINE__.
-  static constexpr uint32_t kHash = 0x826d7762;  // IPCStableHash for golden::ResultInterface::Method
-  const uint32_t hash = kHash;
-  base::debug::Alias(&hash);
-  return hash;
+  // Returning a unique hash ensures that the function body is unique, and thus
+  // prevents identical code folding (except for the variants of the same
+  // method, e.g. blink and non-blink, which is fine).
+  return 0x826d7762;  // IPCStableHash for golden::ResultInterface::Method
 }
 uint32_t ResultInterface::SyncMethod_Sym::IPCStableHash() {
   // This method's address is used for identifying the mojo method name after
   // symbolization. So each IPCStableHash should have a unique address.
-  // We cannot use NO_CODE_FOLDING() here - it relies on the uniqueness of
-  // __LINE__ value, which is not unique across different mojo modules.
-  // The code below is very similar to NO_CODE_FOLDING, but it uses a unique
-  // hash instead of __LINE__.
-  static constexpr uint32_t kHash = 0x42fd29bb;  // IPCStableHash for golden::ResultInterface::SyncMethod
-  const uint32_t hash = kHash;
-  base::debug::Alias(&hash);
-  return hash;
+  // Returning a unique hash ensures that the function body is unique, and thus
+  // prevents identical code folding (except for the variants of the same
+  // method, e.g. blink and non-blink, which is fine).
+  return 0x42fd29bb;  // IPCStableHash for golden::ResultInterface::SyncMethod
 }
 # endif // !BUILDFLAG(IS_FUCHSIA)
 bool ResultInterface::SyncMethod(bool a,
@@ -325,7 +316,7 @@ base::expected<
   NOTREACHED();
 }
 
-class ResultInterface_Method_ForwardToCallback
+class ResultInterface_Method_ForwardToCallback final
     : public mojo::MessageReceiver {
  public:
   ResultInterface_Method_ForwardToCallback(
@@ -340,7 +331,7 @@ class ResultInterface_Method_ForwardToCallback
  private:
   ResultInterface::MethodCallback callback_;
 };
-class ResultInterface_SyncMethod_HandleSyncResponse
+class ResultInterface_SyncMethod_HandleSyncResponse final
     : public mojo::MessageReceiver {
  public:
   ResultInterface_SyncMethod_HandleSyncResponse(
@@ -362,7 +353,7 @@ class ResultInterface_SyncMethod_HandleSyncResponse
   bool,
   ResultTestErrorPtr>* out_result_;};
 
-class ResultInterface_SyncMethod_ForwardToCallback
+class ResultInterface_SyncMethod_ForwardToCallback final
     : public mojo::MessageReceiver {
  public:
   ResultInterface_SyncMethod_ForwardToCallback(
@@ -408,7 +399,7 @@ void ResultInterfaceProxy::Method(
 
   const size_t estimated_payload_size =
     0;
-  mojo::Message message(
+  STACK_UNINITIALIZED mojo::Message message(
       std::to_underlying(messages::ResultInterface::kMethod), kFlags, estimated_payload_size);
   mojo::internal::MessageFragment<
       ::golden::internal::ResultInterface_Method_Params_Data> params(
@@ -458,7 +449,7 @@ base::expected<
 
   const size_t estimated_payload_size =
     0;
-  mojo::Message message(
+  STACK_UNINITIALIZED mojo::Message message(
       std::to_underlying(messages::ResultInterface::kSyncMethod), kFlags, estimated_payload_size);
   mojo::internal::MessageFragment<
       ::golden::internal::ResultInterface_SyncMethod_Params_Data> params(
@@ -516,7 +507,7 @@ void ResultInterfaceProxy::SyncMethod(
 
   const size_t estimated_payload_size =
     0;
-  mojo::Message message(
+  STACK_UNINITIALIZED mojo::Message message(
       std::to_underlying(messages::ResultInterface::kSyncMethod), kFlags, estimated_payload_size);
   mojo::internal::MessageFragment<
       ::golden::internal::ResultInterface_SyncMethod_Params_Data> params(
@@ -534,51 +525,21 @@ void ResultInterfaceProxy::SyncMethod(
           std::move(callback)));
   ::mojo::internal::SendMojoMessage(*receiver_, message, std::move(responder));
 }
-class ResultInterface_Method_ProxyToResponder : public ::mojo::internal::ProxyToResponder {
+class ResultInterface_Method_ProxyToResponder {
  public:
   static ResultInterface::MethodCallback CreateCallback(
       ::mojo::Message& message,
       std::unique_ptr<mojo::internal::ResponderThunk>&& responder) {
-    std::unique_ptr<ResultInterface_Method_ProxyToResponder> proxy(
-        new ResultInterface_Method_ProxyToResponder(
-            message, std::move(responder)));
-    return base::BindOnce(&Transform)
-      .Then(base::BindOnce(&ResultInterface_Method_ProxyToResponder::Run,
-                          std::move(proxy)));
-  }
-
-  static ResultInterface_Method_ResponseParam_ResultPtr Transform(base::expected<
-  bool,
-  ResultTestErrorPtr> in) {
-    return in.has_value() ? ::golden::ResultInterface_Method_ResponseParam_Result::NewSuccess(std::move(in.value())) :
-                            ::golden::ResultInterface_Method_ResponseParam_Result::NewFailure(std::move(in.error()));
-  }
-
-
-
-  ~ResultInterface_Method_ProxyToResponder() {
+    return ::mojo::internal::ProxyToResponder::CreateCallback(
+        &Run, message, std::move(responder)
 #if DCHECK_IS_ON()
-    if (responder_) {
-      // If we're being destroyed without being run, we want to ensure the
-      // binding endpoint has been closed. This checks for that asynchronously.
-      // We pass a bound generated callback to handle the response so that any
-      // resulting DCHECK stack will have useful interface type information.
-      // Instantiate a ScopedFizzleBlockShutdownTasks to allow this request to
-      // fizzle if this happens after shutdown and the endpoint is bound to a
-      // BLOCK_SHUTDOWN sequence.
-      base::ThreadPoolInstance::ScopedFizzleBlockShutdownTasks fizzler;
-      responder_->IsConnectedAsync(base::BindOnce(&OnIsConnectedComplete));
-    }
+        ,
+        &OnIsConnectedComplete
 #endif
+    );
   }
 
  private:
-  ResultInterface_Method_ProxyToResponder(
-      ::mojo::Message& message,
-      std::unique_ptr<mojo::internal::ResponderThunk>&& responder)
-      : ::mojo::internal::ProxyToResponder(message, std::move(responder)) {
-  }
-
 #if DCHECK_IS_ON()
   static void OnIsConnectedComplete(bool connected) {
     DCHECK(!connected)
@@ -588,9 +549,11 @@ class ResultInterface_Method_ProxyToResponder : public ::mojo::internal::ProxyTo
         << "to an open interface pipe.";
   }
 #endif
-
-  void Run(
-      ResultInterface_Method_ResponseParam_ResultPtr in_result);
+  static void Run(
+      ::mojo::internal::ProxyToResponder* proxy,
+      base::expected<
+  bool,
+  ResultTestErrorPtr> in_expected_result);
 };
 
 bool ResultInterface_Method_ForwardToCallback::Accept(
@@ -610,10 +573,8 @@ bool ResultInterface_Method_ForwardToCallback::Accept(
   if (success && !input_data_view.ReadResult(&p_result))
     success = false;
   if (!success) {
-    ReportValidationErrorForMessage(
-        message,
-        mojo::internal::VALIDATION_ERROR_DESERIALIZATION_FAILED,
-        ResultInterface::Name_, 0, true);
+    mojo::internal::ReportDeserializationErrorForMessage(
+        message, ResultInterface::Name_, 0, true);
     return false;
   }
   if (!callback_.is_null()) {
@@ -625,9 +586,15 @@ bool ResultInterface_Method_ForwardToCallback::Accept(
   }
   return true;
 }
-
 void ResultInterface_Method_ProxyToResponder::Run(
-    ResultInterface_Method_ResponseParam_ResultPtr in_result) {
+    ::mojo::internal::ProxyToResponder* proxy,
+    base::expected<
+  bool,
+  ResultTestErrorPtr> in_expected_result) {
+  auto in_result =
+      in_expected_result.has_value()
+          ? ::golden::ResultInterface_Method_ResponseParam_Result::NewSuccess(std::move(in_expected_result.value()))
+          : ::golden::ResultInterface_Method_ResponseParam_Result::NewFailure(std::move(in_expected_result.error()));
 #if BUILDFLAG(MOJO_TRACE_ENABLED)
   TRACE_EVENT1(
     "mojom", "Send reply golden::ResultInterface::Method", "async_response_parameters",
@@ -639,22 +606,17 @@ void ResultInterface_Method_ProxyToResponder::Run(
    });
 #endif
 
-  const uint32_t kFlags = mojo::Message::kFlagIsResponse |
-      ((is_sync_) ? mojo::Message::kFlagIsSync : 0) |
-      ((true) ? 0 : mojo::Message::kFlagNoInterrupt) |
-      ((false) ? mojo::Message::kFlagIsUrgent : 0);
-
   const size_t estimated_payload_size =
     0;
-  mojo::Message message(
-      std::to_underlying(messages::ResultInterface::kMethod), kFlags, estimated_payload_size);
+  STACK_UNINITIALIZED mojo::Message message(
+      std::to_underlying(messages::ResultInterface::kMethod), proxy->response_flags(), estimated_payload_size);
   mojo::internal::MessageFragment<
       ::golden::internal::ResultInterface_Method_ResponseParams_Data> params(
           message);
   params.Allocate();
   mojo::internal::MessageFragment<decltype(params->result)>
       result_fragment(params.message());
-  result_fragment.Claim(&params->result);
+  result_fragment.ClaimOffset(params, 8);
   
   mojo::internal::Serialize<::golden::ResultInterface_Method_ResponseParam_ResultDataView>(
     in_result,
@@ -673,62 +635,23 @@ void ResultInterface_Method_ProxyToResponder::Run(
   message.set_method_name("Method");
 #endif
 
-  message.set_request_id(request_id_);
-  message.set_trace_nonce(trace_nonce_);
-  ::mojo::internal::SendMojoMessage(*responder_, message);
-  // SendMojoMessage() fails silently if the responder connection is closed,
-  // or if the message is malformed.
-  //
-  // TODO(darin): If Accept() returns false due to a malformed message, that
-  // may be good reason to close the connection. However, we don't have a
-  // way to do that from here. We should add a way.
-  responder_ = nullptr;
+  proxy->SendResponse(message);
 }
-class ResultInterface_SyncMethod_ProxyToResponder : public ::mojo::internal::ProxyToResponder {
+class ResultInterface_SyncMethod_ProxyToResponder {
  public:
   static ResultInterface::SyncMethodCallback CreateCallback(
       ::mojo::Message& message,
       std::unique_ptr<mojo::internal::ResponderThunk>&& responder) {
-    std::unique_ptr<ResultInterface_SyncMethod_ProxyToResponder> proxy(
-        new ResultInterface_SyncMethod_ProxyToResponder(
-            message, std::move(responder)));
-    return base::BindOnce(&Transform)
-      .Then(base::BindOnce(&ResultInterface_SyncMethod_ProxyToResponder::Run,
-                          std::move(proxy)));
-  }
-
-  static ResultInterface_SyncMethod_ResponseParam_ResultPtr Transform(base::expected<
-  bool,
-  ResultTestErrorPtr> in) {
-    return in.has_value() ? ::golden::ResultInterface_SyncMethod_ResponseParam_Result::NewSuccess(std::move(in.value())) :
-                            ::golden::ResultInterface_SyncMethod_ResponseParam_Result::NewFailure(std::move(in.error()));
-  }
-
-
-
-  ~ResultInterface_SyncMethod_ProxyToResponder() {
+    return ::mojo::internal::ProxyToResponder::CreateCallback(
+        &Run, message, std::move(responder)
 #if DCHECK_IS_ON()
-    if (responder_) {
-      // If we're being destroyed without being run, we want to ensure the
-      // binding endpoint has been closed. This checks for that asynchronously.
-      // We pass a bound generated callback to handle the response so that any
-      // resulting DCHECK stack will have useful interface type information.
-      // Instantiate a ScopedFizzleBlockShutdownTasks to allow this request to
-      // fizzle if this happens after shutdown and the endpoint is bound to a
-      // BLOCK_SHUTDOWN sequence.
-      base::ThreadPoolInstance::ScopedFizzleBlockShutdownTasks fizzler;
-      responder_->IsConnectedAsync(base::BindOnce(&OnIsConnectedComplete));
-    }
+        ,
+        &OnIsConnectedComplete
 #endif
+    );
   }
 
  private:
-  ResultInterface_SyncMethod_ProxyToResponder(
-      ::mojo::Message& message,
-      std::unique_ptr<mojo::internal::ResponderThunk>&& responder)
-      : ::mojo::internal::ProxyToResponder(message, std::move(responder)) {
-  }
-
 #if DCHECK_IS_ON()
   static void OnIsConnectedComplete(bool connected) {
     DCHECK(!connected)
@@ -738,9 +661,11 @@ class ResultInterface_SyncMethod_ProxyToResponder : public ::mojo::internal::Pro
         << "to an open interface pipe.";
   }
 #endif
-
-  void Run(
-      ResultInterface_SyncMethod_ResponseParam_ResultPtr in_result);
+  static void Run(
+      ::mojo::internal::ProxyToResponder* proxy,
+      base::expected<
+  bool,
+  ResultTestErrorPtr> in_expected_result);
 };
 
 bool ResultInterface_SyncMethod_ForwardToCallback::Accept(
@@ -760,10 +685,8 @@ bool ResultInterface_SyncMethod_ForwardToCallback::Accept(
   if (success && !input_data_view.ReadResult(&p_result))
     success = false;
   if (!success) {
-    ReportValidationErrorForMessage(
-        message,
-        mojo::internal::VALIDATION_ERROR_DESERIALIZATION_FAILED,
-        ResultInterface::Name_, 1, true);
+    mojo::internal::ReportDeserializationErrorForMessage(
+        message, ResultInterface::Name_, 1, true);
     return false;
   }
   if (!callback_.is_null()) {
@@ -775,9 +698,15 @@ bool ResultInterface_SyncMethod_ForwardToCallback::Accept(
   }
   return true;
 }
-
 void ResultInterface_SyncMethod_ProxyToResponder::Run(
-    ResultInterface_SyncMethod_ResponseParam_ResultPtr in_result) {
+    ::mojo::internal::ProxyToResponder* proxy,
+    base::expected<
+  bool,
+  ResultTestErrorPtr> in_expected_result) {
+  auto in_result =
+      in_expected_result.has_value()
+          ? ::golden::ResultInterface_SyncMethod_ResponseParam_Result::NewSuccess(std::move(in_expected_result.value()))
+          : ::golden::ResultInterface_SyncMethod_ResponseParam_Result::NewFailure(std::move(in_expected_result.error()));
 #if BUILDFLAG(MOJO_TRACE_ENABLED)
   TRACE_EVENT1(
     "mojom", "Send reply golden::ResultInterface::SyncMethod", "async_response_parameters",
@@ -789,22 +718,17 @@ void ResultInterface_SyncMethod_ProxyToResponder::Run(
    });
 #endif
 
-  const uint32_t kFlags = mojo::Message::kFlagIsResponse |
-      ((is_sync_) ? mojo::Message::kFlagIsSync : 0) |
-      ((true) ? 0 : mojo::Message::kFlagNoInterrupt) |
-      ((false) ? mojo::Message::kFlagIsUrgent : 0);
-
   const size_t estimated_payload_size =
     0;
-  mojo::Message message(
-      std::to_underlying(messages::ResultInterface::kSyncMethod), kFlags, estimated_payload_size);
+  STACK_UNINITIALIZED mojo::Message message(
+      std::to_underlying(messages::ResultInterface::kSyncMethod), proxy->response_flags(), estimated_payload_size);
   mojo::internal::MessageFragment<
       ::golden::internal::ResultInterface_SyncMethod_ResponseParams_Data> params(
           message);
   params.Allocate();
   mojo::internal::MessageFragment<decltype(params->result)>
       result_fragment(params.message());
-  result_fragment.Claim(&params->result);
+  result_fragment.ClaimOffset(params, 8);
   
   mojo::internal::Serialize<::golden::ResultInterface_SyncMethod_ResponseParam_ResultDataView>(
     in_result,
@@ -823,16 +747,7 @@ void ResultInterface_SyncMethod_ProxyToResponder::Run(
   message.set_method_name("SyncMethod");
 #endif
 
-  message.set_request_id(request_id_);
-  message.set_trace_nonce(trace_nonce_);
-  ::mojo::internal::SendMojoMessage(*responder_, message);
-  // SendMojoMessage() fails silently if the responder connection is closed,
-  // or if the message is malformed.
-  //
-  // TODO(darin): If Accept() returns false due to a malformed message, that
-  // may be good reason to close the connection. However, we don't have a
-  // way to do that from here. We should add a way.
-  responder_ = nullptr;
+  proxy->SendResponse(message);
 }
 bool ResultInterface_SyncMethod_HandleSyncResponse::Accept(
     mojo::Message* message) {
@@ -850,10 +765,8 @@ bool ResultInterface_SyncMethod_HandleSyncResponse::Accept(
   if (success && !input_data_view.ReadResult(&p_result))
     success = false;
   if (!success) {
-    ReportValidationErrorForMessage(
-        message,
-        mojo::internal::VALIDATION_ERROR_DESERIALIZATION_FAILED,
-        ResultInterface::Name_, 1, true);
+    mojo::internal::ReportDeserializationErrorForMessage(
+        message, ResultInterface::Name_, 1, true);
     return false;
   }if (p_result->is_success()) {
       *out_result_ = base::ok(std::move(p_result->get_success()));
@@ -903,10 +816,8 @@ bool ResultInterfaceStubDispatch::AcceptWithResponder(
       if (success)
         p_a = input_data_view.a();
       if (!success) {
-        ReportValidationErrorForMessage(
-            message,
-            mojo::internal::VALIDATION_ERROR_DESERIALIZATION_FAILED,
-            ResultInterface::Name_, 0, false);
+        mojo::internal::ReportDeserializationErrorForMessage(
+            message, ResultInterface::Name_, 0, false);
         return false;
       }
       auto callback =
@@ -933,10 +844,8 @@ bool ResultInterfaceStubDispatch::AcceptWithResponder(
       if (success)
         p_a = input_data_view.a();
       if (!success) {
-        ReportValidationErrorForMessage(
-            message,
-            mojo::internal::VALIDATION_ERROR_DESERIALIZATION_FAILED,
-            ResultInterface::Name_, 1, false);
+        mojo::internal::ReportDeserializationErrorForMessage(
+            message, ResultInterface::Name_, 1, false);
         return false;
       }
       auto callback =
@@ -1018,15 +927,16 @@ bool StructTraits<::golden::ResultTestError::DataView, ::golden::ResultTestError
 }
 
 // static
-bool UnionTraits<::golden::ResultInterface_Method_ResponseParam_Result::DataView, ::golden::ResultInterface_Method_ResponseParam_ResultPtr>::Read(
+NOINLINE bool UnionTraits<::golden::ResultInterface_Method_ResponseParam_Result::DataView, ::golden::ResultInterface_Method_ResponseParam_ResultPtr>::Read(
     ::golden::ResultInterface_Method_ResponseParam_Result::DataView input,
     ::golden::ResultInterface_Method_ResponseParam_ResultPtr* output) {
   using UnionType = ::golden::ResultInterface_Method_ResponseParam_Result;
   using Tag = UnionType::Tag;
 
+  ::golden::ResultInterface_Method_ResponseParam_ResultPtr result;
   switch (input.tag()) {
     case Tag::kSuccess: {
-      *output = UnionType::NewSuccess(input.success());
+      result = UnionType::NewSuccess(input.success());
       break;
     }
     case Tag::kFailure: {
@@ -1034,7 +944,7 @@ bool UnionTraits<::golden::ResultInterface_Method_ResponseParam_Result::DataView
       if (!input.ReadFailure(&result_failure))
         return false;
 
-      *output = UnionType::NewFailure(
+      result = UnionType::NewFailure(
           std::move(result_failure));
       break;
     }
@@ -1042,19 +952,21 @@ bool UnionTraits<::golden::ResultInterface_Method_ResponseParam_Result::DataView
 
       return false;
   }
+  *output = std::move(result);
   return true;
 }
 
 // static
-bool UnionTraits<::golden::ResultInterface_SyncMethod_ResponseParam_Result::DataView, ::golden::ResultInterface_SyncMethod_ResponseParam_ResultPtr>::Read(
+NOINLINE bool UnionTraits<::golden::ResultInterface_SyncMethod_ResponseParam_Result::DataView, ::golden::ResultInterface_SyncMethod_ResponseParam_ResultPtr>::Read(
     ::golden::ResultInterface_SyncMethod_ResponseParam_Result::DataView input,
     ::golden::ResultInterface_SyncMethod_ResponseParam_ResultPtr* output) {
   using UnionType = ::golden::ResultInterface_SyncMethod_ResponseParam_Result;
   using Tag = UnionType::Tag;
 
+  ::golden::ResultInterface_SyncMethod_ResponseParam_ResultPtr result;
   switch (input.tag()) {
     case Tag::kSuccess: {
-      *output = UnionType::NewSuccess(input.success());
+      result = UnionType::NewSuccess(input.success());
       break;
     }
     case Tag::kFailure: {
@@ -1062,7 +974,7 @@ bool UnionTraits<::golden::ResultInterface_SyncMethod_ResponseParam_Result::Data
       if (!input.ReadFailure(&result_failure))
         return false;
 
-      *output = UnionType::NewFailure(
+      result = UnionType::NewFailure(
           std::move(result_failure));
       break;
     }
@@ -1070,6 +982,7 @@ bool UnionTraits<::golden::ResultInterface_SyncMethod_ResponseParam_Result::Data
 
       return false;
   }
+  *output = std::move(result);
   return true;
 }
 

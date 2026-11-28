@@ -9,6 +9,7 @@ import './searched_label.js';
 import './shared_icons.html.js';
 import '/strings.m.js';
 import 'chrome://resources/cr_elements/cr_checkbox/cr_checkbox.js';
+import 'chrome://resources/cr_elements/cr_collapse/cr_collapse.js';
 import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
 import 'chrome://resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import 'chrome://resources/cr_elements/icons.html.js';
@@ -76,6 +77,16 @@ export class HistoryItemElement extends HistoryItemElementBase {
         reflect: true,
       },
 
+      isCardCollapsed: {
+        type: Boolean,
+        reflect: true,
+      },
+
+      isCollapsibleDayCardsEnabled_: {
+        type: Boolean,
+        reflect: true,
+      },
+
       selectionNotAllowed_: {type: Boolean},
 
       hasTimeGap: {type: Boolean},
@@ -92,6 +103,9 @@ export class HistoryItemElement extends HistoryItemElementBase {
   private isShiftKeyDown_: boolean = false;
   protected accessor selectionNotAllowed_: boolean =
       !loadTimeData.getBoolean('allowDeletingHistory');
+  protected accessor isCollapsibleDayCardsEnabled_: boolean =
+      loadTimeData.valueExists('isBrowsingHistoryCollapsibleDayCardsEnabled') &&
+      loadTimeData.getBoolean('isBrowsingHistoryCollapsibleDayCardsEnabled');
   private eventTracker_: EventTracker = new EventTracker();
   accessor item: HistoryEntry|undefined;
   accessor hasTimeGap: boolean = false;
@@ -99,6 +113,7 @@ export class HistoryItemElement extends HistoryItemElementBase {
   accessor searchTerm: string = '';
   accessor isCardStart: boolean = false;
   accessor isCardEnd: boolean = false;
+  accessor isCardCollapsed: boolean = false;
   accessor numberOfItems: number = 0;
   accessor selected: boolean = false;
 
@@ -238,6 +253,26 @@ export class HistoryItemElement extends HistoryItemElementBase {
     return !!this.item?.isActorVisit;
   }
 
+  protected onCardHeadingClick_(e: Event) {
+    if (!this.isCollapsibleDayCardsEnabled_) {
+      return;
+    }
+    e.stopPropagation();
+    this.fire('toggle-card-collapse', {
+      index: this.index,
+    });
+  }
+
+  protected getCardCollapseIcon_(): string {
+    return this.isCardCollapsed ? 'cr:keyboard-arrow-down' :
+                                  'cr:keyboard-arrow-up';
+  }
+
+  protected getCardCollapseTitle_(): string {
+    return loadTimeData.getString(
+        this.isCardCollapsed ? 'expandSessionButton' :
+                               'collapseSessionButton');
+  }
   /**
    * Remove bookmark of current item when bookmark-star is clicked.
    */

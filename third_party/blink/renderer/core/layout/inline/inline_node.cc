@@ -1585,8 +1585,8 @@ void InlineNode::ShapeText(InlineItemsData* data,
       DCHECK_EQ(font.GetFontDescription().Orientation(),
                 FontOrientation::kHorizontal);
       LayoutTextCombine::AssertStyleIsValid(start_style);
-      DCHECK(!override_font ||
-             font.GetFontDescription().WidthVariant() != kRegularWidth);
+      DCHECK(!override_font || font.GetFontDescription().WidthVariant() !=
+                                   FontWidthVariant::kRegular);
     }
 #endif
     shaper.SetOptions({
@@ -1793,7 +1793,7 @@ void InlineNode::ShapeTextForFirstLineIfNeeded(InlineNodeData* data) const {
 
   // Check if :first-line rules make any differences in the style.
   const ComputedStyle& block_style = layout_object->Style();
-  const ComputedStyle& first_line_style = layout_object->FirstLineStyleRef();
+  const ComputedStyle& first_line_style = layout_object->FirstLineStyle();
   if (block_style == first_line_style)
     return;
 
@@ -1978,8 +1978,8 @@ static LayoutUnit ComputeContentSize(InlineNode node,
   LayoutUnit result;
   LineBreaker line_breaker(
       node, mode, space, line_opportunity, empty_leading_floats,
-      /* break_token */ nullptr,
-      /* column_spanner_path */ nullptr, &empty_exclusion_space);
+      /*InlineBreakToken=*/nullptr, /*ColumnSpannerPath=*/nullptr,
+      /*FragmentedOofContainer=*/nullptr, &empty_exclusion_space);
   if (mode != LineBreakerMode::kContent) {
     line_breaker.SetIntrinsicSizeOutputs(max_size_cache,
                                          depends_on_block_constraints_out);
@@ -2421,7 +2421,8 @@ void InlineNode::AdjustFontForTextCombineUprightAll() const {
 
   // Try compressed fonts.
   static const std::array<FontWidthVariant, 3> kWidthVariants = {
-      kHalfWidth, kThirdWidth, kQuarterWidth};
+      FontWidthVariant::kHalf, FontWidthVariant::kThird,
+      FontWidthVariant::kQuarter};
   for (const auto width_variant : kWidthVariants) {
     description.SetWidthVariant(width_variant);
     Font* compressed_font =

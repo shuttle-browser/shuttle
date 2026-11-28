@@ -127,8 +127,9 @@ bool KeyboardLockController::IsKeyboardLockActive() const {
 
 void KeyboardLockController::RequestKeyboardLock(WebContents* web_contents,
                                                  bool esc_key_locked) {
-  CHECK(!exclusive_access_tab() || exclusive_access_tab() == web_contents,
-        base::NotFatalUntil::M162);
+  // TODO(crbug.com/579722464): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(!exclusive_access_tab() || exclusive_access_tab() == web_contents);
   if (!base::FeatureList::IsEnabled(
           permissions::features::kKeyboardLockPrompt)) {
     LockKeyboard(web_contents->GetWeakPtr(), esc_key_locked);
@@ -139,7 +140,7 @@ void KeyboardLockController::RequestKeyboardLock(WebContents* web_contents,
       base::BindOnce(&KeyboardLockController::LockKeyboard,
                      weak_ptr_factory_.GetWeakPtr(), web_contents->GetWeakPtr(),
                      esc_key_locked),
-      base::BindOnce(&KeyboardLockController::UnlockKeyboardForWebContents,
+      base::BindOnce(&KeyboardLockController::OnKeyboardLockPermissionDenied,
                      weak_ptr_factory_.GetWeakPtr(),
                      web_contents->GetWeakPtr()),
       web_contents);
@@ -239,6 +240,18 @@ void KeyboardLockController::UnlockKeyboardForWebContents(
   SetTabWithExclusiveAccess(nullptr);
   exclusive_access_manager()->UpdateBubble(base::NullCallback());
   NotifyLockRequestResult();
+}
+
+void KeyboardLockController::OnKeyboardLockPermissionDenied(
+    base::WeakPtr<content::WebContents> web_contents) {
+  if (!web_contents) {
+    return;
+  }
+  UnlockKeyboardForWebContents(web_contents);
+  // Unlike an unlock from Esc or a fullscreen exit, a denied or dismissed
+  // prompt must not be shown again when the page re-enters fullscreen, so
+  // drop the request too. See crbug.com/379954091.
+  web_contents->DiscardKeyboardLockRequest();
 }
 
 void KeyboardLockController::HandleUserHeldEscapeDeprecated() {

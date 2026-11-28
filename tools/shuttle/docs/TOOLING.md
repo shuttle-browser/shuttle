@@ -511,6 +511,64 @@ First merge 154.0.8037.129 → 155.0.8059.80 (2026-10-14): 26,748 upstream files
   - **Builds**: Mac dev (out/Sccache, last green at .18) ~13.4k steps, ~3 h 50 min on sccache-dist at 8 jobs (remote CPUs
     8/10 busy; Blink/V8 heavy: `web_feature.mojom` 5.1k objects, `paint_op_buffer.h` 3.4k); VM mac-lto 10 min,
     linux-lto 18 min, ~$1.70; release rebuild at the merge commit (same tree) ~$0.60.
+- **159 merge (158.0.8127.45 → 159.0.8154.34, 2026-11-25, in progress; merged on the early-stable tag, respin onto
+  the 12-08 full-stable tag before release)**: 48,240 upstream files (13,485 added); 17,968 modify/delete + 1,380
+  rename/delete + 694 content conflicts (125 by script, 568 by 7 agents, ~25 min wall); `gn gen` green ~1.5 h after
+  the merge commit. Gotchas:
+  - **Upstream migrated settings pages from Polymer to Lit**: the fork-edited `.html` templates were deleted
+    upstream (UD) and came back as new `.html.ts` without the fork's removals. Port the old `.html` diff onto the
+    `.html.ts` template + `.ts` class (159: personalization_options, privacy_page, security_page, settings_menu).
+  - **Upstream renamed a component the fork edited** (`components/dom_distiller` → `components/web_distiller`,
+    `chrome/browser/dom_distiller` → `reader_mode`): rename detection carries the fork's state across, but files the
+    fork had deleted stay deleted under the new name (`COMMON_METADATA`, which DIR_METADATA mixins point at).
+  - **Upstream moved a target into a subdirectory** (`safe_browsing/content/common` → `file_type_policies/`): the
+    merge kept the old source_set (sources gone) next to the moved one and dropped unrelated typemaps; gn only says
+    "unable to load .../proto/BUILD.gn". Diff the BUILD file against upstream; if the fork only removed test targets
+    there, take upstream's file.
+  - **New upstream dirs bring their own test targets** depending on pruned test support (`//chrome/test:test_support`
+    → `proto_library("test_proto")` with no sources: "Array subscript out of range"); remove those blocks by hand
+    before prune-tests (159: browser_window_theme_observer, image_writer_private).
+  - **Remove-only manifests go stale**: `m156.txt` still removed `chrome/browser/origin_gating`, which the 157 merge
+    restored for DevTools navigation gating. Dry-run the manifests after a merge and check each hit against `main`.
+  - **`git fetch --depth=1 origin refs/tags/X:refs/tags/X` also fetches every other tag** without `--no-tags`.
+  - **Clang rolled again** (llvmorg-24-init-14453 → init-17044): new sccache-dist toolchain archive before the build.
+  - **Cheap pre-build checks that paid off** (159, before the first full build):
+    - WebUI TS-only check: `autoninja -C out/<dir> $(gn ls out/<dir> '//chrome/browser/resources/*' '//ui/webui/resources/*'
+      '//components/*' | grep ':build_ts$')` (~650 steps, no C++). It found the settings general page / settings search
+      2026 / omnibox popup holes. `build-sccache.sh` appends `chrome` to any targets you pass (full build): run raw
+      `autoninja` from the real path for partial targets.
+    - IDS sweep: `git grep -w` (BSD `\b` in `git grep -E` matches nothing), then keep only users in compiled files
+      (`gn refs out/<dir> //<file>`).
+    - i18n keys: parse `loadTimeData.get*(...)` / `this.i18n(...)` across lines (ternaries span lines), compare with string
+      literals in C++, diff against `main`.
+    - Unguarded includes of pruned headers in merge-touched sources that the Mac build compiles (source list from
+      `out/<dir>/obj/**/*.ninja`, include at `#if` depth 0, header missing): found 13 breaks the build had not reached.
+  - **Merge dropped `<part>` lines on a rename**: dom_distiller → web_distiller lost `web_distiller_resources.grdp` /
+    `web_distiller_strings.grdp` from `components_resources.grd` / `components_strings.grd` (undeclared IDR_/IDS_).
+    After touching a `.grd`, regenerate its `.grd.gritdeps` with the command in its header (no extra header lines).
+  - **Pruned-feature leftovers dominate the build rounds** (waap, isolated mode, actor, glic, guest profiles, AIM,
+    user_education, PiP window manager, reading list, sync sessions): restore `main`'s hunk where one exists, else stub.
+  - **Conflicts next to pruned lines lose upstream additions**: 159 moved `image_writer_private.webidl` into the main
+    list of `api_sources.gni` next to pruned `gcm`/`glic_private`/`instance_id`; the merge kept the removal, not the
+    addition (link error: undefined `api::image_writer_private::*`). Same in `browser_prefs.cc`: the tail of
+    `RegisterProfilePrefsForMigration` was lost while the `ClearPref` calls stayed, so startup hit `NOTREACHED` clearing an
+    unregistered pref (a green build that only smoke-all catches). Sweep: every `ClearPref(k...)` new since `main` needs a
+    `Register*Pref(k...)` on the same platforms.
+  - **Raw `autoninja` on `out/Sccache` with no sccache server running starts one without the dist config** (no
+    `SCCACHE_CONF`): compiles run locally and the next `build-sccache.sh` refuses ("no build servers"). Stop that server
+    (`sccache --stop-server`, after checking no build uses it) and rerun the script, or start the script first.
+  - **Dev builds keep DCHECKs** (non-official default): 159 hits `compositor_animations.cc:589`
+    `!any_compositor_properties_present` in the renderer (error code 6) while scrolling some pages; Blink untouched by the
+    fork, compiled out in official release builds. Not a merge regression.
+    **TODO at the next full dev rebuild (e.g. the 160 merge; Toby, 2026-11-28, deferred because it rebuilds
+    everything):** add `dcheck_is_configurable = true` to the dev args (not release). DCHECKs stay compiled in but are
+    non-fatal by default (`DcheckIsFatal` feature, disabled by default; `--enable-features=DcheckIsFatal` restores the
+    crash): a failure logs `DCHECK failed: ...` plus a dump without crash, so upstream DCHECKs like this one no longer
+    kill tabs during hand tests. Keep DCHECKs on rather than `dcheck_always_on = false`: they caught fork bugs before
+    (e.g. the `lock_impl_posix.cc` use-after-free in Gotchas). In the same change add `DCHECK failed` to smoke-all's
+    `log-fatals` pattern (`scripts/smoke-all.sh`, `G=`), or fork DCHECK failures would pass silently. If this DCHECK
+    blocks testing before then: patching that one line in `compositor_animations.cc` rebuilds one object, not everything
+    (numbered fork commit).
 
 ## Gotchas
 

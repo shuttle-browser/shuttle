@@ -35,7 +35,7 @@
 #include "services/network/public/mojom/network_context.mojom-forward.h"
 
 #if BUILDFLAG(FULL_SAFE_BROWSING)
-#include "chrome/browser/safe_browsing/phishy_interaction_tracker.h"
+#include "chrome/browser/safe_browsing/interstitials/phishy_interaction_tracker.h"
 #endif
 
 class PrefChangeRegistrar;

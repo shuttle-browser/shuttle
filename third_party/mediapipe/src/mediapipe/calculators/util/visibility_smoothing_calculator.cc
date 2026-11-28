@@ -14,7 +14,9 @@
 
 #include <memory>
 
-#include "absl/algorithm/container.h"
+#include "absl/algorithm/container.h"   // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/util/visibility_smoothing_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
@@ -210,7 +212,7 @@ absl::Status VisibilitySmoothingCalculator::Process(CalculatorContext* cc) {
        cc->Inputs().Tag(kNormalizedLandmarksTag).IsEmpty()) ||
       (cc->Inputs().HasTag(kLandmarksTag) &&
        cc->Inputs().Tag(kLandmarksTag).IsEmpty())) {
-    MP_RETURN_IF_ERROR(visibility_filter_->Reset());
+    ABSL_RETURN_IF_ERROR(visibility_filter_->Reset());
     return absl::OkStatus();
   }
 
@@ -221,8 +223,8 @@ absl::Status VisibilitySmoothingCalculator::Process(CalculatorContext* cc) {
     const auto& in_landmarks =
         cc->Inputs().Tag(kNormalizedLandmarksTag).Get<NormalizedLandmarkList>();
     auto out_landmarks = absl::make_unique<NormalizedLandmarkList>();
-    MP_RETURN_IF_ERROR(visibility_filter_->Apply(in_landmarks, timestamp,
-                                                 out_landmarks.get()));
+    ABSL_RETURN_IF_ERROR(visibility_filter_->Apply(in_landmarks, timestamp,
+                                                   out_landmarks.get()));
     cc->Outputs()
         .Tag(kNormalizedFilteredLandmarksTag)
         .Add(out_landmarks.release(), cc->InputTimestamp());
@@ -230,8 +232,8 @@ absl::Status VisibilitySmoothingCalculator::Process(CalculatorContext* cc) {
     const auto& in_landmarks =
         cc->Inputs().Tag(kLandmarksTag).Get<LandmarkList>();
     auto out_landmarks = absl::make_unique<LandmarkList>();
-    MP_RETURN_IF_ERROR(visibility_filter_->Apply(in_landmarks, timestamp,
-                                                 out_landmarks.get()));
+    ABSL_RETURN_IF_ERROR(visibility_filter_->Apply(in_landmarks, timestamp,
+                                                   out_landmarks.get()));
     cc->Outputs()
         .Tag(kFilteredLandmarksTag)
         .Add(out_landmarks.release(), cc->InputTimestamp());

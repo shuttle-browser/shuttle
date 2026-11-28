@@ -85,6 +85,7 @@
 #include "net/url_request/url_request.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_context_getter.h"
+#include "net/url_request/url_request_http_transaction_factory_override.h"
 #include "services/network/accept_ch_frame_interceptor.h"
 #include "services/network/cookie_settings.h"
 #include "services/network/devtools_durable_msg_writer.h"
@@ -174,7 +175,9 @@ bool ShouldNotifyAboutCookie(net::CookieInclusionStatus status) {
          status.HasExclusionReason(net::CookieInclusionStatus::ExclusionReason::
                                        EXCLUDE_PORT_MISMATCH) ||
          status.HasExclusionReason(net::CookieInclusionStatus::ExclusionReason::
-                                       EXCLUDE_SCHEME_MISMATCH);
+                                       EXCLUDE_SCHEME_MISMATCH) ||
+         status.HasExclusionReason(
+             net::CookieInclusionStatus::ExclusionReason::EXCLUDE_INVALID_HOST);
 }
 
 scoped_refptr<RefCountedDeviceBoundSessionAccessObserverRemote>
@@ -353,6 +356,7 @@ URLLoader::URLLoader(
       factory_params_(context.GetFactoryParams()),
       coep_reporter_(context.GetCoepReporter()),
       dip_reporter_(context.GetDipReporter()),
+      url_loader_header_client_(context.GetUrlLoaderHeaderClient()),
       request_id_(request_id),
       keepalive_request_size_(keepalive_request_size),
       keepalive_(request.keepalive),
@@ -540,6 +544,16 @@ URLLoader::URLLoader(
 
   throttling_token_ = network::ScopedThrottlingToken::MaybeCreate(
       url_request_->net_log().source().id, request.throttling_profile_id);
+
+  // Route through isolated session's delayed sockets if one exists for
+  // this request's throttling profile and URL.
+  if (auto handle = request.throttling_profile_id
+                        ? context.GetIsolatedTransactionFactory(
+                              *request.throttling_profile_id, request.url)
+                        : nullptr) {
+    net::HttpTransactionFactoryOverride::Set(url_request_.get(),
+                                             std::move(handle));
+  }
 
   if (keepalive_ && keepalive_statistics_recorder_) {
     keepalive_statistics_recorder_->OnLoadStarted(
@@ -1179,6 +1193,7 @@ void URLLoader::OnResponseStarted(net::URLRequest* url_request, int net_error) {
   ReportFlaggedResponseCookies(!delay_cookie_call);
 
   if (net_error != net::OK) {
+    MaybeNotifyHeaderClientOfFailure(net_error);
     NotifyCompleted(net_error);
     // |this| may have been deleted.
     return;
@@ -1755,6 +1770,9 @@ void URLLoader::DidRead(int num_bytes,
       CHECK(!into_slop_bucket);
       CompletePendingWrite(num_bytes == 0);
     }
+    if (num_bytes < 0) {
+      MaybeNotifyHeaderClientOfFailure(num_bytes);
+    }
     // If we are reading into the SlopBucket then notification of completion
     // will be postponed until the data has been forwarded to the mojo data
     // pipe.
@@ -1961,6 +1979,25 @@ void URLLoader::ContinueWithoutCertificate() {
 void URLLoader::CancelRequest() {
   client_cert_responder_receiver_.reset();
   url_request_->CancelWithError(net::ERR_SSL_CLIENT_AUTH_CERT_NEEDED);
+}
+
+void URLLoader::MaybeNotifyHeaderClientOfFailure(int net_error) {
+  DCHECK_LT(net_error, 0);
+  if (!url_loader_header_client_ ||
+      (options_ & mojom::kURLLoadOptionAsCorsPreflight)) {
+    return;
+  }
+  net::IPEndPoint remote_endpoint;
+  if (!url_request_->GetTransactionRemoteEndpoint(&remote_endpoint)) {
+    net::ConnectionAttempts attempts = url_request_->GetConnectionAttempts();
+    if (!attempts.empty() && attempts.back().result == net_error) {
+      remote_endpoint = attempts.back().endpoint;
+    }
+  }
+  if (!remote_endpoint.address().empty()) {
+    url_loader_header_client_->OnLoaderFailedWithRemoteEndpoint(
+        request_id_, remote_endpoint);
+  }
 }
 
 void URLLoader::NotifyCompleted(int error_code) {

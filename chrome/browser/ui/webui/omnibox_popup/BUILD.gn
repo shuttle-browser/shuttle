@@ -43,8 +43,10 @@ if (!is_android) {
       "//components/search_engines",
       "//content/public/browser",
       "//ui/base",
+      "//ui/base/ime:text_input_types",
       "//ui/gfx/geometry",
       "//ui/native_theme",
+      "//ui/views",
     ]
     allow_circular_includes_from = [
       # searchbox files include omnibox_popup headers and vice versa.

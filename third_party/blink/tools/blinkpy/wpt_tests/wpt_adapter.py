@@ -24,6 +24,7 @@ from blinkpy.w3c.local_wpt import LocalWPT
 from blinkpy.web_tests import command_line
 from blinkpy.web_tests.controllers.web_test_finder import WebTestFinder
 from blinkpy.web_tests.models.test_expectations import TestExpectations
+from blinkpy.web_tests.servers import server_base
 from blinkpy.wpt_tests import product
 from blinkpy.wpt_tests.logging import (
     GroupingFormatter,
@@ -41,6 +42,12 @@ from wptrunner import wptcommandline, wptlogging  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('run_wpt_tests')
+
+
+class _PortSetupError(Exception):
+    def __init__(self, exit_code):
+        super().__init__(f'Port setup failed with exit status {exit_code}')
+        self.exit_code = exit_code
 
 
 class WPTAdapter:
@@ -70,7 +77,10 @@ class WPTAdapter:
             repeat_each=self.options.repeat_each,
             processes=product.processes,
         )
-        self._expectations = TestExpectations(self.port)
+
+    @functools.cached_property
+    def _expectations(self):
+        return TestExpectations(self.port)
 
     @classmethod
     def from_args(
@@ -531,17 +541,48 @@ class WPTAdapter:
                 )
 
             stack.enter_context(self.process_and_upload_results(runner_options))
-            self.port.setup_test_run()  # Start Xvfb, if necessary.
             stack.callback(self.port.clean_up_test_run)
+            exit_code = self.port.setup_test_run()
+            if exit_code:
+                raise _PortSetupError(exit_code)
             yield runner_options
 
     def run_tests(self) -> int:
+        if self.options.namespace and (
+            self.options.use_upstream_wpt or self.options.stable
+        ):
+            logger.error(
+                '--namespace cannot be used with --use-upstream-wpt or '
+                '--stable because they require external network access.'
+            )
+            return exit_codes.UNEXPECTED_ERROR_EXIT_STATUS
+        try:
+            with server_base.acquire_run_lock(
+                self.port, use_namespace=self.options.namespace
+            ):
+                return self._run_tests()
+        except server_base.RunLockError as error:
+            logger.error('%s', error)
+            return exit_codes.UNEXPECTED_ERROR_EXIT_STATUS
+
+    def _run_tests(self) -> int:
+        if self.product.name == 'chrome_ios':
+            # Xcode needs to be installed early so that `git clone` works.
+            _maybe_install_xcode(self.options.xcode_build_version)
+        if self.options.use_upstream_wpt:
+            self.checkout_upstream_wpt()
+        self.set_up_derived_options()
+        self.create_config_files()
+
         exit_code = 0
         show_results = self.port.get_option('show_results')
         try:
             with self.test_env() as runner_options:
                 run = _load_entry_point(runner_options.deps_path)
                 exit_code = 1 if run(**vars(runner_options)) else 0
+        except _PortSetupError as error:
+            logger.error('%s', error)
+            return error.exit_code
         except KeyboardInterrupt:
             logger.critical('Harness exited after signal interrupt')
             exit_code = exit_codes.INTERRUPTED_EXIT_STATUS
@@ -784,16 +825,9 @@ def main(argv) -> int:
     exit_code = exit_codes.UNEXPECTED_ERROR_EXIT_STATUS
     try:
         adapter = WPTAdapter.from_args(host, argv)
-        if adapter.product.name == 'chrome_ios':
-            # Xcode needs to be installed early so that `git clone` works.
-            _maybe_install_xcode(adapter.options.xcode_build_version)
-        if adapter.options.use_upstream_wpt:
-            adapter.checkout_upstream_wpt()
-        adapter.set_up_derived_options()
-        adapter.create_config_files()
         exit_code = adapter.run_tests()
     except KeyboardInterrupt:
-        # This clause catches interrupts outside `WPTAdapter.run_tests()`.
+        # This clause catches interrupts outside `WPTAdapter.test_env()`.
         exit_code = exit_codes.INTERRUPTED_EXIT_STATUS
     except Exception as error:
         logger.exception(error)

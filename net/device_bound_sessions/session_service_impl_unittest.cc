@@ -2030,12 +2030,20 @@ TEST_F(SessionServiceImplTest, SessionSigningQuota) {
   }
 
   // The first 6 signings don't exceed the signing quota.
+  base::HistogramTester histogram_tester;
   for (size_t i = 0; i < 6; i++) {
-    EXPECT_FALSE(service().SigningQuotaExceeded(session_key.site));
-    service().AddSigningOccurrence(session_key.site);
+    EXPECT_TRUE(service().TryConsumeSigningQuota(
+        session_key.site, SigningQuotaOperation::kRefresh));
   }
   // The next signing exceeds the signing quota.
-  EXPECT_TRUE(service().SigningQuotaExceeded(session_key.site));
+  EXPECT_FALSE(service().TryConsumeSigningQuota(
+      session_key.site, SigningQuotaOperation::kRefresh));
+  EXPECT_THAT(
+      histogram_tester.GetAllSamples(
+          "Net.DeviceBoundSessions.SigningQuotaUnitsNeeded.Refresh"),
+      BucketsAre(base::Bucket(1, 1), base::Bucket(2, 1), base::Bucket(3, 1),
+                 base::Bucket(4, 1), base::Bucket(5, 1), base::Bucket(6, 1),
+                 base::Bucket(7, 1)));
 
   // This affects other sessions on the same site, but not other sessions on a
   // different site.
@@ -2043,12 +2051,132 @@ TEST_F(SessionServiceImplTest, SessionSigningQuota) {
                           Session::Id(kSessionId2)};
   SessionKey session_key3{SchemefulSite(GURL(kRefreshUrlString2)),
                           Session::Id(kSessionId3)};
-  EXPECT_TRUE(service().SigningQuotaExceeded(session_key2.site));
-  EXPECT_FALSE(service().SigningQuotaExceeded(session_key3.site));
+  EXPECT_FALSE(service().TryConsumeSigningQuota(
+      session_key2.site, SigningQuotaOperation::kRefresh));
+  EXPECT_TRUE(service().TryConsumeSigningQuota(
+      session_key3.site, SigningQuotaOperation::kRefresh));
 
   // After 9 minutes, the quota is restored.
   FastForwardBy(base::Minutes(9));
-  EXPECT_FALSE(service().SigningQuotaExceeded(session_key.site));
+  EXPECT_TRUE(service().TryConsumeSigningQuota(
+      session_key.site, SigningQuotaOperation::kRefresh));
+
+  // Both refusals on `session_key.site` happened in the same out-of-quota
+  // episode, so only the first one is recorded.
+  histogram_tester.ExpectUniqueSample(
+      "Net.DeviceBoundSessions.SigningQuotaExceededLastResult2",
+      SessionError::kSuccess, 1);
+}
+
+TEST_F(SessionServiceImplTest, SessionSigningQuotaAttestedRegistration) {
+  const SchemefulSite site{GURL(kRefreshUrlString)};
+  base::HistogramTester histogram_tester;
+
+  // Each attested registration costs 3 units out of the 6-unit quota.
+  EXPECT_TRUE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+  EXPECT_TRUE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+  EXPECT_FALSE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+  EXPECT_FALSE(
+      service().TryConsumeSigningQuota(site, SigningQuotaOperation::kRefresh));
+
+  // The refused refresh is in the same out-of-quota episode as the refused
+  // attested registration, so it isn't recorded.
+  EXPECT_THAT(
+      histogram_tester.GetAllSamples(
+          "Net.DeviceBoundSessions.SigningQuotaUnitsNeeded."
+          "AttestedRegistration"),
+      BucketsAre(base::Bucket(3, 1), base::Bucket(6, 1), base::Bucket(9, 1)));
+  histogram_tester.ExpectTotalCount(
+      "Net.DeviceBoundSessions.SigningQuotaUnitsNeeded.Refresh", 0);
+
+  FastForwardBy(base::Minutes(9));
+  EXPECT_TRUE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+  EXPECT_TRUE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+  EXPECT_FALSE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+
+  // The earlier signings aged out, so the refusal in the new window starts a
+  // new out-of-quota episode and is recorded again.
+  EXPECT_THAT(
+      histogram_tester.GetAllSamples(
+          "Net.DeviceBoundSessions.SigningQuotaUnitsNeeded."
+          "AttestedRegistration"),
+      BucketsAre(base::Bucket(3, 2), base::Bucket(6, 2), base::Bucket(9, 2)));
+}
+
+TEST_F(SessionServiceImplTest,
+       SessionSigningQuotaEpisodeEndsWhenSigningsAgeOut) {
+  const SchemefulSite site{GURL(kRefreshUrlString)};
+  base::HistogramTester histogram_tester;
+
+  EXPECT_TRUE(
+      service().TryConsumeSigningQuota(site, SigningQuotaOperation::kRefresh));
+  EXPECT_TRUE(
+      service().TryConsumeSigningQuota(site, SigningQuotaOperation::kRefresh));
+  FastForwardBy(base::Minutes(5));
+  for (size_t i = 0; i < 4; ++i) {
+    EXPECT_TRUE(service().TryConsumeSigningQuota(
+        site, SigningQuotaOperation::kRefresh));
+  }
+  EXPECT_FALSE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+  EXPECT_FALSE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+
+  // The first two refreshes age out, freeing 2 units. That ends the episode
+  // even though the site is still out of quota for an attested registration.
+  FastForwardBy(base::Minutes(4));
+  EXPECT_FALSE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+
+  EXPECT_THAT(histogram_tester.GetAllSamples(
+                  "Net.DeviceBoundSessions.SigningQuotaUnitsNeeded."
+                  "AttestedRegistration"),
+              BucketsAre(base::Bucket(7, 1), base::Bucket(9, 1)));
+}
+
+TEST_F(SessionServiceImplTest, SessionSigningQuotaNoPartialConsumption) {
+  const SchemefulSite site{GURL(kRefreshUrlString)};
+  base::HistogramTester histogram_tester;
+
+  // Consume 4 units, leaving 2 units in the quota.
+  EXPECT_TRUE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+  EXPECT_TRUE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kRegistration));
+
+  // An attested registration (cost 3) does not fit and must not consume the
+  // remaining 2 units.
+  EXPECT_FALSE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kAttestedRegistration));
+
+  // Two cost-1 operations still succeed before the quota is exhausted.
+  EXPECT_TRUE(service().TryConsumeSigningQuota(
+      site, SigningQuotaOperation::kRegistration));
+  EXPECT_TRUE(
+      service().TryConsumeSigningQuota(site, SigningQuotaOperation::kRefresh));
+  EXPECT_FALSE(
+      service().TryConsumeSigningQuota(site, SigningQuotaOperation::kRefresh));
+
+  // Operations that fit don't end the out-of-quota episode that the refused
+  // attested registration started, so the final refused refresh isn't
+  // recorded.
+  EXPECT_THAT(histogram_tester.GetAllSamples(
+                  "Net.DeviceBoundSessions.SigningQuotaUnitsNeeded."
+                  "AttestedRegistration"),
+              BucketsAre(base::Bucket(3, 1), base::Bucket(7, 1)));
+  EXPECT_THAT(
+      histogram_tester.GetAllSamples(
+          "Net.DeviceBoundSessions.SigningQuotaUnitsNeeded.Registration"),
+      BucketsAre(base::Bucket(4, 1), base::Bucket(5, 1)));
+  EXPECT_THAT(histogram_tester.GetAllSamples(
+                  "Net.DeviceBoundSessions.SigningQuotaUnitsNeeded.Refresh"),
+              BucketsAre(base::Bucket(6, 1)));
 }
 
 class SessionServiceImplSystemTimeTest : public SessionServiceImplTest {
@@ -2068,13 +2196,15 @@ TEST_F(SessionServiceImplSystemTimeTest, PrunesFutureSignings) {
   {
     base::subtle::ScopedTimeClockOverrides time_override(
         [] { return base::Time::Max(); }, nullptr, nullptr);
-    for (size_t i = 0; i < 10; ++i) {
-      service().AddSigningOccurrence(session_key.site);
+    for (size_t i = 0; i < 6; ++i) {
+      EXPECT_TRUE(service().TryConsumeSigningQuota(
+          session_key.site, SigningQuotaOperation::kRefresh));
     }
   }
 
   // Back to present time, verify these future signings are discarded.
-  EXPECT_FALSE(service().SigningQuotaExceeded(session_key.site));
+  EXPECT_TRUE(service().TryConsumeSigningQuota(
+      session_key.site, SigningQuotaOperation::kRefresh));
 }
 
 TEST_F(SessionServiceImplTest, LatestSignedRefreshChallenges) {
@@ -2119,6 +2249,20 @@ TEST_F(SessionServiceImplNoRefreshQuotaTest, SessionRefreshQuotaDisabled) {
         future.GetCallback());
     EXPECT_EQ(future.Take(), RefreshResult::kRefreshed);
   }
+}
+
+TEST_F(SessionServiceImplNoRefreshQuotaTest, SigningQuotaDisabled) {
+  const SchemefulSite site{GURL(kRefreshUrlString)};
+  base::HistogramTester histogram_tester;
+
+  // Three attested registrations (9 units) fit because the quota is disabled.
+  for (size_t i = 0; i < 3; i++) {
+    EXPECT_TRUE(service().TryConsumeSigningQuota(
+        site, SigningQuotaOperation::kAttestedRegistration));
+  }
+  EXPECT_THAT(histogram_tester.GetTotalCountsForPrefix(
+                  "Net.DeviceBoundSessions.SigningQuotaUnitsNeeded."),
+              IsEmpty());
 }
 
 TEST_F(SessionServiceImplTest, SessionBackoff) {
@@ -2922,6 +3066,56 @@ class SessionServiceImplWithStoreTest : public TestWithTaskEnvironment {
     return service().registration_fetchers_.size();
   }
 
+  struct FederatedRegistrationSetup {
+    SessionKey provider_session_key;
+    unexportable_keys::UnexportableSigningKeyId provider_key;
+    RegistrationFetcherParam fetch_param;
+  };
+
+  // Finishes loading sessions with a provider session `kSessionId` on
+  // `kTestUrl` and generates a key for it, which is not installed on the
+  // session (using it requires a restore). Returns params to register the
+  // federated session "RelyingSession" on https://rp.com with that provider.
+  FederatedRegistrationSetup SetUpFederatedRegistration() {
+    EXPECT_CALL(store(), LoadSessions).Times(1);
+    service().LoadSessionsAsync();
+
+    std::unique_ptr<Session> session =
+        Session::CreateFromProto(CreateSessionProto(kSessionId, kUrlString))
+            .value();
+    SessionKey provider_session_key{SchemefulSite(kTestUrl), session->id()};
+    SessionStore::SessionsMap session_map;
+    session_map.insert({provider_session_key, std::move(session)});
+    FinishLoadingSessions(std::move(session_map));
+
+    base::test::TestFuture<unexportable_keys::ServiceErrorOr<
+        unexportable_keys::UnexportableSigningKeyId>>
+        key_future;
+    key_service()->GenerateSigningKeySlowlyAsync(
+        {crypto::sign::ECDSA_SHA256},
+        unexportable_keys::BackgroundTaskPriority::kBestEffort,
+        key_future.GetCallback());
+    unexportable_keys::UnexportableSigningKeyId key = key_future.Take().value();
+    std::string key_thumbprint =
+        CreateJwkThumbprint(
+            crypto::keypair::PublicKey::FromSubjectPublicKeyInfo(
+                *key_service()->GetSubjectPublicKeyInfo(key))
+                .value())
+            .value();
+
+    return FederatedRegistrationSetup{
+        .provider_session_key = std::move(provider_session_key),
+        .provider_key = key,
+        .fetch_param = RegistrationFetcherParam::CreateInstanceForTesting(
+            kTestUrl, {crypto::sign::ECDSA_SHA256}, "challenge",
+            /*authorization=*/std::nullopt,
+            ProviderRegistrationParams{
+                .provider_key = std::move(key_thumbprint),
+                .provider_url = kTestUrl,
+                .provider_session_id = Session::Id(kSessionId)}),
+    };
+  }
+
   SessionError::ErrorType OnRefreshRequestCompletionInternal(
       SessionService::OnAccessCallback on_access_callback,
       const SessionKey& session_key,
@@ -2995,6 +3189,85 @@ class SessionServiceImplWithStoreTest : public TestWithTaskEnvironment {
     service().DeferRequestForRefresh(
         dbsc_request, SessionService::DeferralParams(Session::Id(kSessionId)),
         std::move(callback));
+  }
+
+  // Loads sessions "session_1" and "session_2" for `kTestUrl`, along with
+  // `other_sessions`, then defers `request` on "session_1", whose key restore
+  // is left pending. Like `URLRequestHttpJob`, the request is re-evaluated
+  // synchronously when its deferral is unblocked, and it is deferred again on
+  // "session_2". The key restore for "session_2" fails synchronously, which
+  // deletes that session and runs `callback`. Sessions 1 and 2 are each
+  // expected to be deleted from the store once.
+  void LoadSessionsAndDeferReentrantRequest(
+      URLRequest* request,
+      SessionService::RefreshCompleteCallback callback,
+      SessionStore::SessionsMap other_sessions = {}) {
+    const SchemefulSite site(kTestUrl);
+    const SessionKey session_key_1{site, Session::Id("session_1")};
+    const SessionKey session_key_2{site, Session::Id("session_2")};
+
+    EXPECT_CALL(store(), LoadSessions).Times(1);
+    service().LoadSessionsAsync();
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Session> session_1,
+        Session::CreateFromProto(CreateSessionProto("session_1", kUrlString)));
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<Session> session_2,
+        Session::CreateFromProto(CreateSessionProto("session_2", kUrlString)));
+    SessionStore::SessionsMap session_map = std::move(other_sessions);
+    session_map.insert({session_key_1, std::move(session_1)});
+    session_map.insert({session_key_2, std::move(session_2)});
+    FinishLoadingSessions(std::move(session_map));
+
+    HttpRequestHeaders extra_headers;
+    DbscRequest dbsc_request(request);
+    std::optional<SessionService::DeferralParams> deferral =
+        service().ShouldDefer(dbsc_request, &extra_headers);
+    ASSERT_TRUE(deferral);
+    EXPECT_EQ(deferral->session_id, session_key_1.id);
+
+    // Key restore for session 1 stays pending; for session 2 it fails inline.
+    EXPECT_CALL(
+        store(),
+        RestoreSessionBindingKey(
+            session_key_1,
+            unexportable_keys::BackgroundTaskPriority::kUserBlocking, _));
+    EXPECT_CALL(
+        store(),
+        RestoreSessionBindingKey(
+            session_key_2,
+            unexportable_keys::BackgroundTaskPriority::kUserBlocking, _))
+        .WillOnce(RunOnceCallback<2>(
+            base::unexpected(unexportable_keys::ServiceError::kKeyNotFound)));
+    EXPECT_CALL(store(), DeleteSession(session_key_1)).Times(1);
+    EXPECT_CALL(store(), DeleteSession(session_key_2)).Times(1);
+
+    // Model `URLRequestHttpJob`: on unblock, record the deferral and
+    // synchronously re-evaluate the request, deferring it again on session 2.
+    service().DeferRequestForRefresh(
+        dbsc_request, *deferral,
+        base::BindLambdaForTesting(
+            [this, request, session_key_1, session_key_2,
+             callback = std::move(callback)](RefreshResult result) mutable {
+              EXPECT_EQ(result, RefreshResult::kFatalError);
+              EXPECT_EQ(service().GetSession(session_key_1), nullptr);
+              request->AddDeviceBoundSessionDeferral(session_key_1, result);
+              DbscRequest restarted_request(request);
+              HttpRequestHeaders restarted_extra_headers;
+              std::optional<SessionService::DeferralParams> next_deferral =
+                  service().ShouldDefer(restarted_request,
+                                        &restarted_extra_headers);
+              ASSERT_TRUE(next_deferral);
+              EXPECT_EQ(next_deferral->session_id, session_key_2.id);
+              service().DeferRequestForRefresh(
+                  restarted_request, *next_deferral,
+                  base::BindLambdaForTesting(
+                      [this, session_key_2, callback = std::move(callback)](
+                          RefreshResult inner_result) mutable {
+                        EXPECT_EQ(service().GetSession(session_key_2), nullptr);
+                        std::move(callback).Run(inner_result);
+                      }));
+            }));
   }
 
   void TearDown() override {
@@ -3177,6 +3450,82 @@ TEST_F(SessionServiceImplWithStoreTest,
 
   // The session should be deleted.
   EXPECT_EQ(GetSiteSessionsCount(SchemefulSite(kTestUrl)), 0u);
+}
+
+// Deleting a session unblocks its deferred requests synchronously. A restarted
+// request can then defer on another session whose key restore fails
+// synchronously, which deletes that session while DeleteAllSessions() is still
+// iterating.
+TEST_F(SessionServiceImplWithStoreTest,
+       DeleteAllSessionsUnblocksRequestTriggeringKeyRestoreFailure) {
+  net::TestDelegate delegate;
+  std::unique_ptr<URLRequest> request =
+      context()->CreateRequest(kTestUrl, IDLE, &delegate, kDummyAnnotation,
+                               net::handles::kInvalidNetworkHandle);
+  request->set_site_for_cookies(SiteForCookies::FromUrl(kTestUrl));
+  base::test::TestFuture<RefreshResult> final_refresh_future;
+  ASSERT_NO_FATAL_FAILURE(LoadSessionsAndDeferReentrantRequest(
+      request.get(), final_refresh_future.GetCallback()));
+
+  const SchemefulSite site(kTestUrl);
+  const SessionKey session_key_1{site, Session::Id("session_1")};
+  const SessionKey session_key_2{site, Session::Id("session_2")};
+  const base::Time creation_time_1 = base::Time::Now() - base::Hours(2);
+  const base::Time creation_time_2 = base::Time::Now() - base::Hours(1);
+  service().GetSession(session_key_1)->set_creation_date(creation_time_1);
+  service().GetSession(session_key_2)->set_creation_date(creation_time_2);
+
+  // Only session 1 matches the filter (`created_before_time` is inclusive).
+  base::test::TestFuture<void> delete_future;
+  service().DeleteAllSessions(DeletionReason::kClearBrowsingData,
+                              /*created_after_time=*/std::nullopt,
+                              /*created_before_time=*/creation_time_1,
+                              base::NullCallback(),
+                              delete_future.GetCallback());
+
+  EXPECT_TRUE(delete_future.Wait());
+  ASSERT_TRUE(final_refresh_future.IsReady());
+  EXPECT_EQ(final_refresh_future.Take(), RefreshResult::kFatalError);
+  EXPECT_EQ(service().GetSession(session_key_1), nullptr);
+  EXPECT_EQ(service().GetSession(session_key_2), nullptr);
+}
+
+// Deleting an expired session in GetSessionsForSite() unblocks a request that
+// synchronously re-enters the service before the deletion finishes.
+TEST_F(SessionServiceImplWithStoreTest,
+       GetSessionsForSiteExpiredSessionUnblocksRequestReentrantly) {
+  net::TestDelegate delegate;
+  std::unique_ptr<URLRequest> request =
+      context()->CreateRequest(kTestUrl, IDLE, &delegate, kDummyAnnotation,
+                               net::handles::kInvalidNetworkHandle);
+  request->set_site_for_cookies(SiteForCookies::FromUrl(kTestUrl));
+  const SchemefulSite site(kTestUrl);
+  const SessionKey session_key_1{site, Session::Id("session_1")};
+  const SessionKey session_key_2{site, Session::Id("session_2")};
+  const SessionKey session_key_3{site, Session::Id("session_3")};
+  // Also load a live session 3, which sorts after the other two sessions.
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Session> session_3,
+      Session::CreateFromProto(CreateSessionProto("session_3", kUrlString)));
+  SessionStore::SessionsMap other_sessions;
+  other_sessions.insert({session_key_3, std::move(session_3)});
+  base::test::TestFuture<RefreshResult> final_refresh_future;
+  ASSERT_NO_FATAL_FAILURE(LoadSessionsAndDeferReentrantRequest(
+      request.get(), final_refresh_future.GetCallback(),
+      std::move(other_sessions)));
+
+  Session* session_1 = service().GetSession(session_key_1);
+  ASSERT_TRUE(session_1);
+  session_1->set_expiry_date(base::Time::Now() - base::Seconds(1));
+
+  // Calls GetSessionsForSite(), which deletes the expired session 1 (and
+  // re-entrantly deletes session 2) and returns the remaining live session 3.
+  EXPECT_EQ(GetSiteSessionsCount(site), 1u);
+  ASSERT_TRUE(final_refresh_future.IsReady());
+  EXPECT_EQ(final_refresh_future.Take(), RefreshResult::kFatalError);
+  EXPECT_EQ(service().GetSession(session_key_1), nullptr);
+  EXPECT_EQ(service().GetSession(session_key_2), nullptr);
+  EXPECT_NE(service().GetSession(session_key_3), nullptr);
 }
 
 TEST_F(SessionServiceImplWithStoreTest,
@@ -3733,6 +4082,60 @@ TEST_F(SessionServiceImplWithStoreTest, RecoveryFromTransientSigningError) {
   EXPECT_EQ(future_b.Take(), RefreshResult::kRefreshed);
 }
 
+// A transient key restore error unblocks the waiting requests. A request that
+// is deferred on the same session while they are being unblocked waits for its
+// own refresh instead of failing with the first one.
+TEST_F(SessionServiceImplWithStoreTest,
+       TransientKeyRestoreErrorDoesNotFailReentrantDeferral) {
+  SessionStore::RestoreSessionBindingKeyCallback restore_key_callback_a;
+  ASSERT_NO_FATAL_FAILURE(
+      LoadSessionWithUnrestoredKey(&restore_key_callback_a));
+
+  net::TestDelegate delegate_a;
+  std::unique_ptr<URLRequest> request_a = CreateRequestWithContext(
+      context(), kTestUrl, url::Origin::Create(kTestUrl), &delegate_a);
+  DbscRequest dbsc_request_a(request_a.get());
+  net::TestDelegate delegate_b;
+  std::unique_ptr<URLRequest> request_b = CreateRequestWithContext(
+      context(), kTestUrl, url::Origin::Create(kTestUrl), &delegate_b);
+  DbscRequest dbsc_request_b(request_b.get());
+  const auto deferral = SessionService::DeferralParams(Session::Id(kSessionId));
+
+  // Request B is deferred on the same session when request A is unblocked.
+  base::test::TestFuture<RefreshResult> future_a;
+  base::test::TestFuture<RefreshResult> future_b;
+  service().DeferRequestForRefresh(
+      dbsc_request_a, deferral,
+      base::BindLambdaForTesting([this, &future_a, &dbsc_request_b, &deferral,
+                                  &future_b](RefreshResult result) {
+        future_a.SetValue(result);
+        service().DeferRequestForRefresh(dbsc_request_b, deferral,
+                                         future_b.GetCallback());
+      }));
+  ASSERT_TRUE(restore_key_callback_a);
+
+  // Request B starts a second key restore, which stays pending.
+  SessionStore::RestoreSessionBindingKeyCallback restore_key_callback_b;
+  EXPECT_CALL(store(),
+              RestoreSessionBindingKey(
+                  SessionKey(SchemefulSite(kTestUrl), Session::Id(kSessionId)),
+                  unexportable_keys::BackgroundTaskPriority::kUserBlocking, _))
+      .WillOnce(SaveArgByMove<2>(&restore_key_callback_b));
+  std::move(restore_key_callback_a)
+      .Run(base::unexpected(unexportable_keys::ServiceError::kKeyNotReady));
+  EXPECT_EQ(future_a.Take(), RefreshResult::kTransientSigningError);
+  ASSERT_FALSE(future_b.IsReady());
+  ASSERT_TRUE(restore_key_callback_b);
+
+  // Request B is unblocked when its own refresh completes.
+  auto scoped_test_fetcher = ScopedTestRegistrationFetcher::CreateWithSuccess(
+      kSessionId, kUrlString, kOrigin);
+  EXPECT_CALL(store(), SaveSession);
+  std::move(restore_key_callback_b)
+      .Run(unexportable_keys::UnexportableSigningKeyId());
+  EXPECT_EQ(future_b.Take(), RefreshResult::kRefreshed);
+}
+
 TEST_F(SessionServiceImplWithStoreTest,
        PrewarmSessionsForUrl_KeyRestorationFailure) {
   EXPECT_CALL(store(), LoadSessions).Times(1);
@@ -3808,6 +4211,55 @@ TEST_F(SessionServiceImplWithStoreTest,
 }
 
 TEST_F(SessionServiceImplWithStoreTest,
+       DeferredRequestSessionDeletedDuringKeyRestoration) {
+  EXPECT_CALL(store(), LoadSessions).Times(1);
+  service().LoadSessionsAsync();
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Session> session,
+      Session::CreateFromProto(CreateSessionProto(kSessionId, kUrlString)));
+  const SessionKey session_key{SchemefulSite(kTestUrl), session->id()};
+  SessionStore::SessionsMap session_map;
+  session_map.insert({session_key, std::move(session)});
+  FinishLoadingSessions(std::move(session_map));
+
+  net::TestDelegate delegate;
+  std::unique_ptr<URLRequest> request =
+      context()->CreateRequest(kTestUrl, IDLE, &delegate, kDummyAnnotation,
+                               net::handles::kInvalidNetworkHandle);
+  request->set_site_for_cookies(SiteForCookies::FromUrl(kTestUrl));
+  DbscRequest dbsc_request(request.get());
+  HttpRequestHeaders extra_headers;
+  std::optional<SessionService::DeferralParams> maybe_deferral =
+      service().ShouldDefer(dbsc_request, &extra_headers);
+  ASSERT_TRUE(maybe_deferral);
+
+  SessionStore::RestoreSessionBindingKeyCallback restore_key_callback;
+  EXPECT_CALL(store(),
+              RestoreSessionBindingKey(
+                  session_key,
+                  unexportable_keys::BackgroundTaskPriority::kUserBlocking, _))
+      .WillOnce(SaveArgByMove<2>(&restore_key_callback));
+  base::test::TestFuture<RefreshResult> refresh_future;
+  service().DeferRequestForRefresh(dbsc_request, *maybe_deferral,
+                                   refresh_future.GetCallback());
+  ASSERT_TRUE(restore_key_callback);
+  EXPECT_FALSE(refresh_future.IsReady());
+
+  // Deleting the session while its key is being restored unblocks the
+  // deferred request.
+  EXPECT_CALL(store(), DeleteSession(session_key)).Times(1);
+  service().DeleteSessionAndNotify(DeletionReason::kClearBrowsingData,
+                                   session_key, base::DoNothing());
+  EXPECT_EQ(refresh_future.Get(), RefreshResult::kFatalError);
+
+  // Finishing the restore afterwards runs the `kMissingCookie` refresh with no
+  // key, which must return early without crashing.
+  std::move(restore_key_callback)
+      .Run(unexportable_keys::UnexportableSigningKeyId());
+}
+
+TEST_F(SessionServiceImplWithStoreTest,
        PrewarmSessionsForUrl_SessionDeletedDuringCookieFetch) {
   SessionKey non_existent_key{SchemefulSite(kTestUrl), Session::Id("deleted")};
 
@@ -3821,66 +4273,29 @@ TEST_F(SessionServiceImplWithStoreTest,
 }
 
 TEST_F(SessionServiceImplWithStoreTest, FederatedRegistrationKeyUnrestored) {
-  // Start loading
-  EXPECT_CALL(store(), LoadSessions).Times(1);
-  service().LoadSessionsAsync();
+  auto [provider_session_key, key, fetch_param] = SetUpFederatedRegistration();
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Session> session,
-      Session::CreateFromProto(CreateSessionProto(kSessionId, kUrlString)));
-  ASSERT_TRUE(session);
-
-  SessionStore::SessionsMap session_map;
-  session_map.insert(
-      {SessionKey{SchemefulSite(kTestUrl), session->id()}, std::move(session)});
-  FinishLoadingSessions(std::move(session_map));
-
-  Session* provider_session =
-      service().GetSession({SchemefulSite(kTestUrl), Session::Id(kSessionId)});
+  Session* provider_session = service().GetSession(provider_session_key);
   ASSERT_NE(provider_session, nullptr);
 
-  // Create the provider key and the correct thumbprint, but leave it
-  // unrestored.
+  // Leave the provider key unrestored.
   provider_session->set_unexportable_key_id(
       base::unexpected(unexportable_keys::ServiceError::kKeyNotReady));
-
-  base::test::TestFuture<unexportable_keys::ServiceErrorOr<
-      unexportable_keys::UnexportableSigningKeyId>>
-      key_future;
-  key_service()->GenerateSigningKeySlowlyAsync(
-      {crypto::sign::ECDSA_SHA256},
-      unexportable_keys::BackgroundTaskPriority::kBestEffort,
-      key_future.GetCallback());
-  unexportable_keys::UnexportableSigningKeyId key = *key_future.Take();
-  ASSERT_OK_AND_ASSIGN(crypto::keypair::PublicKey public_key,
-                       crypto::keypair::PublicKey::FromSubjectPublicKeyInfo(
-                           *key_service()->GetSubjectPublicKeyInfo(key)));
-  ASSERT_OK_AND_ASSIGN(std::string key_thumbprint,
-                       CreateJwkThumbprint(public_key));
 
   // Attempt a registration with a session provider
   base::HistogramTester histograms;
   auto scoped_test_fetcher = ScopedTestRegistrationFetcher::CreateWithSuccess(
       "RelyingSession", "https://rp.com/refresh", "https://rp.com");
-  auto fetch_param = RegistrationFetcherParam::CreateInstanceForTesting(
-      kTestUrl, {crypto::sign::ECDSA_SHA256}, "challenge",
-      /*authorization=*/std::nullopt,
-      ProviderRegistrationParams{
-          .provider_key = key_thumbprint,
-          .provider_url = kTestUrl,
-          .provider_session_id = Session::Id(kSessionId)});
 
   // Mock persistent failure for RestoreSessionBindingKey
   EXPECT_CALL(store(),
               RestoreSessionBindingKey(
-                  SessionKey(SchemefulSite(kTestUrl), Session::Id(kSessionId)),
+                  provider_session_key,
                   unexportable_keys::BackgroundTaskPriority::kUserVisible, _))
       .WillOnce(RunOnceCallback<2>(
           base::unexpected(unexportable_keys::ServiceError::kKeyNotFound)));
 
-  EXPECT_CALL(store(), DeleteSession(SessionKey(SchemefulSite(kTestUrl),
-                                                Session::Id(kSessionId))))
-      .Times(1);
+  EXPECT_CALL(store(), DeleteSession(provider_session_key)).Times(1);
 
   service().RegisterBoundSession(
       SessionService::OnAccessCallback(), std::move(fetch_param),
@@ -3894,14 +4309,55 @@ TEST_F(SessionServiceImplWithStoreTest, FederatedRegistrationKeyUnrestored) {
 
   // Because we failed to restore the key with a persistent error, we also
   // deleted the provider session.
-  EXPECT_EQ(
-      service().GetSession({SchemefulSite(kTestUrl), Session::Id(kSessionId)}),
-      nullptr);
+  EXPECT_EQ(service().GetSession(provider_session_key), nullptr);
   histograms.ExpectUniqueSample("Net.DeviceBoundSessions.DeletionReason",
                                 DeletionReason::kFailedToUnwrapKey, 1);
   histograms.ExpectUniqueSample(
       "Net.DeviceBoundSessions.RegistrationResult",
       SessionError::kInvalidFederatedSessionProviderFailedToRestoreKey, 1);
+}
+
+TEST_F(SessionServiceImplWithStoreTest,
+       FederatedProviderSessionDeletedDuringKeyRestore) {
+  auto [provider_session_key, key, fetch_param] = SetUpFederatedRegistration();
+
+  base::HistogramTester histograms;
+  auto scoped_test_fetcher = ScopedTestRegistrationFetcher::CreateWithSuccess(
+      "RelyingSession", "https://rp.com/refresh", "https://rp.com");
+
+  SessionStore::RestoreSessionBindingKeyCallback restore_key_callback;
+  EXPECT_CALL(store(),
+              RestoreSessionBindingKey(
+                  provider_session_key,
+                  unexportable_keys::BackgroundTaskPriority::kUserVisible, _))
+      .WillOnce(SaveArgByMove<2>(&restore_key_callback));
+
+  service().RegisterBoundSession(
+      SessionService::OnAccessCallback(), std::move(fetch_param),
+      IsolationInfo::CreateTransient(/*nonce=*/std::nullopt), SiteForCookies(),
+      NetLogWithSource(), /*original_request_initiator=*/std::nullopt);
+  ASSERT_TRUE(restore_key_callback);
+
+  // Delete the provider session while its key is being restored.
+  EXPECT_CALL(store(), DeleteSession(provider_session_key)).Times(1);
+  service().DeleteSessionAndNotify(DeletionReason::kClearBrowsingData,
+                                   provider_session_key, base::DoNothing());
+
+  // The registration still reports a result once the restore finishes.
+  std::move(restore_key_callback).Run(key);
+  histograms.ExpectUniqueSample(
+      "Net.DeviceBoundSessions.RegistrationResult",
+      SessionError::kInvalidFederatedSessionProviderFailedToRestoreKey, 1);
+  EXPECT_THAT(
+      histograms.GetTotalCountsForPrefix(
+          "Net.DeviceBoundSessions.RegistrationDuration"),
+      ElementsAre(
+          Pair("Net.DeviceBoundSessions.RegistrationDuration", 1),
+          Pair("Net.DeviceBoundSessions.RegistrationDuration.Federated.Failure",
+               1)));
+  EXPECT_EQ(service().GetSession({SchemefulSite(GURL("https://rp.com")),
+                                  Session::Id("RelyingSession")}),
+            nullptr);
 }
 
 TEST_F(SessionServiceImplWithStoreTest, NoSessionUsageDuringInitialization) {
@@ -3921,51 +4377,15 @@ TEST_F(SessionServiceImplWithStoreTest, NoSessionUsageDuringInitialization) {
 
 TEST_F(SessionServiceImplWithStoreTest,
        FederatedProviderSessionKeyRestoredOnUse) {
-  // Create the provider session
-  SchemefulSite site(kTestUrl);
-
-  EXPECT_CALL(store(), LoadSessions).Times(1);
-  service().LoadSessionsAsync();
-
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<Session> provider_session,
-      Session::CreateFromProto(CreateSessionProto(kSessionId, kUrlString)));
-  ASSERT_TRUE(provider_session);
-
-  SessionStore::SessionsMap session_map;
-  session_map.insert(
-      {SessionKey{SchemefulSite(kTestUrl), provider_session->id()},
-       std::move(provider_session)});
-  FinishLoadingSessions(std::move(session_map));
-
-  base::test::TestFuture<unexportable_keys::ServiceErrorOr<
-      unexportable_keys::UnexportableSigningKeyId>>
-      key_future;
-  key_service()->GenerateSigningKeySlowlyAsync(
-      {crypto::sign::ECDSA_SHA256},
-      unexportable_keys::BackgroundTaskPriority::kBestEffort,
-      key_future.GetCallback());
-  unexportable_keys::UnexportableSigningKeyId key = *key_future.Take();
-  ASSERT_OK_AND_ASSIGN(crypto::keypair::PublicKey public_key,
-                       crypto::keypair::PublicKey::FromSubjectPublicKeyInfo(
-                           *key_service()->GetSubjectPublicKeyInfo(key)));
-  ASSERT_OK_AND_ASSIGN(std::string key_thumbprint,
-                       CreateJwkThumbprint(public_key));
+  auto [provider_session_key, key, fetch_param] = SetUpFederatedRegistration();
 
   // Attempt a registration with a session provider
   base::HistogramTester histograms;
   auto scoped_test_fetcher = ScopedTestRegistrationFetcher::CreateWithSuccess(
       "RelyingSession", "https://rp.com/refresh", "https://rp.com");
-  auto fetch_param = RegistrationFetcherParam::CreateInstanceForTesting(
-      kTestUrl, {crypto::sign::ECDSA_SHA256}, "challenge",
-      /*authorization=*/std::nullopt,
-      ProviderRegistrationParams{
-          .provider_key = key_thumbprint,
-          .provider_url = kTestUrl,
-          .provider_session_id = Session::Id(kSessionId)});
   EXPECT_CALL(store(),
               RestoreSessionBindingKey(
-                  SessionKey(SchemefulSite(kTestUrl), Session::Id(kSessionId)),
+                  provider_session_key,
                   unexportable_keys::BackgroundTaskPriority::kUserVisible, _))
       .WillOnce(RunOnceCallback<2>(key));
   EXPECT_CALL(store(), SaveSession);
@@ -3978,7 +4398,7 @@ TEST_F(SessionServiceImplWithStoreTest,
   Session* relying_session = service().GetSession(
       {SchemefulSite(GURL("https://rp.com")), Session::Id("RelyingSession")});
   EXPECT_NE(relying_session, nullptr);
-  EXPECT_NE(service().GetSession({site, Session::Id(kSessionId)}), nullptr);
+  EXPECT_NE(service().GetSession(provider_session_key), nullptr);
   histograms.ExpectUniqueSample("Net.DeviceBoundSessions.RegistrationResult",
                                 SessionError::kSuccess, 1);
   EXPECT_THAT(
@@ -4281,6 +4701,73 @@ TEST_F(SessionServiceImplTest, ProactiveRefreshBlocksDeferring) {
   histograms.ExpectUniqueSample(
       "Net.DeviceBoundSessions.ProactiveRefreshAttempt",
       SessionServiceImpl::ProactiveRefreshAttempt::kAttempted, 1);
+}
+
+// A proactive refresh started from ShouldDefer() can complete synchronously
+// and delete the session that ShouldDefer() is iterating over.
+TEST_F(SessionServiceImplTest,
+       ShouldDeferHandlesSessionDeletedBySynchronousProactiveRefresh) {
+  base::HistogramTester histograms;
+  AddSessionsForTesting({{kSessionId, kRefreshUrlString, kOrigin},
+                         {kSessionId3, kRefreshUrlString, kOrigin}});
+
+  // Every refresh fails inline with an error that deletes the session.
+  auto scoped_test_fetcher = ScopedTestRegistrationFetcher::CreateWithFailure(
+      SessionError::kSigningError, kRefreshUrlString);
+
+  net::TestDelegate delegate;
+  std::unique_ptr<URLRequest> request =
+      context()->CreateRequest(kTestUrl, IDLE, &delegate, kDummyAnnotation,
+                               net::handles::kInvalidNetworkHandle);
+  request->set_site_for_cookies(SiteForCookies::FromUrl(kTestUrl));
+
+  // The bound cookie expires soon, which triggers a proactive refresh instead
+  // of a deferral.
+  CookieInclusionStatus status;
+  auto cookie = CanonicalCookie::Create(
+      kTestUrl, "test_cookie=v; Secure; Max-Age=1", base::Time::Now(),
+      std::nullopt, std::nullopt, CookieSourceType::kHTTP, &status);
+  ASSERT_TRUE(cookie);
+  request->set_maybe_sent_cookies({{*cookie, CookieAccessResult()}});
+
+  HttpRequestHeaders extra_headers;
+  DbscRequest dbsc_request(request.get());
+  EXPECT_FALSE(service().ShouldDefer(dbsc_request, &extra_headers));
+
+  const SchemefulSite site(kTestUrl);
+  EXPECT_FALSE(service().GetSession({site, Session::Id(kSessionId)}));
+  EXPECT_FALSE(service().GetSession({site, Session::Id(kSessionId3)}));
+  histograms.ExpectUniqueSample("Net.DeviceBoundSessions.DeletionReason",
+                                DeletionReason::kRefreshFatalError, 2);
+}
+
+// A refresh error that deletes the session removes it before the deferred
+// requests are unblocked, because they can synchronously re-enter the service.
+TEST_F(SessionServiceImplTest,
+       FatalRefreshErrorDeletesSessionBeforeUnblockingRequests) {
+  AddSessionsForTesting({{kSessionId, kRefreshUrlString, kOrigin}});
+  auto scoped_test_fetcher = ScopedTestRegistrationFetcher::CreateWithFailure(
+      SessionError::kSigningError, kRefreshUrlString);
+  const SessionKey session_key{SchemefulSite(kTestUrl),
+                               Session::Id(kSessionId)};
+
+  net::TestDelegate delegate;
+  std::unique_ptr<URLRequest> request = CreateRequestWithContext(
+      context(), kTestUrl, url::Origin::Create(kTestUrl), &delegate);
+  DbscRequest dbsc_request(request.get());
+  base::test::TestFuture<RefreshResult> future;
+  bool session_found_while_unblocking = true;
+  service().DeferRequestForRefresh(
+      dbsc_request, SessionService::DeferralParams(Session::Id(kSessionId)),
+      base::BindLambdaForTesting([this, &session_found_while_unblocking,
+                                  &session_key, &future](RefreshResult result) {
+        session_found_while_unblocking = !!service().GetSession(session_key);
+        future.SetValue(result);
+      }));
+
+  EXPECT_EQ(future.Take(), RefreshResult::kFatalError);
+  EXPECT_FALSE(session_found_while_unblocking);
+  EXPECT_EQ(service().GetSession(session_key), nullptr);
 }
 
 TEST_F(SessionServiceImplTest, ProactiveRefreshBlocksProactive) {
@@ -4848,18 +5335,163 @@ TEST_F(SessionServiceImplTest, PrewarmSessionsForUrl_NotifiesObserver) {
 
 TEST_F(SessionServiceImplTest, PrewarmSessionsForUrl_SigningQuotaExceeded) {
   AddSessionsForTesting({{kSessionId, kRefreshUrlString, kOrigin}});
+  // Complete one refresh first, so that a refused prewarm would have a last
+  // result to record in `SigningQuotaExceededLastResult2`.
+  {
+    auto scoped_test_fetcher = ScopedTestRegistrationFetcher::CreateWithSuccess(
+        kSessionId, kRefreshUrlString, kOrigin);
+    base::test::TestFuture<SessionPrewarmResult> refresh_future;
+    service().PrewarmSessionsForUrl(kTestUrl, refresh_future.GetCallback());
+    EXPECT_THAT(refresh_future.Get().results,
+                testing::ElementsAre(RefreshResult::kRefreshed));
+  }
 
   for (size_t i = 0; i < 6; i++) {
-    service().AddSigningOccurrence(SchemefulSite(GURL(kOrigin)));
+    EXPECT_TRUE(service().TryConsumeSigningQuota(
+        SchemefulSite(GURL(kOrigin)), SigningQuotaOperation::kRefresh));
   }
-  EXPECT_TRUE(service().SigningQuotaExceeded(SchemefulSite(GURL(kOrigin))));
 
+  base::HistogramTester histogram_tester;
   base::test::TestFuture<SessionPrewarmResult> future;
   service().PrewarmSessionsForUrl(kTestUrl, future.GetCallback());
   ASSERT_TRUE(future.Wait());
   EXPECT_THAT(future.Get().results,
               testing::ElementsAre(RefreshResult::kSigningQuotaExceeded));
   EXPECT_TRUE(future.Get().earliest_next_refresh_time.is_max());
+  // A prewarm refused up front doesn't record any signing quota histogram.
+  EXPECT_THAT(histogram_tester.GetTotalCountsForPrefix(
+                  "Net.DeviceBoundSessions.SigningQuota"),
+              IsEmpty());
+}
+
+TEST_F(SessionServiceImplTest,
+       PrewarmSessionsForUrl_SigningQuotaExceededWithFreshCookies) {
+  AddSessionsForTesting({{kSessionId, kRefreshUrlString, kOrigin}});
+  CookieInclusionStatus status;
+  auto cookie = CanonicalCookie::Create(
+      kTestUrl, "test_cookie=v; Secure; Max-Age=500", base::Time::Now(),
+      std::nullopt, std::nullopt, CookieSourceType::kHTTP, &status);
+  ASSERT_TRUE(cookie);
+  base::test::TestFuture<CookieAccessResult> cookie_future;
+  context()->cookie_store()->SetCanonicalCookieAsync(
+      std::move(cookie), kTestUrl, CookieOptions::MakeAllInclusive(),
+      cookie_future.GetCallback(), std::nullopt);
+  ASSERT_TRUE(cookie_future.Get().status.IsInclude());
+  for (size_t i = 0; i < 6; i++) {
+    EXPECT_TRUE(service().TryConsumeSigningQuota(
+        SchemefulSite(GURL(kOrigin)), SigningQuotaOperation::kRefresh));
+  }
+
+  // No refresh is needed yet, so the exhausted quota doesn't matter.
+  base::test::TestFuture<SessionPrewarmResult> future;
+  service().PrewarmSessionsForUrl(kTestUrl, future.GetCallback());
+  ASSERT_TRUE(future.Wait());
+  EXPECT_THAT(future.Get().results,
+              testing::ElementsAre(RefreshResult::kInScopeRefreshNotYetNeeded));
+  EXPECT_FALSE(future.Get().earliest_next_refresh_time.is_max());
+}
+
+TEST_F(SessionServiceImplTest,
+       PrewarmSessionsForUrl_SigningQuotaExceededJoinsRefreshInFlight) {
+  AddSessionsForTesting({{kSessionId, kRefreshUrlString, kOrigin}});
+
+  RefreshTracker tracker;
+  auto scoped_test_fetcher = ScopedTestRegistrationFetcher(base::BindRepeating(
+      &RefreshTracker::Refresh, base::Unretained(&tracker)));
+
+  base::test::TestFuture<SessionPrewarmResult> future1;
+  service().PrewarmSessionsForUrl(kTestUrl, future1.GetCallback());
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return tracker.num_pending_refreshes() == 1u; }));
+
+  // Exhaust the quota while the refresh is in flight.
+  for (size_t i = 0; i < 6; i++) {
+    EXPECT_TRUE(service().TryConsumeSigningQuota(
+        SchemefulSite(GURL(kOrigin)), SigningQuotaOperation::kRefresh));
+  }
+
+  // The second prewarm joins the refresh in flight instead of being refused.
+  base::test::TestFuture<SessionPrewarmResult> future2;
+  service().PrewarmSessionsForUrl(kTestUrl, future2.GetCallback());
+  // Wait for the cookie store query for `future2` to finish processing.
+  base::test::TestFuture<const CookieList&> cookie_future;
+  context()->cookie_store()->GetAllCookiesAsync(cookie_future.GetCallback());
+  ASSERT_TRUE(cookie_future.Wait());
+  EXPECT_EQ(tracker.num_pending_refreshes(), 1u);
+  EXPECT_FALSE(future2.IsReady());
+
+  tracker.ResolvePendingRefresh(
+      RegistrationResult(RegistrationResult::NoSessionConfigChange(),
+                         CookieAndLineAccessResultList()));
+  ASSERT_TRUE(future1.Wait());
+  ASSERT_TRUE(future2.Wait());
+  EXPECT_THAT(future2.Get().results,
+              testing::ElementsAre(RefreshResult::kRefreshed));
+}
+
+TEST_F(SessionServiceImplTest,
+       PrewarmSessionsForUrl_SigningQuotaExceededJoinsDeferredRefresh) {
+  AddSessionsForTesting({{kSessionId, kRefreshUrlString, kOrigin}});
+
+  RefreshTracker tracker;
+  auto scoped_test_fetcher = ScopedTestRegistrationFetcher(base::BindRepeating(
+      &RefreshTracker::Refresh, base::Unretained(&tracker)));
+
+  net::TestDelegate delegate;
+  std::unique_ptr<URLRequest> request =
+      context()->CreateRequest(kTestUrl, IDLE, &delegate, kDummyAnnotation,
+                               net::handles::kInvalidNetworkHandle);
+  request->set_site_for_cookies(SiteForCookies::FromUrl(kTestUrl));
+  DbscRequest dbsc_request(request.get());
+  base::test::TestFuture<RefreshResult> deferred_future;
+  service().DeferRequestForRefresh(
+      dbsc_request, SessionService::DeferralParams(Session::Id(kSessionId)),
+      deferred_future.GetCallback());
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return tracker.num_pending_refreshes() == 1u; }));
+
+  // Exhaust the quota while the deferred refresh is in flight.
+  for (size_t i = 0; i < 6; ++i) {
+    EXPECT_TRUE(service().TryConsumeSigningQuota(
+        SchemefulSite(GURL(kOrigin)), SigningQuotaOperation::kRefresh));
+  }
+
+  // The prewarm joins the deferred refresh instead of being refused.
+  base::test::TestFuture<SessionPrewarmResult> future;
+  service().PrewarmSessionsForUrl(kTestUrl, future.GetCallback());
+  // Wait for the cookie store query for `future` to finish processing.
+  base::test::TestFuture<const CookieList&> cookie_future;
+  context()->cookie_store()->GetAllCookiesAsync(cookie_future.GetCallback());
+  ASSERT_TRUE(cookie_future.Wait());
+  EXPECT_EQ(tracker.num_pending_refreshes(), 1u);
+  EXPECT_FALSE(future.IsReady());
+
+  tracker.ResolvePendingRefresh(
+      RegistrationResult(RegistrationResult::NoSessionConfigChange(),
+                         CookieAndLineAccessResultList()));
+  EXPECT_EQ(deferred_future.Get(), RefreshResult::kRefreshed);
+  ASSERT_TRUE(future.Wait());
+  EXPECT_THAT(future.Get().results,
+              testing::ElementsAre(RefreshResult::kRefreshed));
+}
+
+TEST_F(SessionServiceImplTest,
+       PrewarmSessionsForUrl_SigningQuotaOneUnitLeftStartsRefresh) {
+  AddSessionsForTesting({{kSessionId, kRefreshUrlString, kOrigin}});
+  auto scoped_test_fetcher = ScopedTestRegistrationFetcher::CreateWithSuccess(
+      kSessionId, kRefreshUrlString, kOrigin);
+
+  // Use 5 of the 6 units, so exactly one refresh still fits.
+  for (size_t i = 0; i < 5; ++i) {
+    EXPECT_TRUE(service().TryConsumeSigningQuota(
+        SchemefulSite(GURL(kOrigin)), SigningQuotaOperation::kRefresh));
+  }
+
+  base::test::TestFuture<SessionPrewarmResult> future;
+  service().PrewarmSessionsForUrl(kTestUrl, future.GetCallback());
+  ASSERT_TRUE(future.Wait());
+  EXPECT_THAT(future.Get().results,
+              testing::ElementsAre(RefreshResult::kRefreshed));
 }
 
 TEST_F(SessionServiceImplTest,

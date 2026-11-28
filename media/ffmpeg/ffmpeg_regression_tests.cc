@@ -152,7 +152,10 @@ FFMPEG_TEST_CASE(Cr117912,
                  "security/117912.webm",
                  DEMUXER_ERROR_COULD_NOT_OPEN,
                  DEMUXER_ERROR_COULD_NOT_OPEN);
-FFMPEG_TEST_CASE(Cr123481, "security/123481.ogv", PIPELINE_OK, PIPELINE_OK);
+FFMPEG_TEST_CASE(Cr123481,
+                 "security/123481.ogv",
+                 DEMUXER_ERROR_COULD_NOT_OPEN,
+                 DEMUXER_ERROR_COULD_NOT_OPEN);
 FFMPEG_TEST_CASE(Cr132779,
                  "security/132779.webm",
                  DEMUXER_ERROR_COULD_NOT_PARSE,
@@ -476,7 +479,9 @@ TEST_P(FFmpegRegressionTest, BasicPlayback) {
     if (GetParam().end_status == PIPELINE_OK) {
       ASSERT_TRUE(ended_);
 
-      // Tack a seek on the end to catch any seeking issues.
+      // Tack a seek on the end to catch any seeking issues. Pause first, since
+      // Seek() runs until idle, which would play the whole file again.
+      Pause();
       Seek(GetParam().seek_time == kNoTimestamp ? GetStartTime()
                                                 : GetParam().seek_time);
     }

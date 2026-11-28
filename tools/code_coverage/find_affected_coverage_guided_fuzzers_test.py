@@ -3,10 +3,13 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import io
 import json
 import logging
 import os
+import pathlib
 import sys
+import tempfile
 import unittest
 from unittest import mock
 import urllib.error
@@ -17,7 +20,30 @@ from urllib.parse import urlparse
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 import find_affected_coverage_guided_fuzzers
 
-MAIN_ARGV = ['script.py', '--out-dir', 'out/test', '--revision', 'abc']
+FINDIT_FILE_LINES = ['// Comment.', 'void F() {', '  if (G())', '    H();', '}']
+# make_findit_response()'s covered lines, with their hit counts.
+FINDIT_COVERED_LINES = {2: 7, 3: 7, 5: 7}
+
+
+def main_argv(out_dir):
+  return ['script.py', '--out-dir', out_dir, '--revision', 'abc']
+
+
+def make_findit_response(covered=True):
+  count = 7 if covered else 0
+  return {
+    'data': {
+      'line_to_data': [
+        [1, {'line': '// Comment.', 'count': -1}],
+        [2, {'line': 'void F() {', 'count': count}],
+        [3, {'line': '  if (G())', 'count': count}],
+        [4, {'line': '    H();', 'count': 0}],
+        [5, {'line': '}', 'count': count}],
+      ],
+    },
+    'path': '//base/test.cc',
+    'warning': None,
+  }
 
 
 class FindAffectedCoverageGuidedFuzzersTest(unittest.TestCase):
@@ -57,19 +83,11 @@ class FindAffectedCoverageGuidedFuzzersTest(unittest.TestCase):
 
     self.mock_subprocess_run.side_effect = fake_subprocess_run
 
-  def test_generate_gn_build_dir_default(self):
-    find_affected_coverage_guided_fuzzers.generate_gn_build_dir('out/test')
-
-    expected_args_str = (
-      find_affected_coverage_guided_fuzzers.gn_args_libfuzzer.replace('\n', ' ')
-    )
-    self.assertEqual(
-      self.get_calls_args(self.mock_subprocess_run),
-      [f'gn gen out/test --args={expected_args_str}'],
-    )
-    self.assertEqual(
-      self.mock_subprocess_run.call_args.kwargs['stdout'], sys.stderr
-    )
+  def make_out_dir(self):
+    """Returns a temporary build directory with an empty args.gn."""
+    out_dir = self.enterContext(tempfile.TemporaryDirectory())
+    pathlib.Path(out_dir, 'args.gn').touch()
+    return out_dir
 
   def test_get_modified_files(self):
     self.mock_subprocess_run.return_value.stdout = (
@@ -81,6 +99,49 @@ class FindAffectedCoverageGuidedFuzzersTest(unittest.TestCase):
       self.get_calls_args(self.mock_subprocess_run),
       ['git diff --name-only --diff-filter=d -z abc~ abc'],
     )
+
+  def test_parse_findit_response(self):
+    coverage = find_affected_coverage_guided_fuzzers.parse_findit_response(
+      make_findit_response(), '//base/test.cc'
+    )
+    self.assertEqual(coverage.file_lines, FINDIT_FILE_LINES)
+    self.assertEqual(coverage.covered_lines, FINDIT_COVERED_LINES)
+
+  def test_parse_findit_response_without_covered_lines(self):
+    coverage = find_affected_coverage_guided_fuzzers.parse_findit_response(
+      make_findit_response(covered=False), '//base/test.cc'
+    )
+    self.assertEqual(coverage.file_lines, FINDIT_FILE_LINES)
+    self.assertEqual(coverage.covered_lines, {})
+
+  def test_parse_findit_response_without_file_content(self):
+    # Findit answers with a null line_to_data when it can't load the file's
+    # content.
+    # TODO(crbug.com/578476159): Expect an error instead once Findit returns an
+    # HTTP error code instead of null line_to_data.
+    response = make_findit_response()
+    response['data']['line_to_data'] = None
+    coverage = find_affected_coverage_guided_fuzzers.parse_findit_response(
+      response, '//base/test.cc'
+    )
+    self.assertIsNone(coverage)
+
+  def test_parse_findit_response_for_file_not_in_report(self):
+    # Findit answers with the summary of the root directory when the file isn't
+    # in the report.
+    # TODO(crbug.com/578475336): Remove this test with the path check once
+    # Findit answers 404 instead.
+    response = {
+      'data': {'metadata': {'path': '//', 'dirs': [], 'summaries': []}},
+      'data_type': 'dirs',
+      'path': '//',
+      'warning': 'File "//base/unknown_file.cc" does not exist in this '
+      'report, defaulting to root',
+    }
+    coverage = find_affected_coverage_guided_fuzzers.parse_findit_response(
+      response, '//base/unknown_file.cc'
+    )
+    self.assertIsNone(coverage)
 
   def test_get_affected_fuzzers(self):
     self._set_subprocess_run_side_effect(
@@ -213,9 +274,19 @@ class FindAffectedCoverageGuidedFuzzersTest(unittest.TestCase):
       ['gn refs out/test --all --as=label -q //file1.cc'],
     )
 
+  def test_main_out_dir_not_generated(self):
+    out_dir = self.enterContext(tempfile.TemporaryDirectory())
+    with mock.patch('sys.argv', main_argv(out_dir)):
+      with mock.patch('sys.stderr', new_callable=io.StringIO) as mock_stderr:
+        with self.assertRaises(SystemExit) as cm:
+          find_affected_coverage_guided_fuzzers.main()
+    self.assertEqual(cm.exception.code, 2)
+    self.assertIn('has no args.gn. Generate it first.', mock_stderr.getvalue())
+    self.mock_subprocess_run.assert_not_called()
+
   def test_main_no_modified_files(self):
     self.mock_subprocess_run.return_value.stdout = ''
-    with mock.patch('sys.argv', MAIN_ARGV):
+    with mock.patch('sys.argv', main_argv(self.make_out_dir())):
       self.assertEqual(find_affected_coverage_guided_fuzzers.main(), 0)
     self.assertEqual(
       self.get_calls_args(self.mock_subprocess_run),
@@ -224,21 +295,18 @@ class FindAffectedCoverageGuidedFuzzersTest(unittest.TestCase):
 
   def test_main_no_fuzzers(self):
     self._set_subprocess_run_side_effect(git_diff_stdout='file1.cc\0')
+    out_dir = self.make_out_dir()
 
-    with mock.patch('sys.argv', MAIN_ARGV):
+    with mock.patch('sys.argv', main_argv(out_dir)):
       with self.assertLogs(level='WARNING') as cm:
         self.assertEqual(find_affected_coverage_guided_fuzzers.main(), 1)
     self.assertIn('No fuzzer targets found', cm.output[0])
 
-    expected_args_str = (
-      find_affected_coverage_guided_fuzzers.gn_args_libfuzzer.replace('\n', ' ')
-    )
     self.assertEqual(
       self.get_calls_args(self.mock_subprocess_run),
       [
         'git diff --name-only --diff-filter=d -z abc~ abc',
-        f'gn gen out/test --args={expected_args_str}',
-        'gn refs out/test //testing/libfuzzer:fuzzing_engine '
+        f'gn refs {out_dir} //testing/libfuzzer:fuzzing_engine '
         '--all --type=executable --as=label -q',
       ],
     )
@@ -251,8 +319,9 @@ class FindAffectedCoverageGuidedFuzzersTest(unittest.TestCase):
         '//file1.cc': '//fuzzer:fuzzer\n',
       },
     )
+    out_dir = self.make_out_dir()
 
-    with mock.patch('sys.argv', MAIN_ARGV):
+    with mock.patch('sys.argv', main_argv(out_dir)):
       # Redirect stdout to avoid printing during tests
       with mock.patch('sys.stdout', new_callable=mock.MagicMock) as mock_stdout:
         self.assertEqual(find_affected_coverage_guided_fuzzers.main(), 0)
@@ -266,43 +335,64 @@ class FindAffectedCoverageGuidedFuzzersTest(unittest.TestCase):
           output_data, {'affected_fuzzers': {'//file1.cc': ['//fuzzer:fuzzer']}}
         )
 
-    expected_args_str = (
-      find_affected_coverage_guided_fuzzers.gn_args_libfuzzer.replace('\n', ' ')
-    )
     self.assertEqual(
       self.get_calls_args(self.mock_subprocess_run),
       [
         'git diff --name-only --diff-filter=d -z abc~ abc',
-        f'gn gen out/test --args={expected_args_str}',
-        'gn refs out/test //testing/libfuzzer:fuzzing_engine '
+        f'gn refs {out_dir} //testing/libfuzzer:fuzzing_engine '
         '--all --type=executable --as=label -q',
-        'gn refs out/test --all --as=label -q //file1.cc',
+        f'gn refs {out_dir} --all --as=label -q //file1.cc',
       ],
     )
 
   @mock.patch('find_affected_coverage_guided_fuzzers.urllib.request.urlopen')
   def test_get_findit_coverage_success(self, mock_urlopen):
-    lines = [
-      {'first': 1, 'last': 10, 'count': 5},
-      {'first': 12, 'last': 12, 'count': 0},
-    ]
     fake_response = mock.MagicMock()
-    fake_response.read.return_value = json.dumps(
-      {'data': {'metadata': {'lines': lines}}}
-    ).encode('utf-8')
+    fake_response.read.return_value = json.dumps(make_findit_response()).encode(
+      'utf-8'
+    )
     mock_urlopen.return_value.__enter__.return_value = fake_response
 
     result = find_affected_coverage_guided_fuzzers.get_findit_coverage(
-      'base/json/json_reader.cc'
+      'base/test.cc', 'base_json_reader_fuzzer'
     )
-    self.assertEqual(result, lines)
+    self.assertEqual(result.covered_lines, FINDIT_COVERED_LINES)
+    self.assertEqual(result.file_lines, FINDIT_FILE_LINES)
 
     req = mock_urlopen.call_args[0][0]
-    query_params = parse_qs(urlparse(req.full_url).query)
-    self.assertEqual(query_params.get('path'), ['//base/json/json_reader.cc'])
-    self.assertEqual(query_params.get('platform'), ['fuzz'])
-    self.assertEqual(query_params.get('test_suite_type'), ['any'])
-    self.assertEqual(query_params.get('raw'), ['true'])
+    self.assertEqual(
+      parse_qs(urlparse(req.full_url).query),
+      {
+        'path': ['//base/test.cc'],
+        'platform': ['fuzz'],
+        'test_suite_type': ['base_json_reader_fuzzer'],
+        'raw': ['true'],
+      },
+    )
+
+  @mock.patch('find_affected_coverage_guided_fuzzers.urllib.request.urlopen')
+  def test_get_findit_coverage_defaults_to_aggregated_coverage(
+    self, mock_urlopen
+  ):
+    fake_response = mock.MagicMock()
+    fake_response.read.return_value = json.dumps(make_findit_response()).encode(
+      'utf-8'
+    )
+    mock_urlopen.return_value.__enter__.return_value = fake_response
+
+    find_affected_coverage_guided_fuzzers.get_findit_coverage('//base/test.cc')
+
+    req = mock_urlopen.call_args[0][0]
+    self.assertEqual(
+      parse_qs(urlparse(req.full_url).query),
+      {
+        'path': ['//base/test.cc'],
+        'platform': ['fuzz'],
+        # 'any' is Findit's name for the coverage aggregated over all fuzzers.
+        'test_suite_type': ['any'],
+        'raw': ['true'],
+      },
+    )
 
   @mock.patch('find_affected_coverage_guided_fuzzers.time.sleep')
   @mock.patch('find_affected_coverage_guided_fuzzers.urllib.request.urlopen')
@@ -333,35 +423,36 @@ class FindAffectedCoverageGuidedFuzzersTest(unittest.TestCase):
   def test_get_findit_coverage_retries_on_server_error(
     self, mock_urlopen, mock_sleep
   ):
-    lines = [{'first': 1, 'last': 2, 'count': 3}]
     fake_response = mock.MagicMock()
-    fake_response.read.return_value = json.dumps(
-      {'data': {'metadata': {'lines': lines}}}
-    ).encode('utf-8')
+    fake_response.read.return_value = json.dumps(make_findit_response()).encode(
+      'utf-8'
+    )
     mock_urlopen.side_effect = [
       urllib.error.HTTPError(
-        'http://example.com', 500, 'Server Error', {}, None
+        'http://example.com', 503, 'Service Unavailable', {}, None
       ),
       mock.MagicMock(__enter__=mock.MagicMock(return_value=fake_response)),
     ]
 
     result = find_affected_coverage_guided_fuzzers.get_findit_coverage(
-      '//base/test.cc'
+      '//base/test.cc', 'base_json_reader_fuzzer'
     )
 
-    self.assertEqual(result, lines)
+    self.assertEqual(result.covered_lines, FINDIT_COVERED_LINES)
     self.assertEqual(mock_urlopen.call_count, 2)
     self.assertEqual(mock_sleep.call_count, 1)
 
   @mock.patch('find_affected_coverage_guided_fuzzers.time.sleep')
   @mock.patch('find_affected_coverage_guided_fuzzers.urllib.request.urlopen')
-  def test_get_findit_coverage_gives_up_after_max_retries(
+  def test_get_findit_coverage_retries_500_for_aggregated_coverage(
     self, mock_urlopen, mock_sleep
   ):
     mock_urlopen.side_effect = urllib.error.HTTPError(
       'http://example.com', 500, 'Server Error', {}, None
     )
 
+    # Unlike a single fuzzer, the aggregated report exists as long as the
+    # fuzz coverage builder has run so a 500 for it is a real failure.
     result = find_affected_coverage_guided_fuzzers.get_findit_coverage(
       '//base/test.cc'
     )
@@ -370,6 +461,26 @@ class FindAffectedCoverageGuidedFuzzersTest(unittest.TestCase):
     self.assertIsNone(result)
     self.assertEqual(mock_urlopen.call_count, max_retries)
     self.assertEqual(mock_sleep.call_count, max_retries - 1)
+
+  @mock.patch('find_affected_coverage_guided_fuzzers.time.sleep')
+  @mock.patch('find_affected_coverage_guided_fuzzers.urllib.request.urlopen')
+  def test_get_findit_coverage_does_not_retry_500_for_fuzzer(
+    self, mock_urlopen, mock_sleep
+  ):
+    # Findit answers 500 when it has no coverage report for the fuzzer.
+    # TODO(b/571233495): Expect retries once Findit is redeployed and answers
+    # 404 instead.
+    mock_urlopen.side_effect = urllib.error.HTTPError(
+      'http://example.com', 500, 'Server Error', {}, None
+    )
+
+    result = find_affected_coverage_guided_fuzzers.get_findit_coverage(
+      '//base/test.cc', 'unknown_fuzzer'
+    )
+
+    self.assertIsNone(result)
+    self.assertEqual(mock_urlopen.call_count, 1)
+    mock_sleep.assert_not_called()
 
   @mock.patch('find_affected_coverage_guided_fuzzers.time.sleep')
   @mock.patch('find_affected_coverage_guided_fuzzers.urllib.request.urlopen')

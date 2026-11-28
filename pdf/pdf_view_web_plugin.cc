@@ -371,11 +371,6 @@ class PdfViewWebPlugin::PdfInkModuleClientImpl : public PdfInkModuleClient {
     return plugin_->engine_->GetSelectionRectMap();
   }
 
-  gfx::Size GetThumbnailSize(int page_index) override {
-    return plugin_->engine_->GetThumbnailSize(page_index,
-                                              plugin_->device_scale_);
-  }
-
   gfx::Vector2dF GetViewportOriginOffset() override {
     return plugin_->available_area_.OffsetFromOrigin();
   }
@@ -386,10 +381,6 @@ class PdfViewWebPlugin::PdfInkModuleClientImpl : public PdfInkModuleClient {
 
   void Invalidate(const gfx::Rect& rect) override {
     return plugin_->Invalidate(rect);
-  }
-
-  bool IsPageVisible(int page_index) override {
-    return plugin_->engine_->IsPageVisible(page_index);
   }
 
   bool IsSelectableTextOrLinkArea(const gfx::PointF& point) override {
@@ -426,10 +417,6 @@ class PdfViewWebPlugin::PdfInkModuleClientImpl : public PdfInkModuleClient {
   void OnTextOrLinkAreaClick(const gfx::PointF& point,
                              int click_count) override {
     plugin_->engine_->OnTextOrLinkAreaClick(point, click_count);
-  }
-
-  int PageIndexFromPoint(const gfx::PointF& point) override {
-    return PageIndexFromPointImpl(point, /*must_be_visible=*/false);
   }
 
   void PostMessage(base::DictValue message) override {
@@ -488,13 +475,8 @@ class PdfViewWebPlugin::PdfInkModuleClientImpl : public PdfInkModuleClient {
   }
 
   int VisiblePageIndexFromPoint(const gfx::PointF& point) override {
-    return PageIndexFromPointImpl(point, /*must_be_visible=*/true);
-  }
-
- private:
-  int PageIndexFromPointImpl(const gfx::PointF& point, bool must_be_visible) {
     for (int i = 0; i < plugin_->engine_->GetNumberOfPages(); ++i) {
-      if (must_be_visible && !IsPageVisible(i)) {
+      if (!plugin_->engine_->IsPageVisible(i)) {
         continue;
       }
 
@@ -509,6 +491,7 @@ class PdfViewWebPlugin::PdfInkModuleClientImpl : public PdfInkModuleClient {
     return -1;
   }
 
+ private:
   const raw_ref<PdfViewWebPlugin> plugin_;
 };
 #endif  // BUILDFLAG(ENABLE_PDF_INK2)
@@ -1099,6 +1082,10 @@ gfx::Rect PdfViewWebPlugin::GetPluginCaretBounds() {
   return caret_rect_;
 }
 
+gfx::Rect PdfViewWebPlugin::GetPluginSelectionBounds() {
+  return selection_bounding_box_;
+}
+
 void PdfViewWebPlugin::ImeSetCompositionForPlugin(
     const blink::WebString& text,
     const std::vector<ui::ImeTextSpan>& /*ime_text_spans*/,
@@ -1629,7 +1616,8 @@ SkColor PdfViewWebPlugin::GetBackgroundColor() const {
 }
 
 void PdfViewWebPlugin::SelectionChanged(const gfx::Rect& left,
-                                        const gfx::Rect& right) {
+                                        const gfx::Rect& right,
+                                        const gfx::Rect& bounding_box) {
 #if BUILDFLAG(ENABLE_PDF_INK2)
   // Ignore the selected text if `ink_module_` is currently text highlighting.
   // This prevents `pdf_host_` from showing touch handles for touch text
@@ -1638,6 +1626,11 @@ void PdfViewWebPlugin::SelectionChanged(const gfx::Rect& left,
     return;
   }
 #endif  // BUILDFLAG(ENABLE_PDF_INK2)
+
+  selection_bounding_box_ =
+      bounding_box.IsEmpty()
+          ? gfx::Rect()
+          : bounding_box + available_area_.OffsetFromOrigin();
 
   gfx::PointF left_point(left.x() + available_area_.x(), left.y());
   gfx::PointF right_point(right.x() + available_area_.x(), right.y());
@@ -1652,6 +1645,9 @@ void PdfViewWebPlugin::SelectionChanged(const gfx::Rect& left,
   if (accessibility_state_ == AccessibilityState::kLoaded) {
     PrepareAndSetAccessibilityViewportInfo();
   }
+
+  client_->UpdateSelectionBounds();
+  // Warning: `this` may be destroyed at this point.
 }
 
 void PdfViewWebPlugin::EnteredEditMode() {
@@ -1970,7 +1966,7 @@ void PdfViewWebPlugin::HandleGetThumbnailMessage(
 void PdfViewWebPlugin::HandleHighlightTextFragmentsMessage(
     const base::DictValue& message) {
   const auto* text_fragment_value_list = message.FindList("textFragments");
-  std::vector<std::string> text_fragments;
+  std::vector<std::string_view> text_fragments;
   text_fragments.reserve(text_fragment_value_list->size());
   for (const base::Value& fragment : *text_fragment_value_list) {
     text_fragments.push_back(fragment.GetString());

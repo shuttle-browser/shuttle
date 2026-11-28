@@ -21,13 +21,14 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/node_hash_map.h"
+#include "absl/container/node_hash_map.h"  // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
+#include "absl/status/status_macros.h"     // from @com_google_absl
+#include "absl/status/statusor.h"          // from @com_google_absl
 #include "mediapipe/calculators/util/top_k_scores_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/classification.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/util/resource_util.h"
 
 #if defined(MEDIAPIPE_MOBILE)
@@ -120,7 +121,7 @@ absl::Status TopKScoresCalculator::Open(CalculatorContext* cc) {
     threshold_ = options.threshold();
   }
   if (options.has_label_map_path()) {
-    MP_RETURN_IF_ERROR(LoadLabelmap(options.label_map_path()));
+    ABSL_RETURN_IF_ERROR(LoadLabelmap(options.label_map_path()));
   }
   if (cc->Outputs().HasTag(kTopKLabelsTag)) {
     RET_CHECK(!label_map_.empty());
@@ -227,9 +228,9 @@ absl::Status TopKScoresCalculator::Process(CalculatorContext* cc) {
 
 absl::Status TopKScoresCalculator::LoadLabelmap(std::string label_map_path) {
   std::string string_path;
-  MP_ASSIGN_OR_RETURN(string_path, PathToResourceAsFile(label_map_path));
+  ABSL_ASSIGN_OR_RETURN(string_path, PathToResourceAsFile(label_map_path));
   std::string label_map_string;
-  MP_RETURN_IF_ERROR(file::GetContents(string_path, &label_map_string));
+  ABSL_RETURN_IF_ERROR(file::GetContents(string_path, &label_map_string));
 
   std::istringstream stream(label_map_string);
   std::string line;

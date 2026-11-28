@@ -117,12 +117,12 @@ class ContinueButton : public views::MdTextButton {
     if (color_utils::GetContrastRatio(dialog_background_color,
                                       *brand_background_color_) <
         color_utils::kMinimumVisibleContrastRatio) {
-      SetBgColorOverrideDeprecated(std::nullopt);
+      SetBgColorOverride(std::nullopt);
       SetEnabledTextColors(std::nullopt);
       return;
     }
 
-    SetBgColorOverrideDeprecated(*brand_background_color_);
+    SetBgColorOverride(*brand_background_color_);
     SkColor text_color;
     if (brand_text_color_) {
       // IdpNetworkRequestManager ensures that `brand_text_color_` is only set
@@ -351,8 +351,8 @@ void AccountSelectionBubbleView::ShowFailureDialog(
                           base::Unretained(owner_), idp_metadata.config_url,
                           idp_metadata.idp_login_url),
       l10n_util::GetStringUTF16(IDS_SIGNIN_CONTINUE), idp_metadata,
-      // TODO (kylixrd@): Shouldn't the following be a localizable string?
-      /*extra_accessible_text=*/u"Opens in a new tab");
+      /*extra_accessible_text=*/
+      l10n_util::GetStringUTF16(IDS_ACCOUNT_SELECTION_OPENS_IN_NEW_TAB));
   row->AddChildView(std::move(button));
   AddChildView(std::move(row));
 
@@ -625,7 +625,7 @@ AccountSelectionBubbleView::CreateSingleAccountChooser(
   }
 
   // Add disclosure text.
-  row->AddChildView(CreateDisclosureLabel(account));
+  row->AddChildView(CreateDisclosureLabel(account, views::style::STYLE_LINK));
   return std::make_pair(std::move(row), button_ptr);
 }
 

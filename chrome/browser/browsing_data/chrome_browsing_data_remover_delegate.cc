@@ -789,6 +789,10 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
         ContentSettingsType::INTENT_PICKER_DISPLAY, delete_begin_, delete_end_,
         website_settings_filter);
+
+    host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
+        ContentSettingsType::WEBAUTHN_AMBIENT_SIGNIN_DATA, delete_begin_,
+        delete_end_, website_settings_filter);
 #endif
 
     host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
@@ -1183,12 +1187,11 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
 #if BUILDFLAG(IS_ANDROID)
     base::RecordAction(UserMetricsAction("ClearBrowsingData_Tabs"));
 
-    for (TabModel* tab_model : TabModelList::models()) {
-      if (tab_model->GetProfile() != profile_ || tab_model->IsOffTheRecord()) {
-        continue;
-      }
-
-      tab_model->CloseTabsNavigatedInTimeWindow(delete_begin, delete_end);
+    if (!profile_->IsOffTheRecord()) {
+      TabModelList::ForEach(profile_, [&](TabModel* tab_model) {
+        tab_model->CloseTabsNavigatedInTimeWindow(delete_begin, delete_end);
+        return true;
+      });
     }
 
     TabModel* archived_tab_model = TabModelList::GetArchivedTabModel(profile_);
@@ -1205,28 +1208,20 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
   // DATA_TYPE_RELATED_WEBSITE_SETS_PERMISSIONS
   if (remove_mask & content::BrowsingDataRemover::
                         DATA_TYPE_RELATED_WEBSITE_SETS_PERMISSIONS) {
-    for (ContentSettingsType type_to_clear :
-         {ContentSettingsType::STORAGE_ACCESS,
-          ContentSettingsType::TOP_LEVEL_STORAGE_ACCESS}) {
-      host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
-          type_to_clear, [&](const ContentSettingPatternSource& setting) {
-            return setting.metadata.decided_by_related_website_sets() &&
-                   std::ranges::any_of(
-                       filter_builder->GetOrigins(),
-                       [&](const url::Origin& origin) -> bool {
-                         // TopLevelStorageAccessPermissionContext creates
-                         // grants using (origin, site) patterns. We explicitly
-                         // use the primary pattern's site here to ensure any
-                         // permission granted to subdomains of an RWS site are
-                         // properly cleared.
-                         return net::SchemefulSite(setting.primary_pattern
-                                                       .ToRepresentativeUrl())
-                                    .IsSameSiteWith(origin) ||
-                                setting.secondary_pattern.Matches(
-                                    origin.GetURL());
-                       });
-          });
-    }
+    host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
+        ContentSettingsType::STORAGE_ACCESS,
+        [&](const ContentSettingPatternSource& setting) {
+          return setting.metadata.decided_by_related_website_sets() &&
+                 std::ranges::any_of(
+                     filter_builder->GetOrigins(),
+                     [&](const url::Origin& origin) -> bool {
+                       return net::SchemefulSite(
+                                  setting.primary_pattern.ToRepresentativeUrl())
+                                  .IsSameSiteWith(origin) ||
+                              setting.secondary_pattern.Matches(
+                                  origin.GetURL());
+                     });
+        });
   }
 
   if (remove_mask & constants::DATA_TYPE_SEARCH_ENGINE_CHOICE) {

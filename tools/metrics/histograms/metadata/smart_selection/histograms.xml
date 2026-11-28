@@ -22,6 +22,59 @@ chromium-metrics-reviews@google.com.
 
 <histograms>
 
+<histogram name="SmartSelection.Invocation.ByDocumentMimeType"
+    enum="SmartSelectionDocumentMimeType" expires_after="2027-04-14">
+  <owner>schwering@google.com</owner>
+  <owner>jkeitel@google.com</owner>
+  <summary>
+    Records the MIME type of the document on which Smart Selection was invoked.
+    Recorded once per overlay session when the session is initialized.
+  </summary>
+</histogram>
+
+<histogram name="SmartSelection.Invocation.ByEntryPoint"
+    enum="SmartSelectionEntryPoint" expires_after="2027-04-14">
+  <owner>schwering@google.com</owner>
+  <owner>jkeitel@google.com</owner>
+  <summary>
+    Records the entry point from which Smart Selection was invoked. Recorded
+    once per overlay session when the session is initialized.
+  </summary>
+</histogram>
+
+<histogram name="SmartSelection.Selection.Outcome"
+    enum="SmartSelectionSelectionOutcome" expires_after="2027-04-14">
+  <owner>schwering@google.com</owner>
+  <owner>jkeitel@google.com</owner>
+  <summary>
+    Records the outcome of the initial selection stage in a Smart Selection UI
+    session. Recorded once per session when the selection stage completes or the
+    session ends.
+  </summary>
+</histogram>
+
+<histogram name="SmartSelection.Submission.Outcome"
+    enum="SmartSelectionSubmissionOutcome" expires_after="2027-04-14">
+  <owner>schwering@google.com</owner>
+  <owner>jkeitel@google.com</owner>
+  <summary>
+    Records the outcome of the submission stage in a Smart Selection UI session
+    (either a search bar prompt or suggestion chips). Only recorded if the
+    initial selection stage succeeded (preselected text or completed spatial
+    selection).
+  </summary>
+</histogram>
+
+<histogram name="SmartSelection.Suggestions.AcceptedSuggestionType"
+    enum="SmartSelectionToolId" expires_after="2027-04-14">
+  <owner>schwering@google.com</owner>
+  <owner>jkeitel@google.com</owner>
+  <summary>
+    Records the tool type of a suggestion chip when it is accepted (executed) by
+    the user.
+  </summary>
+</histogram>
+
 <histogram name="SmartSelection.Suggestions.Latency.{Stage}" units="ms"
     expires_after="2027-04-14">
   <owner>schwering@google.com</owner>
@@ -105,6 +158,35 @@ chromium-metrics-reviews@google.com.
     SmartSelectionSuggestionsResponse. Recorded when a valid response is
     received from the server.
   </summary>
+</histogram>
+
+<histogram name="SmartSelection.Suggestions.TotalShownCount"
+    units="suggestions" expires_after="2027-04-14">
+  <owner>schwering@google.com</owner>
+  <owner>jkeitel@google.com</owner>
+  <summary>
+    Records the total number of suggestions for a single selection. Emitted when
+    the suggestions are presented to the user once suggestion fetching
+    completes.
+  </summary>
+</histogram>
+
+<histogram name="SmartSelection.Suggestions.{SuggestionType}ShownCount"
+    units="suggestions" expires_after="2027-04-14">
+  <owner>schwering@google.com</owner>
+  <owner>jkeitel@google.com</owner>
+  <summary>
+    Records the number of {SuggestionType} suggestions for a single selection.
+    Emitted when the suggestions are presented to the user once suggestion
+    fetching completes.
+  </summary>
+  <token key="SuggestionType">
+    <variant name="GeminiInChrome" summary="Gemini in Chrome"/>
+    <variant name="GoogleLens" summary="Google Lens"/>
+    <variant name="GoogleSearch" summary="Google Search"/>
+    <variant name="QuickAnswers" summary="Quick Answers"/>
+    <variant name="Unknown" summary="Unknown or unspecified tool"/>
+  </token>
 </histogram>
 
 </histograms>

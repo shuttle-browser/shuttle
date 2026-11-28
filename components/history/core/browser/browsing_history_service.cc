@@ -17,6 +17,7 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
@@ -26,11 +27,13 @@
 #include "base/time/time.h"
 #include "base/types/optional_ref.h"
 #include "base/values.h"
+#include "build/build_config.h"
 #include "components/history/core/browser/browsing_history_driver.h"
 #include "components/history/core/browser/features.h"
 #include "components/history/core/browser/history_backend.h"
 #include "components/history/core/browser/history_types.h"
 #include "components/keyed_service/core/service_access_type.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 
 namespace history {
 
@@ -65,6 +68,23 @@ bool CanRetry(QuerySourceStatus status) {
          status == FAILURE || status == TIMED_OUT;
 }
 
+// Returns whether remote (Web History) results can ever be part of a query
+// with `options`. If not, the remote source must not keep the query from
+// reaching the beginning.
+bool CanIncludeRemoteResults(const QueryOptions& options) {
+  // TODO(crbug.com/583357777): Support app_id filtering for remote history.
+  if (options.app_id != kNoAppIdFilter) {
+    return false;
+  }
+#if !BUILDFLAG(IS_IOS)
+  // Actor visits are local-only, so actor-only queries never use remote.
+  if (!options.include_user_visits) {
+    return false;
+  }
+#endif
+  return true;
+}
+
 base::Time OldestTime(
     const std::vector<BrowsingHistoryService::HistoryEntry>& entries) {
   // If the vector is empty, then there is no oldest, so we use the oldest
@@ -78,6 +98,31 @@ base::Time OldestTime(
     best = std::min(best, entry.time);
   }
   return best;
+}
+
+// The largest visit and typed counts reported for a URL.
+struct UrlCounts {
+  int visit_count = 0;
+  int typed_count = 0;
+};
+
+// `visit_count` and `typed_count` are per-URL lifetime totals, so a group of
+// similar visits must include each distinct URL's counts exactly once. Entries
+// for the same URL may report different counts (remote entries always report
+// 0), so the largest counts seen for each URL are tracked in
+// `max_counts_per_url`. This keeps the result independent of the order in
+// which entries are processed. Returns how much `entry` adds to the group's
+// totals.
+UrlCounts UpdateMaxCountsAndGetDelta(
+    const BrowsingHistoryService::HistoryEntry& entry,
+    absl::flat_hash_map<GURL, UrlCounts>& max_counts_per_url) {
+  UrlCounts& max_counts = max_counts_per_url[entry.url];
+  UrlCounts delta{
+      .visit_count = std::max(0, entry.visit_count - max_counts.visit_count),
+      .typed_count = std::max(0, entry.typed_count - max_counts.typed_count)};
+  max_counts.visit_count = std::max(max_counts.visit_count, entry.visit_count);
+  max_counts.typed_count = std::max(max_counts.typed_count, entry.typed_count);
+  return delta;
 }
 
 }  // namespace
@@ -321,12 +366,9 @@ bool BrowsingHistoryService::ShouldQueryRemote(const QueryHistoryState& state) {
     return false;
   }
 
-#if !BUILDFLAG(IS_IOS)
-  // Actor visits are local-only and user visits should not be queried.
-  if (!state.original_options.include_user_visits) {
+  if (!CanIncludeRemoteResults(state.original_options)) {
     return false;
   }
-#endif
 
   const size_t desired_count =
       static_cast<size_t>(state.original_options.EffectiveMaxCount());
@@ -337,15 +379,6 @@ bool BrowsingHistoryService::ShouldQueryRemote(const QueryHistoryState& state) {
   if (state.local_results.size() + state.remote_results.size() >=
       desired_count) {
     // Already have sufficient results, no need to query more.
-    return false;
-  }
-
-  // App-specific history uses the results from the local database only, since
-  // the legacy json API service WebHistory relies on can't be updated to
-  // process app_id.
-  // TODO(crbug.com/460361854): Once migrated to a non-legacy API, also query
-  // remote app-specific history.
-  if (state.original_options.app_id != kNoAppIdFilter) {
     return false;
   }
 
@@ -364,13 +397,20 @@ void BrowsingHistoryService::HoldbackAndPartitionResults(
   // history entries in the correct order. Subsequent continuation requests will
   // get the delayed entries.
   base::Time oldest_allowed = base::Time();
+  // A source with more results can still return none (e.g. a local query with
+  // `begin_time`). Keep its previous end time then, since a null end time would
+  // restart the next query from the newest visit.
   if (state->local_status == MORE_RESULTS) {
     oldest_allowed = std::max(oldest_allowed, oldest_local);
-    state->local_end_time_for_continuation = oldest_local;
+    if (!oldest_local.is_null()) {
+      state->local_end_time_for_continuation = oldest_local;
+    }
   }
   if (state->remote_status == MORE_RESULTS) {
     oldest_allowed = std::max(oldest_allowed, oldest_remote);
-    state->remote_end_time_for_continuation = oldest_remote;
+    if (!oldest_remote.is_null()) {
+      state->remote_end_time_for_continuation = oldest_remote;
+    }
   } else if (CanRetry(state->remote_status) && oldest_local != base::Time()) {
     // TODO(skym): It is unclear if this is the best behavior. The UI is going
     // to behave incorrectly if out of order results are received. So to
@@ -486,9 +526,13 @@ void BrowsingHistoryService::MergeDuplicateResults(
         matching_entry->remote_icon_url_for_uma = entry.remote_icon_url_for_uma;
       }
 
-      // Aggregate visit and typed counts.
-      matching_entry->visit_count += entry.visit_count;
-      matching_entry->typed_count += entry.typed_count;
+      // `visit_count` and `typed_count` are per-URL lifetime totals, and every
+      // entry merged here is for the same URL, so keep the larger value (remote
+      // entries have 0) instead of adding them up.
+      matching_entry->visit_count =
+          std::max(matching_entry->visit_count, entry.visit_count);
+      matching_entry->typed_count =
+          std::max(matching_entry->typed_count, entry.typed_count);
 
       // TODO(crbug.com/481934455): Aggregate all relevant HistoryEntry fields
       // for combined entries.
@@ -524,11 +568,18 @@ BrowsingHistoryService::GroupSimilarVisits(QueryHistoryState* state) {
   std::vector<HistoryEntry> grouped;
   grouped.reserve(sorted.size());
 
+  // A group of similar visits, along with the counts reported for each of its
+  // URLs.
+  struct GroupedEntry {
+    raw_ptr<HistoryEntry> entry = nullptr;
+    absl::flat_hash_map<GURL, UrlCounts> max_counts_per_url;
+  };
+
   // Maps the GroupingKey to the most recent entry on a particular day for
   // non-actor-initiated visits.
-  std::map<GroupingKey, HistoryEntry*> non_actor_current_day_entries;
+  std::map<GroupingKey, GroupedEntry> non_actor_current_day_entries;
   // Same as above, but for actor-initiated visits.
-  std::map<GroupingKey, HistoryEntry*> actor_current_day_entries;
+  std::map<GroupingKey, GroupedEntry> actor_current_day_entries;
 
   // Keeps track of the day that `*_current_day_entries` is holding
   // entries for in order to handle per-day grouping.
@@ -558,12 +609,21 @@ BrowsingHistoryService::GroupSimilarVisits(QueryHistoryState* state) {
                     .app_id = entry.app_id};
 
     // Keep this visit if it's the first visit of it's kind on the current day.
-    auto [it, inserted] = current_day_entries.try_emplace(key, nullptr);
+    auto [it, inserted] = current_day_entries.try_emplace(key);
+    GroupedEntry& group = it->second;
+
+    // `entry` is always a single-URL entry: local and remote are queried
+    // sequentially, so `HoldbackAndPartitionResults()` never holds back
+    // grouped entries. If they're ever queried in parallel, hold back raw
+    // entries before grouping instead (see b/579253898).
+    const UrlCounts delta =
+        UpdateMaxCountsAndGetDelta(entry, group.max_counts_per_url);
+
     if (inserted) {
       grouped.push_back(std::move(entry));
-      it->second = &grouped.back();
+      group.entry = &grouped.back();
     } else {
-      HistoryEntry* matching_entry = it->second;
+      HistoryEntry* matching_entry = group.entry;
 
       // Merge all timestamps from the current entry into the matching entry.
       // This ensures all visits for similar URLs on the same day are tracked.
@@ -585,9 +645,8 @@ BrowsingHistoryService::GroupSimilarVisits(QueryHistoryState* state) {
         matching_entry->remote_icon_url_for_uma = entry.remote_icon_url_for_uma;
       }
 
-      // Aggregate visit and typed counts.
-      matching_entry->visit_count += entry.visit_count;
-      matching_entry->typed_count += entry.typed_count;
+      matching_entry->visit_count += delta.visit_count;
+      matching_entry->typed_count += delta.typed_count;
 
       // TODO(b/482947398): Aggregate all relevant HistoryEntry fields for
       // combined entries.
@@ -613,9 +672,9 @@ void BrowsingHistoryService::QueryComplete(
   }
 
   state->local_status =
-      results.reached_beginning() ? REACHED_BEGINNING : MORE_RESULTS;
+      results.has_more_results() ? MORE_RESULTS : REACHED_BEGINNING;
 
-  if (results.reached_beginning()) {
+  if (!results.has_more_results()) {
     // Exhausted the local results; continue querying to get remote results.
     // Start querying at the point where local history ends.
     base::Time expiry_treshold =
@@ -650,32 +709,16 @@ void BrowsingHistoryService::OnGetAllAppIds(GetAllAppIdsResult result) {
 void BrowsingHistoryService::ReturnResultsToDriver(
     scoped_refptr<QueryHistoryState> state) {
   std::vector<HistoryEntry> results;
-  bool has_remote_results = !state->remote_results.empty();
   bool group_visits =
       base::FeatureList::IsEnabled(kBrowsingHistorySimilarVisitsGrouping);
 
   if (group_visits) {
     results = GroupSimilarVisits(state.get());
   } else {
-    // Always merge remote results, because Web History does not deduplicate.
-    // Local history should be using per-query deduplication, but if we are in a
-    // continuation, it's possible that we have carried over pending entries
-    // along with new results, and these two sets may contain duplicates.
-    // Assuming every call to Web History is successful, we shouldn't be able
-    // to have empty sync results at the same time as we have pending local.
-    if (has_remote_results) {
-      MergeDuplicateResults(state.get(), &results);
-    } else {
-      // TODO(skym): Is the optimization to skip merge on local only results
-      // worth the complexity increase here?
-      if (state->local_status == MORE_RESULTS &&
-          !state->local_results.empty()) {
-        state->local_end_time_for_continuation =
-            state->local_results.rbegin()->time;
-      }
-      results = std::move(state->local_results);
-      state->local_results.clear();
-    }
+    // Always merge: Web History does not deduplicate, local results may
+    // contain same-day duplicates (e.g. with `KEEP_ALL_DUPLICATES`), and
+    // entries held back from the previous page may duplicate new results.
+    MergeDuplicateResults(state.get(), &results);
   }
 
   RecordResultsMetrics(results);
@@ -684,7 +727,7 @@ void BrowsingHistoryService::ReturnResultsToDriver(
   info.search_text = state->search_text;
   info.reached_beginning = !CanRetry(state->local_status) &&
                            (!CanRetry(state->remote_status) ||
-                            state->original_options.app_id != kNoAppIdFilter);
+                            !CanIncludeRemoteResults(state->original_options));
   base::OnceClosure continuation =
       base::BindOnce(&BrowsingHistoryService::QueryHistoryInternal,
                      weak_factory_.GetWeakPtr(), std::move(state));
@@ -746,9 +789,21 @@ void BrowsingHistoryService::RecordDuplicateVisitsCount(
   // Note: The histogram max of 150 is chosen to match `RESULTS_PER_PAGE` from
   // chrome/browser/resources/history/constants.ts and `kMaxQueryCount` from
   // chrome/browser/android/history/browsing_history_bridge.cc.
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  // TODO(crbug.com/574346928): Android: switch to KEEP_ALL_DUPLICATES and
+  // record DuplicateVisitsCount2.
+  // TODO(crbug.com/581328417): iOS: switch to KEEP_ALL_DUPLICATES and record
+  // DuplicateVisitsCount2. Remove DuplicateVisitsCount once both have.
   base::UmaHistogramCustomCounts(
       "History.BrowsingHistoryResult.DuplicateVisitsCount",
       duplicate_visits_count, 0, 150, 50);
+#else
+  // Desktop (chrome://history) uses `QueryOptions::KEEP_ALL_DUPLICATES`, so all
+  // duplicates are counted here rather than some being removed by the DB.
+  base::UmaHistogramCustomCounts(
+      "History.BrowsingHistoryResult.DuplicateVisitsCount2",
+      duplicate_visits_count, 0, 150, 50);
+#endif
 }
 
 void BrowsingHistoryService::RemoveComplete() {

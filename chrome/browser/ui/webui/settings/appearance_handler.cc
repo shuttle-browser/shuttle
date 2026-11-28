@@ -64,11 +64,12 @@ void AppearanceHandler::RegisterMessages() {
 
 void AppearanceHandler::HandleUseTheme(ui::SystemTheme system_theme,
                                        const base::ListValue& args) {
-  CHECK(system_theme != ui::SystemTheme::kDefault || !profile_->IsChild(),
-        base::NotFatalUntil::M162);
+  // TODO(crbug.com/583136472): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(system_theme != ui::SystemTheme::kDefault || !profile_->IsChild());
   ThemeServiceFactory::GetForProfile(profile_)->UseTheme(system_theme);
   settings_utils::MaybeNotifySettingsCustomEvent(
-      web_ui(), settings::kAppearanceThemeChangedId);
+      web_ui(), settings::kAppearanceThemeChangedEventId);
 }
 
 void AppearanceHandler::ResetPinnedToolbarActions(const base::ListValue& args) {

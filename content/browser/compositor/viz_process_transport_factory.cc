@@ -9,6 +9,7 @@
 
 #include "base/command_line.h"
 #include "base/debug/dump_without_crashing.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
@@ -32,13 +33,16 @@
 #include "content/browser/gpu/compositor_util.h"
 #include "content/browser/gpu/gpu_data_manager_impl.h"
 #include "content/browser/gpu/gpu_process_host.h"
+#include "content/common/features.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/content_browser_client.h"
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/gpu_stream_constants.h"
 #include "gpu/command_buffer/client/raster_interface.h"
+#include "gpu/ipc/client/command_buffer_proxy_impl.h"
 #include "gpu/ipc/client/gpu_channel_host.h"
 #include "media/base/media_switches.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
@@ -60,12 +64,22 @@
 #include "ui/display/mac/display_link_mac.h"
 #endif
 
+#if BUILDFLAG(IS_OZONE)
+#include "ui/ozone/public/ozone_platform.h"
+#endif  // BUILDFLAG(IS_OZONE)
+
 namespace content {
 namespace {
 
 // The client id for the browser process. It must not conflict with any
 // child process client id.
 constexpr uint32_t kBrowserClientId = 0u;
+
+#if BUILDFLAG(IS_OZONE)
+// TODO(b/581771255): Kill switch, remove once M159 hits Stable.
+BASE_FEATURE(kSkipWaitForRootCompositorFrameSinkDestruction,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_OZONE)
 
 scoped_refptr<viz::ContextProviderCommandBuffer> CreateContextProvider(
     scoped_refptr<gpu::GpuChannelHost> gpu_channel_host,
@@ -155,6 +169,14 @@ VizProcessTransportFactory::VizProcessTransportFactory(
 
 VizProcessTransportFactory::~VizProcessTransportFactory() {
   task_graph_runner_->Shutdown();
+  if (main_context_provider_ &&
+      main_context_provider_->GetCommandBufferProxy()) {
+    main_context_provider_->GetCommandBufferProxy()->SetChannelShuttingDown();
+  }
+  if (worker_context_provider_ &&
+      worker_context_provider_->GetCommandBufferProxy()) {
+    worker_context_provider_->GetCommandBufferProxy()->SetChannelShuttingDown();
+  }
 }
 
 void VizProcessTransportFactory::ConnectHostFrameSinkManager() {
@@ -252,6 +274,19 @@ viz::SubtreeCaptureId VizProcessTransportFactory::AllocateSubtreeCaptureId() {
 viz::HostFrameSinkManager*
 VizProcessTransportFactory::GetHostFrameSinkManager() {
   return host_frame_sink_manager_;
+}
+
+scoped_refptr<base::SingleThreadTaskRunner>
+VizProcessTransportFactory::GetCompositorTaskRunner() {
+  if (!base::FeatureList::IsEnabled(
+          features::kPrioritizeCompositorTaskRunnerOnStartup) ||
+      GetContentClient()->browser()->IsBrowserStartupComplete()) {
+    return base::SingleThreadTaskRunner::GetCurrentDefault();
+  }
+  // Compositors created during startup keep `resize_task_runner_` (`kStartup`)
+  // for their lifetime; `BrowserTaskQueues::OnStartupComplete()` resets
+  // `kStartup` back to `kNormalPriority` once startup completes.
+  return resize_task_runner_;
 }
 
 void VizProcessTransportFactory::DisableGpuCompositing() {
@@ -407,7 +442,7 @@ void VizProcessTransportFactory::OnEstablishedGpuChannel(
     root_params->external_begin_frame_controller =
         external_begin_frame_controller.BindNewEndpointAndPassReceiver();
     if (auto* factory =
-            compositor->external_begin_frame_controler_client_factory()) {
+            compositor->external_begin_frame_controller_client_factory()) {
       root_params->external_begin_frame_controller_client =
           factory->CreateExternalBeginFrameControllerClient();
     }
@@ -457,6 +492,15 @@ void VizProcessTransportFactory::OnEstablishedGpuChannel(
   // CompositorFrameSink.
   GetHostFrameSinkManager()->CreateRootCompositorFrameSink(
       std::move(root_params), !using_direct_composition);
+#elif BUILDFLAG(IS_OZONE)
+  const bool wait_on_destruction =
+      ui::OzonePlatform::GetInstance()
+          ->GetPlatformProperties()
+          .wait_for_root_compositor_frame_sink_destruction ||
+      !base::FeatureList::IsEnabled(
+          kSkipWaitForRootCompositorFrameSinkDestruction);
+  GetHostFrameSinkManager()->CreateRootCompositorFrameSink(
+      std::move(root_params), wait_on_destruction);
 #else
   GetHostFrameSinkManager()->CreateRootCompositorFrameSink(
       std::move(root_params));

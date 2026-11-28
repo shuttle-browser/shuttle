@@ -12,13 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/log/absl_check.h"
+#include "absl/log/absl_check.h"  // from @com_google_absl
+#include "absl/status/status.h"   // from @com_google_absl
 #include "mediapipe/calculators/image/opencv_image_encoder_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
 #include "mediapipe/framework/port/opencv_imgcodecs_inc.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/port/status_builder.h"
 
 namespace mediapipe {
@@ -65,7 +65,7 @@ absl::Status OpenCvImageEncoderCalculator::Process(CalculatorContext* cc) {
   ABSL_CHECK_EQ(1, image_frame.ByteDepth());
 
   std::unique_ptr<OpenCvImageEncoderCalculatorResults> encoded_result =
-      absl::make_unique<OpenCvImageEncoderCalculatorResults>();
+      std::make_unique<OpenCvImageEncoderCalculatorResults>();
   encoded_result->set_width(image_frame.Width());
   encoded_result->set_height(image_frame.Height());
 

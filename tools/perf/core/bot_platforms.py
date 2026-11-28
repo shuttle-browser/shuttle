@@ -555,6 +555,32 @@ def _speedometer3_crossbench(
   )
 
 
+@_register('speedometer3-future.crossbench')
+def _speedometer3_future_crossbench(
+  estimated_runtime: int = 60, flags: tuple[str, ...] = ()
+):
+  """Latest Speedometer 3.X version with V8 --future enabled."""
+  return CrossbenchConfig(
+    'speedometer3-future.crossbench',
+    'speedometer_3',
+    estimated_runtime=estimated_runtime,
+    flags=('--enable-features=V8VmFuture', *flags),
+  )
+
+
+@_register('speedometer3-no-field-trials.crossbench')
+def _speedometer3_no_field_trials_crossbench(
+  estimated_runtime: int = 60, flags: tuple[str, ...] = ()
+):
+  """Latest Speedometer 3.X version without field-trial config."""
+  return CrossbenchConfig(
+    'speedometer3-no-field-trials.crossbench',
+    'speedometer_3',
+    estimated_runtime=estimated_runtime,
+    flags=('--disable-field-trial-config', *flags),
+  )
+
+
 @_register("speedometer3-turbolev.crossbench")
 def _speedometer3_turbolev_crossbench(
   estimated_runtime: int = 60, flags: tuple[str, ...] = ()
@@ -618,20 +644,44 @@ def _browser_startup_crossbench(
 
   # NOTE: Keep this list in sync with:
   # third_party/crossbench/config/benchmark/browser_startup/browser.config.hjson
+  # chrome/browser/ui/webui/webui_toolbar/scripts/enabled.sh
   # The shard maps in tools/perf/core/shard_maps/ also embed these flags, so
   # update them too.
   INITIAL_WEBUI_FEATURES = (
-    "InitialWebUI:high_stream_priority/true/without_spellcheck/true/"
-    "without_translate/true,"
-    "WebUIReloadButton:WebUIReloadButtonDeferBrowserViewShow/false/"
-    "WebUIReloadButtonKeepVisibleUntilPaint/true/"
-    "WebUIReloadButtonPrewarmWebUI/true/"
-    "WebUIReloadButtonPrewarmWebUIPreNavigate/true,"
-    "WebUIInProcessResourceLoadingV2,InitialWebUISyncNavStartToCommit,"
-    "InitialWebUIWithoutExtensions,WebUIBundledCodeCache,SendGPUChannelEarly,"
+    "BypassOutdatedSurfaceActivation,"
+    "DeferHistoryBackendInit,"
+    "DeferLayoutDuringBrowserStartup,"
+    "DeferSessionStorageScavengingOnStartup,"
+    "DeferSpellcheckInitialization,"
+    "InitialWebUI,"
     "InitialWebUISurfaceSync:deadline_in_frames/12000/"
     "renderer_commit_delay_ms/100000,"
-    "BypassOutdatedSurfaceActivation,OnlyUseWindowResizeHelperOnResize"
+    "InitialWebUIWithoutExtensions,"
+    "InitialWebUIWithoutSpellCheckForNtp,"
+    "InitialWebUIWithoutTranslateForNtp,"
+    "LazyKeyedServiceInstantiation,"
+    "OnlyUseWindowResizeHelperOnResize,"
+    "PerDependencyDeadlines,"
+    "PrioritizeResizeTaskRunnerOnStartup,"
+    "SendGPUChannelEarly,"
+    "SkipIPCChannelPausingForNonGuests,"
+    "WebUIBackForwardButton,"
+    "WebUIBundledCodeCache,"
+    "WebUIBypassMojoConnections,"
+    "WebUIHomeButton,"
+    "WebUIReloadButton:WebUIReloadButtonBypassLoaderThrottles/true/"
+    "WebUIReloadButtonDeferBrowserViewShow/false/"
+    "WebUIReloadButtonKeepVisibleUntilPaint/true/"
+    "WebUIReloadButtonPrewarmWebUI/true/"
+    "WebUIReloadButtonPrewarmWebUIPreNavigate/true/"
+    "WebUIReloadButtonRestartUnresponsive/true/"
+    "WebUIReloadButtonRestartUnresponsiveRenderersTimeout/5s,"
+    "WebUISplitTabsButton,"
+    "WebUIToolbarFrameEvictionOptOut,"
+    "WebiumMetricsMapping:config/"
+    "CjsKOUV2ZW50TGF0ZW5jeS5HZXN0dXJlU2Nyb2xsVXBkYXRlLlRvdWNoc2NyZWVuLlRvdGFs"
+    "TGF0ZW5jeQooCiZQYWdlTG9hZC5JbnRlcmFjdGl2ZVRpbWluZy5JbnB1dERlbGF5Mwo4CjZH"
+    "cmFwaGljcy5TbW9vdGhuZXNzLlBlcmNlbnREcm9wcGVkRnJhbWVzMy5BbGxTZXF1ZW5jZXM="
   )
   return CrossbenchConfig(
     'browser_startup.crossbench',
@@ -960,6 +1010,22 @@ def _crossbench_blink_ai(
   )
 
 
+# TODO(crbug.com/582419288): Remove after defaulting to Gemma 4.
+@_register('blink-ai-v4.crossbench')
+def _crossbench_blink_ai_v4(
+  estimated_runtime: int = 300, flags: tuple[str, ...] = ()
+):
+  flags += ('--model=v4',)
+  return CrossbenchConfig(
+    'blink-ai-v4.crossbench',
+    'blink-ai',
+    estimated_runtime=estimated_runtime,
+    stories=('language_model',),
+    flags=flags,
+    auto_enable_field_trials=False,
+  )
+
+
 PLATFORM_INFO = {
   'linux-perf': {
     'description': (
@@ -996,12 +1062,16 @@ PLATFORM_INFO = {
   },
   # Uses the shared chrome.tests.intelligence pool and is reserved exclusively
   # for blink-ai.crossbench. Do not schedule other benchmarks on this bot.
+  # TODO(crbug.com/582419288): Remove blink-ai-v4.crossbench after defaulting
+  # to Gemma 4.
   'linux-rtx4070-perf': {
     'description': 'Ubuntu-24.04, NVIDIA GeForce RTX 4070',
     'num_shards': 1,
     'platform_os': 'linux',
     'is_fyi': False,
-    'allowed_benchmarks': frozenset({'blink-ai.crossbench'}),
+    'allowed_benchmarks': frozenset(
+      {'blink-ai.crossbench', 'blink-ai-v4.crossbench'}
+    ),
   },
   'linux-nvidia-dgx-spark-arm-perf': {
     'description': 'Ubuntu-24.04, Nvidia DGX Spark',
@@ -1257,6 +1327,12 @@ PLATFORM_INFO = {
     'platform_os': 'android',
     'is_fyi': False,
     'pinpoint_only': True,
+  },
+  'android-pixel10_webview-perf-pgo-fieldtrial': {
+    'description': 'Android B',
+    'num_shards': 4,
+    'platform_os': 'android',
+    'is_fyi': False,
   },
   'android-pixel10_webview-perf-pgo-heapdump': {
     'description': 'Android B',

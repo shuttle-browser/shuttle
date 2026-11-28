@@ -35,8 +35,7 @@ inline constexpr auto kContentSettingsTypeToHistogramValue =
         {ContentSettingsType::MEDIASTREAM_MIC, 12},
         {ContentSettingsType::MEDIASTREAM_CAMERA, 13},
         {ContentSettingsType::PROTOCOL_HANDLERS, 14},
-        // PPAPI_BROKER is deprecated and shouldn't get logged anymore.
-        {ContentSettingsType::DEPRECATED_PPAPI_BROKER, -1},
+        // Removed DEPRECATED_PPAPI_BROKER in M159.
         {ContentSettingsType::AUTOMATIC_DOWNLOADS, 16},
         {ContentSettingsType::MIDI_SYSEX, 17},
         {ContentSettingsType::SSL_CERT_DECISIONS, 19},
@@ -57,8 +56,7 @@ inline constexpr auto kContentSettingsTypeToHistogramValue =
         {ContentSettingsType::SOUND, 36},
         {ContentSettingsType::CLIENT_HINTS, 37},
         {ContentSettingsType::SENSORS, 38},
-        // ACCESSIBILITY_EVENTS deprecated in M131.
-        {ContentSettingsType::DEPRECATED_ACCESSIBILITY_EVENTS, 39},
+        // Removed DEPRECATED_ACCESSIBILITY_EVENTS in M159.
         {ContentSettingsType::PAYMENT_HANDLER, 43},
         {ContentSettingsType::USB_GUARD, 44},
         {ContentSettingsType::BACKGROUND_FETCH, 45},
@@ -98,7 +96,7 @@ inline constexpr auto kContentSettingsTypeToHistogramValue =
         {ContentSettingsType::JAVASCRIPT_JIT, 79},
         {ContentSettingsType::HTTP_ALLOWED, 80},
         {ContentSettingsType::FORMFILL_METADATA, 81},
-        {ContentSettingsType::DEPRECATED_FEDERATED_IDENTITY_ACTIVE_SESSION, 82},
+        // Removed DEPRECATED_FEDERATED_IDENTITY_ACTIVE_SESSION in M159.
         {ContentSettingsType::AUTO_DARK_WEB_CONTENT, 83},
         {ContentSettingsType::REQUEST_DESKTOP_SITE, 84},
         {ContentSettingsType::FEDERATED_IDENTITY_API, 85},
@@ -111,7 +109,7 @@ inline constexpr auto kContentSettingsTypeToHistogramValue =
              FEDERATED_IDENTITY_IDENTITY_PROVIDER_SIGNIN_STATUS,
          91},
         {ContentSettingsType::REVOKED_UNUSED_SITE_PERMISSIONS, 92},
-        {ContentSettingsType::TOP_LEVEL_STORAGE_ACCESS, 93},
+        // Removed TOP_LEVEL_STORAGE_ACCESS in M159.
         {ContentSettingsType::FEDERATED_IDENTITY_AUTO_REAUTHN_PERMISSION, 94},
         {ContentSettingsType::FEDERATED_IDENTITY_IDENTITY_PROVIDER_REGISTRATION,
          95},
@@ -146,12 +144,10 @@ inline constexpr auto kContentSettingsTypeToHistogramValue =
         // Removed TOP_LEVEL_TPCD_ORIGIN_TRIAL in M143.
         {ContentSettingsType::DISPLAY_MEDIA_SYSTEM_AUDIO, 125},
         {ContentSettingsType::JAVASCRIPT_OPTIMIZER, 126},
-        // Removed STORAGE_ACCESS_HEADER_ORIGIN_TRIAL in M156.
+        // Removed STORAGE_ACCESS_HEADER_ORIGIN_TRIAL in M159.
         {ContentSettingsType::HAND_TRACKING, 128},
         {ContentSettingsType::WEB_APP_INSTALLATION, 129},
-        // DIRECT_SOCKETS_PRIVATE_NETWORK_ACCESS deprecated in M151.
-        {ContentSettingsType::DEPRECATED_DIRECT_SOCKETS_PRIVATE_NETWORK_ACCESS,
-         130},
+        // Removed DEPRECATED_DIRECT_SOCKETS_PRIVATE_NETWORK_ACCESS in M159.
         {ContentSettingsType::LEGACY_COOKIE_SCOPE, 131},
         {ContentSettingsType::ARE_SUSPICIOUS_NOTIFICATIONS_ALLOWLISTED_BY_USER,
          132},
@@ -171,6 +167,7 @@ inline constexpr auto kContentSettingsTypeToHistogramValue =
         {ContentSettingsType::SUB_APPS_WITHOUT_PROMPTS, 145},
         {ContentSettingsType::INLINE_CUE_MENU, 146},
         {ContentSettingsType::SUSPICIOUS_SITE_WARNING_DATA, 147},
+        {ContentSettingsType::WEBAUTHN_AMBIENT_SIGNIN_DATA, 148},
 
         // As mentioned at the top, please don't forget to update ContentType in
         // enums.xml when you add entries here!

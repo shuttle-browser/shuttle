@@ -40,6 +40,7 @@ chromium-metrics-reviews@google.com.
       summary=", from the visual guided setter"/>
   <variant name=".FirstRunExperience"
       summary=", from the first run experience"/>
+  <variant name=".OmniboxEverywhere" summary=", from Omnibox Everywhere"/>
   <variant name=".PinToTaskbarInfoBar"
       summary=", from the pin to taskbar infobar"/>
   <variant name=".PinWebApp" summary=", from an installed web app"/>
@@ -391,7 +392,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.IsolatedBrowser.LaunchResult" enum="Hresult"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>wfh@chromium.org</owner>
   <owner>chrome-platform-security-core@google.com</owner>
   <summary>
@@ -418,7 +419,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.IsPinnedToTaskbar3" enum="IsPinnedToTaskbarResult"
-    expires_after="2027-02-24">
+    expires_after="2027-04-25">
   <owner>songhaoli@chromium.org</owner>
   <owner>davidbienvenu@chromium.org</owner>
   <summary>
@@ -469,7 +470,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.ParentalControls.FetchResult" enum="BooleanSuccess"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>ljjlee@google.com</owner>
   <owner>chrome-kids-eng@google.com</owner>
   <summary>
@@ -481,7 +482,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.ParentalControls.{Setting}" enum="Boolean"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>ljjlee@google.com</owner>
   <owner>chrome-kids-eng@google.com</owner>
   <summary>
@@ -586,7 +587,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.PlatformExperienceHelper.InstallerLaunchStatus.User"
-    enum="UserInstallerLaunchStatus" expires_after="2027-02-28">
+    enum="UserInstallerLaunchStatus" expires_after="2027-05-02">
   <owner>alsan@chromium.org</owner>
   <owner>chrome-desktop-ui-waterloo@google.com</owner>
   <summary>
@@ -620,7 +621,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.ReplaceFileResult" enum="ReplaceFileResult"
-    expires_after="2027-03-02">
+    expires_after="2027-05-02">
   <owner>grt@chromium.org</owner>
   <owner>tingshao@microsoft.com</owner>
   <summary>
@@ -630,7 +631,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Windows.RunningIsolated" enum="BooleanEnabled"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>wfh@chromium.org</owner>
   <owner>chrome-platform-security-core@google.com</owner>
   <summary>
@@ -672,6 +673,59 @@ chromium-metrics-reviews@google.com.
     called{PinAppToTaskbarChannel}. It is called when deciding whether or not to
     offer to pin Chrome (or an installed web app) to the taskbar.
   </summary>
+</histogram>
+
+<histogram name="Windows.StorageDurability.Queried" enum="BooleanSuccess"
+    expires_after="2027-11-01">
+  <owner>simonhong@chromium.org</owner>
+  <owner>grt@chromium.org</owner>
+  <owner>clifton@brave.com</owner>
+  <summary>
+    Whether the drive holding the user data directory answered
+    IOCTL_STORAGE_QUERY_PROPERTY with StorageDeviceWriteCacheProperty. False
+    covers drivers that do not implement the query and profiles that are not
+    reached through a drive letter, such as those on a network share. Recorded
+    once per browser session, on startup, when the StorageDurabilityCheck
+    feature is enabled. The other Windows.StorageDurability histograms are only
+    recorded when this one is true.
+  </summary>
+</histogram>
+
+<histogram name="Windows.StorageDurability.{Signal}" enum="Boolean"
+    expires_after="2027-11-01">
+  <owner>simonhong@chromium.org</owner>
+  <owner>grt@chromium.org</owner>
+  <owner>clifton@brave.com</owner>
+  <summary>
+    What the drive holding the user data directory reports about how it handles
+    writes. Measures how common a configuration is in which Windows has been
+    told to stop flushing the drive's write cache, which lets an already renamed
+    file lose its contents on power failure. Recorded once per browser session,
+    on startup, when the StorageDurabilityCheck feature is enabled and
+    Windows.StorageDurability.Queried is true.
+  </summary>
+  <token key="Signal">
+    <variant name="FlushCacheSupported"
+        summary="The drive reports that it honors a flush request."/>
+    <variant name="FlushingUnsafe"
+        summary="The drive caches writes, Windows has been told not to flush
+                 them, and nothing is backing the cache up. This is the
+                 combination that risks data loss."/>
+    <variant name="NVCacheEnabled"
+        summary="The write cache is battery backed, which makes disabling
+                 flushing a legitimate choice rather than a dangerous one."/>
+    <variant name="UserDefinedPowerProtection"
+        summary="The Device Manager setting &quot;Turn off Windows
+                 write-cache buffer flushing on the device&quot; is on."/>
+    <variant name="WriteCacheEnabled"
+        summary="The drive is caching writes in volatile memory."/>
+    <variant name="WriteCacheStateUnknown"
+        summary="The driver answered the query but reported
+                 WriteCacheEnableUnknown rather than stating whether the
+                 cache is on. When this is true, WriteCacheEnabled being
+                 false means only that caching was not confirmed, not that it
+                 is off."/>
+  </token>
 </histogram>
 
 <histogram name="Windows.TaskbarPinFromFRESucceeded" enum="Boolean"

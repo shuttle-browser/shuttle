@@ -10,9 +10,11 @@
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
 #include "third_party/blink/renderer/core/dom/events/native_event_listener.h"
+#include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
+#include "third_party/blink/renderer/core/html/html_element.h"
 #include "third_party/blink/renderer/core/svg/svg_animated_length.h"
 #include "third_party/blink/renderer/core/svg/svg_document_extensions.h"
 #include "third_party/blink/renderer/core/svg/svg_length.h"
@@ -20,6 +22,7 @@
 #include "third_party/blink/renderer/core/svg/svg_rect_element.h"
 #include "third_party/blink/renderer/core/svg/svg_set_element.h"
 #include "third_party/blink/renderer/core/svg/svg_svg_element.h"
+#include "third_party/blink/renderer/core/svg/svg_use_element.h"
 #include "third_party/blink/renderer/core/testing/page_test_base.h"
 #include "third_party/blink/renderer/platform/testing/unit_test_helpers.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
@@ -194,6 +197,185 @@ TEST_F(SMILTimeContainerTest, ServiceAnimationsNoSuspendOnAnimationSync) {
   // The timeline should not have been suspended (i.e the time elapsed on the
   // timeline should equal the currently elapsed time).
   EXPECT_EQ(SMILTime::FromTimeDelta(elapsed), time_container->Elapsed());
+}
+
+class RepeatEventCounterListener final : public NativeEventListener {
+ public:
+  void Invoke(ExecutionContext*, Event*) override { num_invocations_++; }
+  size_t GetCount() const { return num_invocations_; }
+
+ private:
+  size_t num_invocations_ = 0;
+};
+
+TEST_F(SMILTimeContainerTest, TimeContainerForwardsTimingStateWhenReinserted) {
+  Load(R"HTML(
+    <svg id="container">
+      <rect width="100" height="100" fill="blue">
+        <animate attributeName="fill" dur="1s" repeatCount="indefinite"
+                 values="lime; blue" id="anim"/>
+      </rect>
+    </svg>
+  )HTML");
+  test::RunPendingTasks();
+
+  auto* repeat_event_listener =
+      MakeGarbageCollected<RepeatEventCounterListener>();
+  auto* svg_root = To<SVGSVGElement>(GetElementById("container"));
+  ASSERT_TRUE(svg_root);
+  auto* animation = GetElementById("anim");
+  ASSERT_TRUE(animation);
+  animation->addEventListener(event_type_names::kRepeatEvent,
+                              repeat_event_listener);
+
+  SMILTimeContainer* time_container = svg_root->TimeContainer();
+  EXPECT_TRUE(time_container->IsStarted());
+  EXPECT_FALSE(time_container->IsPaused());
+
+  // Like PageAnimator::PostAnimate(). Allows the clock to adjust for/during
+  // the timer delay.
+  GetAnimationClock().SetAllowedToDynamicallyUpdateTime(true);
+
+  // Remove the SVG fragment.
+  svg_root->remove();
+
+  // Step an hour ahead. The animations in the detached SVG fragment are
+  // inactive. Add an additional 0.5s to step in the middle of a repetition.
+  StepTime(base::Minutes(60) + base::Milliseconds(500));
+
+  // Re-insert the SVG fragment.
+  GetDocument().body()->AppendChild(svg_root);
+
+  // Flush the pending timer and ensure a new animation frame.
+  test::RunPendingTasks();
+  SVGDocumentExtensions::ServiceSmilOnAnimationFrame(GetDocument());
+
+  // No 'repeatEvent's should've been dispatched for the re-inserted timed
+  // element.
+  EXPECT_EQ(repeat_event_listener->GetCount(), 0u);
+}
+
+TEST_F(SMILTimeContainerTest, TimeContainerForwardsTimingStateWhenRepopulated) {
+  Load(R"HTML(
+    <svg id="container">
+      <rect width="100" height="100" fill="blue">
+        <animate attributeName="fill" dur="1s" repeatCount="indefinite"
+                 values="lime; blue" id="anim"/>
+      </rect>
+    </svg>
+  )HTML");
+  test::RunPendingTasks();
+
+  auto* repeat_event_listener =
+      MakeGarbageCollected<RepeatEventCounterListener>();
+  auto* svg_root = To<SVGSVGElement>(GetElementById("container"));
+  ASSERT_TRUE(svg_root);
+  auto* animation = GetElementById("anim");
+  ASSERT_TRUE(animation);
+  animation->addEventListener(event_type_names::kRepeatEvent,
+                              repeat_event_listener);
+
+  SMILTimeContainer* time_container = svg_root->TimeContainer();
+  EXPECT_TRUE(time_container->IsStarted());
+  EXPECT_FALSE(time_container->IsPaused());
+
+  // Like PageAnimator::PostAnimate(). Allows the clock to adjust for/during
+  // the timer delay.
+  GetAnimationClock().SetAllowedToDynamicallyUpdateTime(true);
+
+  // Remove the animation element. The time container is now empty.
+  auto* rect = animation->parentElement();
+  animation->remove();
+
+  // Step an hour ahead. The animations in the detached SVG fragment are
+  // inactive. Add an additional 0.5s to step in the middle of a repetition.
+  StepTime(base::Minutes(60) + base::Milliseconds(500));
+
+  // Re-insert the animation element.
+  rect->AppendChild(animation);
+
+  // Flush the pending timer and ensure a new animation frame.
+  test::RunPendingTasks();
+  SVGDocumentExtensions::ServiceSmilOnAnimationFrame(GetDocument());
+
+  // No 'repeatEvent's should've been dispatched for the re-inserted timed
+  // element.
+  EXPECT_EQ(repeat_event_listener->GetCount(), 0u);
+}
+
+TEST_F(SMILTimeContainerTest, StartSkipsPendingUseShadowTreeUpdate) {
+  Load(R"HTML(
+    <svg id="s1">
+      <rect id="t" width="10" height="10"/>
+      <use id="u" href="#t"/>
+    </svg>
+  )HTML");
+  test::RunPendingTasks();
+  UpdateAllLifecyclePhasesForTest();
+
+  auto* use = To<SVGUseElement>(GetElementById("u"));
+  ASSERT_TRUE(use);
+  ShadowRoot* shadow_root = use->UserAgentShadowRoot();
+  ASSERT_TRUE(shadow_root);
+  Node* instance = shadow_root->firstChild();
+  ASSERT_TRUE(instance);
+
+  // Re-queue the <use> for a shadow-tree rebuild without detaching the
+  // current shadow tree, by re-setting the target reference.
+  use->setAttribute(svg_names::kHrefAttr, AtomicString("#t"));
+  ASSERT_EQ(instance->parentNode(), shadow_root);
+
+  // Inserting a new <svg> root reaches SMILTimeContainer::Start() ->
+  // UpdateAnimationsAndScheduleFrameIfNeeded(). With no timed elements the
+  // mutations-forbidden scope -- which would flush the document-wide pending
+  // <use> queue and tear down the existing shadow tree -- must not be
+  // entered.
+  auto* s2 = GetDocument().CreateRawElement(svg_names::kSVGTag);
+  GetDocument().body()->AppendChild(s2);
+
+  EXPECT_EQ(instance->parentNode(), shadow_root);
+}
+
+TEST_F(SMILTimeContainerTest,
+       ServiceAnimationsWhenUseShadowRebuildEmptiesQueue) {
+  Load(R"HTML(
+    <svg id="s">
+      <rect id="t" width="10" height="10">
+        <animate id="a" attributeName="width" from="0" to="100" dur="5s"/>
+      </rect>
+      <use id="u" href="#t"/>
+    </svg>
+  )HTML");
+  test::RunPendingTasks();
+  UpdateAllLifecyclePhasesForTest();
+
+  auto* direct_animate = GetElementById("a");
+  auto* use = To<SVGUseElement>(GetElementById("u"));
+  ASSERT_TRUE(direct_animate);
+  ASSERT_TRUE(use && use->UserAgentShadowRoot());
+
+  // Remove the only directly-scheduled timed element. The priority queue
+  // still holds the instance <animate> inside |u|'s shadow tree.
+  direct_animate->remove();
+
+  // Point |u| at a target that will not resolve. The shadow tree rebuild is
+  // deferred; |u| is now on the pending <use>-shadow-tree queue.
+  use->setAttribute(svg_names::kHrefAttr, AtomicString("#nonexistent"));
+
+  // Entering AnimationTargetsMutationsForbidden runs that pending queue,
+  // tears down the old shadow tree -- unscheduling the instance animation --
+  // and fails to build a new one. priority_queue_ is empty by the time
+  // UpdateTimedElements() runs. Must not crash.
+  SVGDocumentExtensions::ServiceSmilOnAnimationFrame(GetDocument());
+
+  // The pending shadow-tree rebuild ran; the new target does not resolve,
+  // so |u| has no instance subtree.
+  EXPECT_FALSE(use->UserAgentShadowRoot()->firstChild());
+
+  // A subsequent service call -- now reaching the pre-scope empty-queue
+  // early return -- is also a no-op.
+  SVGDocumentExtensions::ServiceSmilOnAnimationFrame(GetDocument());
+  EXPECT_FALSE(use->UserAgentShadowRoot()->firstChild());
 }
 
 class ContentLoadedEventListener final : public NativeEventListener {

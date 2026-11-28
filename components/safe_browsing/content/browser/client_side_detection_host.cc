@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <utility>
 
 #include "base/check_op.h"
@@ -21,10 +22,12 @@
 #include "base/memory/ref_counted.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/rand_util.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/string_view_util.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner_helpers.h"
 #include "base/task/thread_pool.h"
 #include "base/time/default_tick_clock.h"
@@ -36,10 +39,10 @@
 #include "components/history/core/browser/history_types.h"
 #include "components/permissions/permission_request_manager.h"
 #include "components/prefs/pref_service.h"
-#include "components/safe_browsing/content/browser/base_ui_manager.h"
 #include "components/safe_browsing/content/browser/client_side_detection_feature_cache.h"
 #include "components/safe_browsing/content/browser/client_side_detection_service.h"
-#include "components/safe_browsing/content/browser/content_unsafe_resource_util.h"
+#include "components/safe_browsing/content/browser/interstitials/base_ui_manager.h"
+#include "components/safe_browsing/content/browser/interstitials/content_unsafe_resource_util.h"
 #include "components/safe_browsing/content/common/safe_browsing.mojom.h"
 #include "components/safe_browsing/core/browser/credit_card_form_event.h"
 #include "components/safe_browsing/core/browser/db/allowlist_checker_client.h"
@@ -747,11 +750,31 @@ ClientSideDetectionHost::~ClientSideDetectionHost() {
 void ClientSideDetectionHost::CancelPendingRequests() {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   weak_factory_.InvalidateWeakPtrs();
+  CancelBrowserSideClassification();
   ClientSideDetectionHostBase::CancelPendingRequests();
+}
+
+void ClientSideDetectionHost::CaptureScreenshot(ScreenshotCallback callback) {
+  // TODO(crbug.com/454896977): Capture the composited surface via
+  // `RenderWidgetHostView::CopyFromSurface()` behind
+  // `kClientSideDetectionCopyFromSurface`.
+  std::move(callback).Run(gfx::Image());
 }
 
 void ClientSideDetectionHost::GetInnerText(HostInnerTextCallback callback) {
   delegate_->GetInnerText(std::move(callback));
+}
+
+std::string ClientSideDetectionHost::GetPageTitle() const {
+  if (!web_contents()) {
+    return std::string();
+  }
+  content::NavigationEntry* entry =
+      web_contents()->GetController().GetLastCommittedEntry();
+  if (!entry) {
+    return std::string();
+  }
+  return base::UTF16ToUTF8(entry->GetTitle());
 }
 
 bool ClientSideDetectionHost::IsAccountSignedIn() {
@@ -1161,6 +1184,8 @@ void ClientSideDetectionHost::OnPhishingPreClassificationDone(
         *GetIntelligentScanId());
   }
 
+  RecordSurfaceAvailabilityForCopy(request_type);
+
   content::RenderFrameHost* rfh = web_contents()->GetPrimaryMainFrame();
 
   phishing_detector_.reset();
@@ -1218,6 +1243,46 @@ void ClientSideDetectionHost::OnPhishingPreClassificationDone(
                      weak_factory_.GetWeakPtr(), request_type, is_sample_ping,
                      did_match_high_confidence_allowlist, is_invalid_ip,
                      tick_clock()->NowTicks()));
+}
+
+void ClientSideDetectionHost::RecordSurfaceAvailabilityForCopy(
+    ClientSideDetectionType request_type) const {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  content::RenderWidgetHostView* view =
+      web_contents()->GetRenderWidgetHostView();
+  const bool surface_available = view && view->IsSurfaceAvailableForCopy();
+
+  ClassificationVisibility visibility = ClassificationVisibility::kHidden;
+  switch (web_contents()->GetVisibility()) {
+    case content::Visibility::HIDDEN:
+      visibility = ClassificationVisibility::kHidden;
+      break;
+    case content::Visibility::OCCLUDED:
+      visibility = ClassificationVisibility::kOccluded;
+      break;
+    case content::Visibility::VISIBLE:
+      visibility = ClassificationVisibility::kVisible;
+      break;
+  }
+
+  if (IsEnhancedProtectionEnabled() &&
+      request_type == ClientSideDetectionType::TRIGGER_MODELS &&
+      base::FeatureList::IsEnabled(kClientSideDetectionImageEmbeddingMatch)) {
+    request_type = ClientSideDetectionType::IMAGE_EMBEDDING_MATCH;
+  }
+  std::string_view request_type_name = GetRequestTypeName(request_type);
+  base::UmaHistogramBoolean("SBClientPhishing.SurfaceAvailableForCopy",
+                            surface_available);
+  base::UmaHistogramBoolean(
+      base::StrCat(
+          {"SBClientPhishing.SurfaceAvailableForCopy.", request_type_name}),
+      surface_available);
+  base::UmaHistogramEnumeration("SBClientPhishing.VisibilityAtClassification",
+                                visibility);
+  base::UmaHistogramEnumeration(
+      base::StrCat(
+          {"SBClientPhishing.VisibilityAtClassification.", request_type_name}),
+      visibility);
 }
 
 void ClientSideDetectionHost::PhishingDetectionDone(
@@ -1527,8 +1592,12 @@ void ClientSideDetectionHost::MaybeCaptureScreenshotAndStartIntelligentScan(
           base::BindOnce(&ClientSideDetectionHost::OnScreenshotTaken,
                          weak_factory_.GetWeakPtr(), std::move(verdict),
                          did_match_high_confidence_allowlist, is_invalid_ip,
-                         std::move(inner_text)));
+                         std::move(inner_text), tick_clock()->NowTicks()));
       return;
+    } else {
+      base::UmaHistogramEnumeration(
+          "SBClientPhishing.Multimodal.ScreenshotCaptureStatus",
+          MultimodalScreenshotCaptureStatus::kRenderWidgetHostViewUnavailable);
     }
   }
   StartIntelligentScan(std::move(verdict), did_match_high_confidence_allowlist,
@@ -1541,9 +1610,24 @@ void ClientSideDetectionHost::OnScreenshotTaken(
     std::optional<bool> did_match_high_confidence_allowlist,
     bool is_invalid_ip,
     std::string inner_text,
+    base::TimeTicks capture_start_time,
     const content::CopyFromSurfaceResult& result) {
-  if (!IsTabVisibleAndOnUrl(GURL(verdict->url())) || !result.has_value() ||
-      result->bitmap.drawsNothing()) {
+  base::UmaHistogramTimes(
+      "SBClientPhishing.Multimodal.ScreenshotCaptureLatency",
+      tick_clock()->NowTicks() - capture_start_time);
+
+  std::optional<MultimodalScreenshotCaptureStatus> failure_status;
+  if (!IsTabVisibleAndOnUrl(GURL(verdict->url()))) {
+    failure_status =
+        MultimodalScreenshotCaptureStatus::kTabNotVisibleOrUrlChanged;
+  } else if (!result.has_value()) {
+    failure_status = MultimodalScreenshotCaptureStatus::kCopyFromSurfaceFailed;
+  } else if (result->bitmap.drawsNothing()) {
+    failure_status = MultimodalScreenshotCaptureStatus::kEmptyBitmap;
+  }
+  if (failure_status.has_value()) {
+    base::UmaHistogramEnumeration(
+        "SBClientPhishing.Multimodal.ScreenshotCaptureStatus", *failure_status);
     StartIntelligentScan(std::move(verdict),
                          did_match_high_confidence_allowlist, is_invalid_ip,
                          std::move(inner_text),
@@ -1569,8 +1653,21 @@ void ClientSideDetectionHost::OnScreenshotEncoded(
     std::string inner_text,
     std::string png_bytes) {
   std::optional<std::string> tab_screenshot;
-  if (IsTabVisibleAndOnUrl(GURL(verdict->url())) && !png_bytes.empty()) {
-    tab_screenshot = std::move(png_bytes);
+  if (IsTabVisibleAndOnUrl(GURL(verdict->url()))) {
+    if (!png_bytes.empty()) {
+      tab_screenshot = std::move(png_bytes);
+      base::UmaHistogramEnumeration(
+          "SBClientPhishing.Multimodal.ScreenshotCaptureStatus",
+          MultimodalScreenshotCaptureStatus::kSuccess);
+    } else {
+      base::UmaHistogramEnumeration(
+          "SBClientPhishing.Multimodal.ScreenshotCaptureStatus",
+          MultimodalScreenshotCaptureStatus::kEncodingFailed);
+    }
+  } else {
+    base::UmaHistogramEnumeration(
+        "SBClientPhishing.Multimodal.ScreenshotCaptureStatus",
+        MultimodalScreenshotCaptureStatus::kTabNotVisibleOrUrlChanged);
   }
   StartIntelligentScan(std::move(verdict), did_match_high_confidence_allowlist,
                        is_invalid_ip, std::move(inner_text),

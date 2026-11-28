@@ -2,10 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <set>
 #include <string>
+#include <vector>
 
+#include "base/containers/flat_set.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "base/types/expected.h"
@@ -42,7 +45,7 @@ class NET_EXPORT_PRIVATE QuicSessionAttempt {
     handles::NetworkHandle network = handles::kInvalidNetworkHandle;
   };
 
-  class Delegate {
+  class NET_EXPORT_PRIVATE Delegate {
    public:
     virtual ~Delegate() = default;
 
@@ -55,6 +58,17 @@ class NET_EXPORT_PRIVATE QuicSessionAttempt {
 
     // Returns the NetLogWithSource that the attempt should use.
     virtual const NetLogWithSource& GetNetLog() = 0;
+
+    // Returns all usable resolved IP endpoints for the attempt's destination,
+    // if available. Used for post-handshake IP pooling when a concurrent
+    // connection to another resolved IP address finishes while this attempt is
+    // in flight.
+    virtual std::vector<IPEndPoint> GetResolvedIpEndpoints() const = 0;
+
+    // Returns the latest resolved DNS aliases for the attempt's destination if
+    // they may have changed since the attempt was constructed, or nullptr to
+    // keep the aliases passed to the constructor.
+    virtual const base::flat_set<std::string>* GetDnsAliases() const;
 
     // Called when the attempt is failed on the default network.
     virtual void OnConnectionFailedOnDefaultNetwork() {}
@@ -79,7 +93,7 @@ class NET_EXPORT_PRIVATE QuicSessionAttempt {
       std::optional<ResolutionDetails> resolution_details,
       bool retry_on_alternate_network_before_handshake,
       bool use_dns_aliases,
-      std::set<std::string> dns_aliases,
+      base::flat_set<std::string> dns_aliases,
       std::unique_ptr<QuicCryptoClientConfigHandle> crypto_client_config_handle,
       MultiplexedSessionCreationInitiator session_creation_initiator,
       QuicConnectionReuseDetails quic_connection_reuse_details,
@@ -121,6 +135,7 @@ class NET_EXPORT_PRIVATE QuicSessionAttempt {
   // asynchronous session creation is still in flight, the completion path
   // closes any session it creates instead of handing it to this attempt.
   void Cancel();
+  void CancelForProactiveIpPooling();
 
   bool session_creation_finished() const { return session_creation_finished_; }
 
@@ -143,16 +158,24 @@ class NET_EXPORT_PRIVATE QuicSessionAttempt {
     kConfirmConnection,
   };
 
+  enum class CancelReason {
+    kCancelled,
+    kProactiveIpPooling,
+  };
+
   // Static so this callback still runs after the attempt is destroyed. It
   // forwards the result while the attempt is alive and otherwise silently
   // closes any session that was created.
   static void HandleCreateSessionResult(
       base::WeakPtr<QuicSessionAttempt> attempt,
+      scoped_refptr<base::RefCountedData<CancelReason>> cancel_reason,
       base::expected<CreateSessionResult, int> result);
 
   QuicSessionPool* pool() { return delegate_->GetQuicSessionPool(); }
   const QuicSessionAliasKey& key() { return delegate_->GetKey(); }
   const NetLogWithSource& net_log() { return delegate_->GetNetLog(); }
+
+  void CancelInternal(CancelReason reason);
 
   int DoLoop(int rv);
 
@@ -182,7 +205,7 @@ class NET_EXPORT_PRIVATE QuicSessionAttempt {
   const bool was_alternative_service_recently_broken_;
   const bool retry_on_alternate_network_before_handshake_;
   const bool use_dns_aliases_;
-  std::set<std::string> dns_aliases_;
+  base::flat_set<std::string> dns_aliases_;
   std::unique_ptr<QuicCryptoClientConfigHandle> crypto_client_config_handle_;
 
   // Fields only used for session attempts to a proxy.
@@ -200,6 +223,7 @@ class NET_EXPORT_PRIVATE QuicSessionAttempt {
   raw_ptr<QuicChromiumClientSession> session_ = nullptr;
   bool session_creation_finished_ = false;
   bool connection_retried_ = false;
+  scoped_refptr<base::RefCountedData<CancelReason>> cancel_reason_;
 
   // Used to populate NetErrorDetails after we reset `session_`.
   HttpConnectionInfo connection_info_ = HttpConnectionInfo::kUNKNOWN;

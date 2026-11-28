@@ -15,6 +15,12 @@ if (!defined(partition_alloc_remove_configs)) {
   partition_alloc_remove_configs = []
 }
 
+# Configs removed only from allocator_shim, in addition to
+# partition_alloc_remove_configs.
+if (!defined(allocator_shim_remove_configs)) {
+  allocator_shim_remove_configs = []
+}
+
 _can_unwind_with_frame_pointers =
     defined(can_unwind_with_frame_pointers) && can_unwind_with_frame_pointers
 _dcheck_is_configurable =
@@ -904,6 +910,7 @@ if (is_clang_or_gcc) {
     frameworks = []
 
     configs -= partition_alloc_remove_configs
+    configs -= allocator_shim_remove_configs
     configs += partition_alloc_add_configs
     configs += [ ":dependants_extra_warnings" ]
 
@@ -1244,6 +1251,7 @@ if (build_with_chromium) {
       "partition_alloc_perftest.cc",
       "partition_lock_perftest.cc",
       "scheduler_loop_quarantine_perftest.cc",
+      "slot_provisioning_perftest.cc",
     ]
 
     deps = [
@@ -1324,10 +1332,7 @@ source_set("test_support") {
 
   if (is_fuchsia) {
     public_deps += [
-      "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.logger:fuchsia.logger_hlcpp",
-      "//third_party/fuchsia-sdk/sdk/pkg/fit",
       "//third_party/fuchsia-sdk/sdk/pkg/sync",
-      "//third_party/fuchsia-sdk/sdk/pkg/sys_cpp",
       "//third_party/fuchsia-sdk/sdk/pkg/zx",
     ]
 

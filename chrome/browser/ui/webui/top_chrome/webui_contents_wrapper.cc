@@ -7,9 +7,11 @@
 #include "base/debug/crash_logging.h"
 #include "base/debug/dump_without_crashing.h"
 #include "chrome/browser/page_load_metrics/page_load_metrics_initialize.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_config.h"
 #include "chrome/browser/ui/webui/top_chrome/webui_contents_preload_manager.h"
 #include "chrome/common/chrome_render_frame.mojom.h"
 #include "components/input/native_web_keyboard_event.h"
@@ -23,7 +25,7 @@
 #include "content/public/browser/render_widget_host_view.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "ui/base/models/menu_model.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/gfx/geometry/size.h"
@@ -38,10 +40,11 @@ bool IsEscapeEvent(const input::NativeWebKeyboardEvent& event) {
 }
 
 RequestResult Request(const GURL& webui_url,
-                      content::BrowserContext* browser_context) {
+                      content::BrowserContext* browser_context,
+                      Profile* user_profile) {
   auto* preload_manager = WebUIContentsPreloadManager::GetInstance();
   CHECK(preload_manager);
-  return preload_manager->Request(webui_url, browser_context);
+  return preload_manager->Request(webui_url, browser_context, user_profile);
 }
 
 // Enables the web contents to automatically resize to its content and
@@ -81,7 +84,7 @@ content::WebContents* WebUIContentsWrapper::Host::AddNewContents(
     content::WebContents* source,
     std::unique_ptr<content::WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
@@ -100,12 +103,14 @@ WebUIContentsWrapper::WebUIContentsWrapper(const GURL& webui_url,
                                            bool webui_resizes_host,
                                            bool esc_closes_ui,
                                            bool supports_draggable_regions,
-                                           std::string_view webui_name)
+                                           std::string_view webui_name,
+                                           Profile* user_profile)
     : webui_resizes_host_(webui_resizes_host),
       esc_closes_ui_(esc_closes_ui),
       supports_draggable_regions_(supports_draggable_regions) {
   CHECK_GE(task_manager_string_id, 0, base::NotFatalUntil::M162);
-  RequestResult make_contents_result = Request(webui_url, profile);
+  RequestResult make_contents_result =
+      Request(webui_url, profile, user_profile);
   web_contents_ = std::move(make_contents_result.web_contents);
   is_ready_to_show_ = make_contents_result.is_ready_to_show;
 
@@ -132,9 +137,17 @@ WebUIContentsWrapper::WebUIContentsWrapper(const GURL& webui_url,
   task_manager::WebContentsTags::CreateForToolContents(web_contents_.get(),
                                                        task_manager_string_id);
   if (site_engagement::SiteEngagementService::IsEnabled()) {
-    site_engagement_helper_ =
-        std::make_unique<site_engagement::SiteEngagementService::Helper>(
-            web_contents_.get());
+    if (profile->IsTopChromeWebUIProfile()) {
+      // TopChromeWebUIProfile has no SiteEngagementService. The engagement
+      // score is only used to pick a Top Chrome WebUI to preload, so a
+      // preloadable WebUI in TopChromeWebUIProfile would need to record it in
+      // its user profile instead.
+      CHECK(!TopChromeWebUIConfig::From(profile, webui_url)->IsPreloadable());
+    } else {
+      site_engagement_helper_ =
+          std::make_unique<site_engagement::SiteEngagementService::Helper>(
+              web_contents_.get());
+    }
   }
 
   if (webui_resizes_host_) {
@@ -250,7 +263,7 @@ content::WebContents* WebUIContentsWrapper::AddNewContents(
     content::WebContents* source,
     std::unique_ptr<content::WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {

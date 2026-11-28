@@ -518,10 +518,10 @@ class FragmentPaintPropertyTreeBuilder {
 static bool NeedsScrollAndScrollTranslation(
     const LayoutObject& object,
     CompositingReasons direct_compositing_reasons) {
-  if (object.IsOverscrollContainer()) {
-    // Overscroll containing boxes require a scroll node in order to chain
-    // overscroll to their respective ::-internal-overscroll-area-parent
-    // pseudo-elements.
+  if (object.IsOverscrollContainer() || object.IsOverscrollAreaParent()) {
+    // Overscroll containing boxes and overscroll area parents require a scroll
+    // node in order to chain overscroll to their respective
+    // ::-internal-overscroll-area-parent pseudo-elements.
     return true;
   }
   if (!object.IsScrollContainer()) {
@@ -2078,8 +2078,11 @@ static void PopulateCanvasDrawablePaintState(
   const LayoutReplaced* replaced = To<LayoutReplaced>(canvas->GetLayoutBox());
   const ComputedStyle& style = replaced->Style();
 
-  paint_state.canvas_content_size =
-      gfx::SizeF(replaced->ReplacedContentRect().size);
+  PhysicalRect replaced_content_rect = replaced->ReplacedContentRect();
+  paint_state.canvas_content_offset =
+      gfx::Vector2dF(replaced_content_rect.offset.left.ToFloat(),
+                     replaced_content_rect.offset.top.ToFloat());
+  paint_state.canvas_content_size = gfx::SizeF(replaced_content_rect.size);
   paint_state.canvas_device_pixel_content_box =
       ResizeObserverUtilities::ComputeSnappedDevicePixelContentBox(
           ToLogicalSize(replaced->PhysicalContentBoxRect().size,
@@ -3576,14 +3579,15 @@ FragmentPaintPropertyTreeBuilder::GetMainThreadRepaintReasonsForScroll(
 void FragmentPaintPropertyTreeBuilder::UpdateContentTranslation() {
   const LayoutBox* box = DynamicTo<LayoutBox>(object_);
   if (NeedsPaintPropertyUpdate()) {
-    if (!box || !box->IsOverscrollContainer()) {
+    if (!box ||
+        (!box->IsOverscrollContainer() && !box->IsOverscrollAreaParent())) {
       OnClearTransform(properties_->ClearContentTranslation());
       return;
     }
     DCHECK(NeedsScrollAndScrollTranslation(
         object_, full_context_.direct_compositing_reasons));
 
-    Element* overscroll_container = box->IsPseudoElement()
+    Element* overscroll_container = box->IsOverscrollAreaParent()
                                         ? To<PseudoElement>(box->GetNode())
                                               ->UltimateOriginatingElement()
                                               .GetOverscrollContainer()
@@ -3598,7 +3602,7 @@ void FragmentPaintPropertyTreeBuilder::UpdateContentTranslation() {
     }
 
     wtf_size_t index =
-        box->IsPseudoElement()
+        box->IsOverscrollAreaParent()
             ? overscroll_area_tracker->DOMSortedElements().Find(
                   To<PseudoElement>(box->GetNode())
                       ->UltimateOriginatingElement())
@@ -3645,14 +3649,36 @@ void FragmentPaintPropertyTreeBuilder::UpdateScrollAndScrollTranslation() {
               DynamicTo<PseudoElement>(object_.GetNode());
           pseudo_element &&
           pseudo_element->GetPseudoId() == kPseudoIdOverscrollAreaParent) {
+        // The overscroll areas of a document's body element reparent the
+        // LayoutView's scroll node (the outer viewport) rather than the body's
+        // scroll node: while they are closed, they open only when the document
+        // cannot scroll. A scroll container or fixed-positioned body is an
+        // exception, because the root scroller does not scroll or move it.
+        Element* overscroll_container =
+            pseudo_element->UltimateOriginatingElement()
+                .GetOverscrollContainer();
+        CHECK(overscroll_container);
+        const LayoutBox* container_box = overscroll_container->GetLayoutBox();
+        const ScrollPaintPropertyNode* scroll_to_reparent =
+            context_.current.scroll;
+        if (overscroll_container ==
+                overscroll_container->GetDocument().body() &&
+            container_box && !container_box->IsScrollContainer() &&
+            !container_box->IsFixedPositioned()) {
+          if (const auto* view_properties =
+                  object_.View()->FirstFragment().PaintProperties();
+              view_properties && view_properties->Scroll()) {
+            scroll_to_reparent = view_properties->Scroll();
+          }
+        }
+        CHECK(scroll_to_reparent);
         context_.current.SetOverscrollParent(
             *properties_->Scroll(), *properties_->PaintOffsetTranslation(),
             *properties_->ScrollTranslation(),
-            pseudo_element->UltimateOriginatingElement()
-                    .GetOverscrollContainer()
-                    ->GetComputedStyle()
+            overscroll_container->GetComputedStyle()
                     ->EffectiveOverscrollContainerType() ==
-                EOverscrollContainerType::kOverlay);
+                EOverscrollContainerType::kOverlay,
+            *scroll_to_reparent);
       }
       object_.GetFrameView()->AddScrollableAreaWithScrollNode(
           *To<LayoutBox>(object_).GetScrollableArea());
@@ -4128,12 +4154,12 @@ void FragmentPaintPropertyTreeBuilder::UpdatePaintOffset() {
               DynamicTo<ViewTransitionTransitionElement>(object_.GetNode())) {
         auto* scope = DynamicTo<LayoutBox>(
             transition_element->UltimateOriginatingElement().GetLayoutObject());
-        LayoutBox* containing_block = object_.ContainingBlock();
-        if (scope && containing_block == scope) {
+        LayoutBox* container = object_.ContainingBox();
+        if (scope && container == scope) {
           // Undo the scroll origin offset that was applied during
           // UpdateScrollAndScrollTranslation().
           context_.current.paint_offset -=
-              PhysicalOffset(containing_block->ScrollOrigin());
+              PhysicalOffset(container->ScrollOrigin());
         }
       }
     }
@@ -4180,9 +4206,7 @@ void FragmentPaintPropertyTreeBuilder::SetNeedsPaintPropertyUpdateIfNeeded() {
 
   const LayoutBox& box = To<LayoutBox>(object_);
 
-  if (box.IsLayoutReplaced() &&
-      (!RuntimeEnabledFeatures::PrePaintBoxInvalidatorUsesFragmentsEnabled() ||
-       box.HavePhysicalFragmentsChanged()) &&
+  if (box.IsLayoutReplaced() && box.HavePhysicalFragmentsChanged() &&
       box.PreviousPhysicalContentBoxRect() != box.PhysicalContentBoxRect()) {
     box.GetMutableForPainting().SetOnlyThisNeedsPaintPropertyUpdate();
     if (box.IsLayoutEmbeddedContent()) {
@@ -4338,6 +4362,44 @@ static bool IsLayoutShiftRoot(const LayoutObject& object,
   return false;
 }
 
+namespace {
+
+// Bits identifying which effect nodes in ObjectPaintProperties have a
+// reference filter.
+enum ReferenceFilterNode : unsigned {
+  kReferenceFilterNone = 0,
+  kReferenceFilterOnFilter = 1 << 0,
+  kReferenceFilterOnEffect = 1 << 1,
+  kReferenceFilterOnViewTransitionEffect = 1 << 2,
+  kReferenceFilterOnViewTransitionScopeRootEffect = 1 << 3,
+};
+using ReferenceFilterNodes = unsigned;
+
+}  // namespace
+
+static ReferenceFilterNodes GetReferenceFilterNodes(
+    const ObjectPaintProperties* properties) {
+  if (!properties) {
+    return kReferenceFilterNone;
+  }
+  ReferenceFilterNodes nodes = kReferenceFilterNone;
+  if (properties->Filter() && properties->Filter()->HasReferenceFilter()) {
+    nodes |= kReferenceFilterOnFilter;
+  }
+  if (properties->Effect() && properties->Effect()->HasReferenceFilter()) {
+    nodes |= kReferenceFilterOnEffect;
+  }
+  if (properties->ViewTransitionEffect() &&
+      properties->ViewTransitionEffect()->HasReferenceFilter()) {
+    nodes |= kReferenceFilterOnViewTransitionEffect;
+  }
+  if (properties->ViewTransitionScopeRootEffect() &&
+      properties->ViewTransitionScopeRootEffect()->HasReferenceFilter()) {
+    nodes |= kReferenceFilterOnViewTransitionScopeRootEffect;
+  }
+  return nodes;
+}
+
 void FragmentPaintPropertyTreeBuilder::UpdateForSelf() {
 #if DCHECK_IS_ON()
   bool should_check_paint_under_invalidation =
@@ -4397,6 +4459,8 @@ void FragmentPaintPropertyTreeBuilder::UpdateForSelf() {
 #endif
 
   if (properties_) {
+    const ReferenceFilterNodes old_reference_filter_nodes =
+        GetReferenceFilterNodes(properties_);
     if (full_context_.direct_compositing_reasons.Has(
             CompositingReason::kCanvasDrawableElement)) {
       context_.is_in_drawable_canvas_subtree = true;
@@ -4427,6 +4491,20 @@ void FragmentPaintPropertyTreeBuilder::UpdateForSelf() {
     UpdateOverflowControlsClip();
     UpdateLineClampFloatClip();
     UpdateBackgroundClip();
+
+    if (old_reference_filter_nodes != GetReferenceFilterNodes(properties_)) {
+      // Cross-origin frames, plugins, and view-transition content layers strip
+      // ancestor SVG reference filters in PrePaint (`SetupContextForFrame`) or
+      // when recording foreign layers in Paint (`EmbeddedContentPainter`).
+      // Force both an isolation-piercing property update and full subtree paint
+      // invalidation so cached subsequences on stacked descendants repaint.
+      full_context_.force_subtree_update_reasons |=
+          PaintPropertyTreeBuilderContext::kSubtreeUpdateIsolationPiercing;
+      if (!PrePaintDisableSideEffectsScope::IsDisabled()) {
+        object_.GetMutableForPainting()
+            .SetSubtreeShouldDoFullPaintInvalidation();
+      }
+    }
   } else if (!object_.IsAnonymous()) {
     // 3D rendering contexts follow the DOM ancestor chain, so
     // flattening should apply regardless of presence of transform.
@@ -4664,10 +4742,20 @@ void PaintPropertyTreeBuilder::InitPaintProperties() {
                            PaintPropertyChangeType::kNodeAddedOrRemoved);
     }
     if (properties->HasNode<EffectPaintPropertyNodeOrAlias>()) {
-      if (properties->Effect() &&
-          properties->Effect()->HasCanvasDrawableState()) {
+      const ReferenceFilterNodes reference_filter_nodes =
+          GetReferenceFilterNodes(properties);
+      if ((properties->Effect() &&
+           properties->Effect()->HasCanvasDrawableState()) ||
+          (properties->Filter() && properties->Filter()->Filter() &&
+           properties->Filter()->Filter()->OriginTainted()) ||
+          reference_filter_nodes != kReferenceFilterNone) {
         context_.force_subtree_update_reasons |=
             PaintPropertyTreeBuilderContext::kSubtreeUpdateIsolationPiercing;
+      }
+      if (reference_filter_nodes != kReferenceFilterNone &&
+          !PrePaintDisableSideEffectsScope::IsDisabled()) {
+        object_.GetMutableForPainting()
+            .SetSubtreeShouldDoFullPaintInvalidation();
       }
       UpdatePropertyChange(properties_changed_.effect_changed,
                            PaintPropertyChangeType::kNodeAddedOrRemoved);
@@ -4683,7 +4771,11 @@ void PaintPropertyTreeBuilder::InitPaintProperties() {
     // SVG resources are painted within one or more other locations in the
     // SVG during paint, and hence have their own independent paint property
     // trees, paint offset, etc.
+    bool is_in_drawable_canvas_subtree =
+        context_.fragment_context.is_in_drawable_canvas_subtree;
     context_.fragment_context = PaintPropertyTreeBuilderFragmentContext();
+    context_.fragment_context.is_in_drawable_canvas_subtree =
+        is_in_drawable_canvas_subtree;
     context_.has_svg_hidden_container_ancestor = true;
 
     PaintPropertyTreeBuilderFragmentContext& fragment_context =

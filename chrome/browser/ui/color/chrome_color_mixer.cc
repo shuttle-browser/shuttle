@@ -419,8 +419,6 @@ void AddChromeColorMixer(ui::ColorProvider* provider,
   mixer[kColorExtensionMenuPinButtonIconDisabled] = ui::SetAlpha(
       kColorExtensionMenuPinButtonIcon, gfx::kDisabledControlAlpha);
   mixer[kColorExtensionsMenuContainerBackground] = {ui::kColorSysSurface3};
-  mixer[kColorFeatureFirstRunInfoContainerBackground] = {ui::kColorSysSurface3};
-  mixer[kColorFeatureFirstRunIconColor] = {ui::kColorSysOnSurfaceSubtle};
   mixer[kColorFeatureShowcaseStepperCheck] = {ui::kColorAccent};
   mixer[kColorFeatureShowcaseStepperDot] = {ui::kColorAccent};
   mixer[kColorFeatureShowcaseThemePickerWrapperBackground] = {

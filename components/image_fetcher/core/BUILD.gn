@@ -25,7 +25,10 @@ static_library("core") {
     "request_metadata.cc",
     "request_metadata.h",
   ]
-  deps = [ ":metrics" ]
+  deps = [
+    ":metrics",
+    "//services/network/public/mojom",
+  ]
   public_deps = [
     "cache",
     "//base",

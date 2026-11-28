@@ -19,7 +19,7 @@
 #include "chrome/browser/local_network_access/ip_address_space_overrides_prefs_observer.h"
 #include "chrome/browser/permissions/system/platform_handle.h"
 #include "chrome/browser/profiles/profile_manager.h"
-#include "chrome/browser/safe_browsing/application_advanced_protection_status_detector.h"
+#include "chrome/browser/safe_browsing/advanced_protection/application_advanced_protection_status_detector.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/views/frame/glass_frame_service.h"
 #include "components/application_locale_storage/application_locale_storage.h"
@@ -112,11 +112,13 @@ void GlobalFeatures::PostBrowserProcessInit() {
 
 
 #if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
-  if (unexportable_keys::UnexportableKeyServiceImpl::
+  // Check the feature first. On Windows, asking for the key provider loads
+  // tbs.dll on the UI thread.
+  if (base::FeatureList::IsEnabled(
+          unexportable_keys::kUnexportableKeyDeletion) &&
+      unexportable_keys::UnexportableKeyServiceImpl::
           IsStatefulUnexportableKeyProviderSupported(
-              unexportable_keys::GetDefaultConfig()) &&
-      base::FeatureList::IsEnabled(
-          unexportable_keys::kUnexportableKeyDeletion)) {
+              unexportable_keys::GetDefaultConfig())) {
     unexportable_key_obsolete_profile_garbage_collector_ = std::make_unique<
         unexportable_keys::UnexportableKeyObsoleteProfileGarbageCollector>(
         g_browser_process->profile_manager());
@@ -226,11 +228,16 @@ void GlobalFeatures::PostMainMessageLoopRun() {
 }
 
 void GlobalFeatures::PostDestroyThreads() {
+#if !BUILDFLAG(IS_ANDROID)
+  // BrowserInfoBarManager should be destroyed before GlobalBrowserCollection
+  // since it observes GlobalBrowserCollection.
+  browser_infobar_manager_.reset();
+#endif  // !BUILDFLAG(IS_ANDROID)
 #if BUILDFLAG(IS_WIN)
   // Startup launch manager should be destroyed before GlobalBrowserCollection
   // since its infobar manager observes GlobalBrowserCollection.
   startup_launch_manager_.reset();
-#endif  // !BUILDFLAG(IS_ANDROID)
+#endif  // BUILDFLAG(IS_WIN)
 }
 
 std::unique_ptr<system_permission_settings::PlatformHandle>

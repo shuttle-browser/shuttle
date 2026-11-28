@@ -556,6 +556,10 @@ int GetMinLogLevel() {
   return g_min_log_level;
 }
 
+uint32_t GetLoggingDestination() {
+  return g_logging_destination;
+}
+
 bool ShouldCreateLogMessage(int severity) {
   if (severity < g_min_log_level) {
     return false;
@@ -1244,12 +1248,17 @@ void RawLog(int level, const char* message) {
 bool IsLoggingToFileEnabled() {
   return g_logging_destination & LOG_TO_FILE;
 }
+#endif
 
-std::wstring GetLogFileFullPath() {
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
+PathString GetLogFileFullPath() {
+#if BUILDFLAG(IS_CHROMEOS)
+  base::AutoLock guard(GetLoggingLock());
+#endif
   if (g_log_file_name) {
     return *g_log_file_name;
   }
-  return std::wstring();
+  return PathString();
 }
 #endif
 

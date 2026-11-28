@@ -24,7 +24,6 @@
 #include "ui/base/x/x11_shm_image_pool.h"
 #include "ui/base/x/x11_util.h"
 #include "ui/gfx/native_ui_types.h"
-#include "ui/gfx/x/atom_cache.h"
 #include "ui/gfx/x/connection.h"
 #include "ui/gfx/x/xproto.h"
 #include "ui/gfx/x/xproto_types.h"
@@ -135,6 +134,8 @@ X11SoftwareBitmapPresenter::X11SoftwareBitmapPresenter(
     : widget_(static_cast<x11::Window>(widget)),
       connection_(connection),
       enable_multibuffering_(enable_multibuffering) {
+  // TODO(crbug.com/584624838): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK_NE(widget_, x11::Window::None);
 
   gc_ = connection_->GenerateId<x11::GraphicsContext>();
@@ -155,8 +156,8 @@ X11SoftwareBitmapPresenter::X11SoftwareBitmapPresenter(
 
   // TODO(thomasanderson): Avoid going through the X11 server to plumb this
   // property in.
-  connection_->GetPropertyAs(widget_, x11::GetAtom("CHROMIUM_COMPOSITE_WINDOW"),
-                             &composite_);
+  connection_->GetPropertyAs(
+      widget_, connection_->GetAtom("CHROMIUM_COMPOSITE_WINDOW"), &composite_);
 }
 
 X11SoftwareBitmapPresenter::~X11SoftwareBitmapPresenter() {

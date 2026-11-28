@@ -18,6 +18,10 @@ if (is_android) {
   import("//third_party/jni_zero/jni_zero.gni")
 }
 
+# TODO(ender): ENABLE_VR is no longer consulted by the omnibox. Remove this
+# target once the remaining includers outside //components/omnibox
+# (chrome/browser/ui/views/payments, ios/chrome/browser/autocomplete) drop
+# their include of buildflags.h.
 buildflag_header("buildflags") {
   header = "buildflags.h"
   flags = [ "ENABLE_VR=$enable_vr" ]
@@ -86,6 +90,7 @@ aggregate_vector_icons("omnibox_vector_icons") {
     "price_tracking_disabled_old.icon",
     "product_chrome_refresh_old.icon",
     "product_old.icon",
+    "prompt_suggestion.icon",
     "public.icon",
     "reply_rotated180_custom.icon",
     "search_spark.icon",
@@ -318,6 +323,8 @@ static_library("browser") {
     "shortcuts_database.h",
     "shortcuts_provider.cc",
     "shortcuts_provider.h",
+    "suggest_template_info_utils.cc",
+    "suggest_template_info_utils.h",
     "suggestion_group_util.cc",
     "suggestion_group_util.h",
     "tab_matcher.cc",
@@ -373,7 +380,6 @@ static_library("browser") {
     "//build:android_buildflags",
     "//build:branding_buildflags",
     "//components/component_updater",
-    "//components/dom_distiller/core",
     "//components/favicon/core",
     "//components/favicon_base",
     "//components/keyed_service/core",
@@ -395,6 +401,7 @@ static_library("browser") {
     "//components/variations/net",
     "//components/variations/service",
     "//components/vector_icons",
+    "//components/web_distiller/core",
     "//extensions/buildflags",
     "//net",
     "//services/metrics/public/cpp:metrics_cpp",
@@ -449,7 +456,7 @@ static_library("browser") {
     public_deps += [ "//content/public/browser" ]
   }
 
-  if ((!is_android || enable_vr) && !is_ios) {
+  if (!is_ios) {
     deps += [ ":vector_icons" ]
   }
 
@@ -508,13 +515,12 @@ static_library("location_bar") {
     "//url",
   ]
   deps = [
-    ":buildflags",
-    "//components/dom_distiller/core",
     "//components/safe_browsing/core/common",
     "//components/search_engines",
     "//components/security_interstitials/core",
     "//components/strings",
     "//components/url_formatter",
+    "//components/web_distiller/core",
     "//net",
     "//third_party/protobuf:protobuf_lite",
     "//third_party/re2",
@@ -526,7 +532,7 @@ static_library("location_bar") {
     deps += [ "//chromeos/constants" ]
   }
 
-  if ((!is_android || enable_vr) && !is_ios) {
+  if (!is_ios) {
     deps += [ ":vector_icons" ]
   }
 

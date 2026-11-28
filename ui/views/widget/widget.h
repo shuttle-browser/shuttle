@@ -986,12 +986,10 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // default implementation simply calls CanActivate().
   virtual bool ShouldViewsStyleFollowWidgetActivation() const;
 
-  // [Deprecated] Legacy implementation of above method.
-  bool ShouldDescendIntoChildForEventHandlingDeprecated(
-      ui::Layer* root_layer,
-      gfx::NativeView child,
-      ui::Layer* child_layer,
-      const gfx::Point& location);
+  // Returns true if views hosted by this widget may hold FocusManager focus
+  // while native/OS window activation and focus remain on the owner window.
+  // False by default.
+  virtual bool CanFocusViewsWithoutActivation() const;
 
   // Sets the z-order of the widget. This only applies to top-level widgets.
   void SetZOrderLevel(ui::ZOrderLevel order);
@@ -1127,7 +1125,7 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   const FocusManager* GetFocusManager() const;
 
   // Returns the ui::InputMethod for this widget.
-  ui::InputMethod* GetInputMethod();
+  virtual ui::InputMethod* GetInputMethod();
 
   // Returns the SublevelManager for this widget.
   SublevelManager* GetSublevelManager();
@@ -1263,10 +1261,6 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // already in the correct z-order relative to each other and does no
   // reordering if there are no views with an associated NativeView.
   void ReorderNativeViews();
-
-  // Called by a View when the status of it's layer or one of the views
-  // descendants layer status changes.
-  void LayerTreeChanged();
 
   const NativeWidget* native_widget() const;
   NativeWidget* native_widget();
@@ -1613,13 +1607,13 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   };
 
   class PaintAsActiveLockImpl;
+  class ParentThemeObserver;
   class ScopedCallStackLock;
 
   friend class ButtonTest;
   friend class ComboboxTest;
   friend class PaintAsActiveLockImpl;
   friend class TextfieldTest;
-  friend class ViewAuraTest;
   friend class ui_devtools::BubbleLocking;
   friend void DisableActivationChangeHandlingForTests();
 
@@ -1654,11 +1648,6 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // the delegate wants to use a specified bounds.
   bool GetSavedWindowPlacement(gfx::Rect* bounds,
                                ui::mojom::WindowShowState* show_state);
-
-  // Returns the Views whose layers are parented directly to the Widget's
-  // layer in reverse z-order (i.e views later in the returned vector have a
-  // higher z-order).
-  const View::Views& GetViewsWithLayersInZOrder();
 
   // Called when the focus manager will be destroyed, or detached.  If a
   // descendent of |root_view_| is focused, then clear the focus.  If this is a
@@ -1842,12 +1831,6 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   // true.
   bool auto_release_capture_ = true;
 
-  // See description in GetViewsWithLayers().
-  View::Views views_with_layers_;
-
-  // Does |views_with_layers_| need updating?
-  bool views_with_layers_dirty_ = false;
-
   // True when window movement via mouse interaction with the frame should be
   // disabled.
   bool movement_disabled_ = false;
@@ -1905,6 +1888,7 @@ class VIEWS_EXPORT Widget : public internal::NativeWidgetDelegate,
   std::unique_ptr<ui::ColorProviderSourceObserver> parent_theme_observer_;
 
   void ProcessScheduledThemeChanged();
+  void UpdateThemeObservation();
 
   // True if a ThemeChanged() run has been scheduled and is pending.
   bool theme_update_scheduled_ = false;

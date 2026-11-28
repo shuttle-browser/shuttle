@@ -112,6 +112,9 @@ if (toolkit_views) {
 
     deps = [
       ":permissions",
+      "//base:i18n",
+      "//cc/paint",
+      "//chrome/app/resources:platform_locale_settings",
       "//chrome/app/vector_icons",
       "//chrome/browser:primitives",
       "//chrome/browser/content_settings",
@@ -124,6 +127,7 @@ if (toolkit_views) {
       "//chrome/browser/permissions",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/resource_coordinator",
+      "//chrome/browser/search",
       "//chrome/browser/ui:browser_element_identifiers",
       "//chrome/browser/ui/browser_web_contents_delegate",
       "//chrome/browser/ui/dialogs",
@@ -148,10 +152,16 @@ if (toolkit_views) {
       "//chrome/browser/ui/webui:webui_util",
       "//chrome/browser/ui/window_metadata",
       "//chrome/common",
+      "//components/favicon/content",
       "//components/vector_icons",
       "//content/public/browser",
+      "//skia",
+      "//third_party/blink/public:buildflags",
+      "//third_party/icu",
       "//ui/base",
+      "//ui/color",
       "//ui/views",
+      "//url",
     ]
 
     if (enable_extensions_core) {

@@ -1929,7 +1929,7 @@ void UpdateScreenInfoAndResizeView(
     int viewport_width,
     int viewport_height) {
   display::ScreenInfo screen_info =
-      web_view_helper->GetMainFrameWidget()->GetOriginalScreenInfo();
+      web_view_helper->GetMainFrameWidget()->GetOriginalScreenInfos().current();
   screen_info.rect = gfx::Rect(viewport_width, viewport_height);
   UpdateScreenInfoAndResizeView(web_view_helper, screen_info);
 }
@@ -10882,7 +10882,7 @@ TEST_F(WebFrameTest, ResizeInvalidatesDeviceMediaQueries) {
   ASSERT_TRUE(element);
 
   display::ScreenInfo screen_info =
-      web_view_helper.GetMainFrameWidget()->GetOriginalScreenInfo();
+      web_view_helper.GetMainFrameWidget()->GetOriginalScreenInfos().current();
   screen_info.rect = screen_info.available_rect = gfx::Rect(700, 500);
   UpdateScreenInfoAndResizeView(&web_view_helper, screen_info);
   EXPECT_EQ(300, element->OffsetWidth());
@@ -10923,8 +10923,9 @@ class DeviceEmulationTest : public WebFrameTest {
   }
 
   void TestResize(const gfx::Size& size, const String& expected_size) {
-    display::ScreenInfo screen_info =
-        web_view_helper_.GetMainFrameWidget()->GetOriginalScreenInfo();
+    display::ScreenInfo screen_info = web_view_helper_.GetMainFrameWidget()
+                                          ->GetOriginalScreenInfos()
+                                          .current();
     screen_info.rect = screen_info.available_rect = gfx::Rect(size);
     UpdateScreenInfoAndResizeView(&web_view_helper_, screen_info);
     EXPECT_EQ(expected_size, DumpSize("test"));
@@ -14967,7 +14968,7 @@ TEST_F(WebFrameTest, MediaQueriesInLocalFrameInsideRemote) {
       static_cast<frame_test_helpers::TestWebFrameWidget*>(
           local_frame->FrameWidgetImpl());
   display::ScreenInfos screen_infos(
-      local_frame_widget->GetOriginalScreenInfo());
+      local_frame_widget->GetOriginalScreenInfos().current());
   screen_infos.mutable_current().is_monochrome = false;
   screen_infos.mutable_current().depth_per_component = 8;
   local_frame_widget->UpdateScreenInfo(screen_infos);
@@ -15858,6 +15859,45 @@ TEST_F(WebFrameTest, FindFrameByNameCurrent) {
 
   EXPECT_EQ(frame->FindFrameByName(WebString("_self")), frame);
   EXPECT_EQ(frame->FindFrameByName(WebString("_current")), nullptr);
+}
+
+TEST_F(WebFrameTest, FromWindow) {
+  frame_test_helpers::WebViewHelper web_view_helper;
+  web_view_helper.Initialize();
+  WebLocalFrameImpl* main_frame = web_view_helper.LocalMainFrame();
+
+  v8::Isolate* isolate = main_frame->GetAgentGroupScheduler()->Isolate();
+  v8::HandleScope handle_scope(isolate);
+  v8::Local<v8::Context> context = main_frame->MainWorldScriptContext();
+  v8::Context::Scope context_scope(context);
+
+  // Test with main window.
+  v8::Local<v8::Value> window =
+      main_frame->ExecuteScriptAndReturnValue(WebScriptSource("window"));
+  EXPECT_EQ(main_frame, WebFrame::FromWindow(isolate, window));
+
+  // Test with child frame window.
+  v8::Local<v8::Value> child_window = main_frame->ExecuteScriptAndReturnValue(
+      WebScriptSource("(() => {"
+                      "  const iframe = document.createElement('iframe');"
+                      "  document.body.appendChild(iframe);"
+                      "  return iframe.contentWindow;"
+                      "})()"));
+  ASSERT_TRUE(main_frame->FirstChild());
+  EXPECT_EQ(main_frame->FirstChild(),
+            WebFrame::FromWindow(isolate, child_window));
+
+  // Test with detached frame window.
+  main_frame->ExecuteScriptAndReturnValue(
+      WebScriptSource("document.querySelector('iframe').remove()"));
+  EXPECT_EQ(nullptr, WebFrame::FromWindow(isolate, child_window));
+
+  // Test with invalid / non-window values.
+  EXPECT_EQ(nullptr, WebFrame::FromWindow(isolate, v8::Object::New(isolate)));
+  EXPECT_EQ(nullptr, WebFrame::FromWindow(isolate, v8::Null(isolate)));
+  EXPECT_EQ(nullptr, WebFrame::FromWindow(isolate, v8::Undefined(isolate)));
+  EXPECT_EQ(nullptr,
+            WebFrame::FromWindow(isolate, v8::Number::New(isolate, 123)));
 }
 
 }  // namespace blink

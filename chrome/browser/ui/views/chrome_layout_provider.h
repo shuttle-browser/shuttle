@@ -29,7 +29,7 @@ enum ChromeInsetsMetric {
   INSETS_PAGE_INFO_FOOTER_BUTTON,
   // Border insets for Action App Menu items.
   INSETS_ACTION_APP_MENU_ITEM,
-  // Margins for the search bar in the Action App Menu.
+  // Margins around the search field in the Action App Menu search bar.
   INSETS_ACTION_APP_MENU_SEARCH_BAR_MARGIN,
   // Margins for the block actions section in the Action App Menu.
   INSETS_ACTION_APP_MENU_BLOCK_MARGIN,
@@ -190,10 +190,6 @@ enum ChromeDistanceMetric {
   // Vertical spacing between a textfield and an account card, usually
   // consisting of an avatar icon, name and email address.
   DISTANCE_TEXTFIELD_ACCOUNT_CARD_VERTICAL,
-  // Width and height of the vector icon shown in infoboxes in the FFR dialog.
-  DISTANCE_FEATURE_FIRST_RUN_INFO_BOX_ICON_SIZE,
-  // Vertical and horizontal padding of the infoboxes in the FFR dialog.
-  DISTANCE_FEATURE_FIRST_RUN_INFO_BOX_PADDING,
   // Vertical spacing between infoboxes in the FFR dialog.
   DISTANCE_FEATURE_FIRST_RUN_INFO_BOX_VERTICAL,
   // Vertical padding for the infobar buttons.
@@ -232,6 +228,11 @@ enum ChromeDistanceMetric {
   // Bottom margin for the separator in the Action App Menu
   // footer.
   DISTANCE_ACTION_APP_MENU_FOOTER_SEPARATOR_BOTTOM_MARGIN,
+  // Bottom margin for the separator in the Action App Menu search bar.
+  DISTANCE_ACTION_APP_MENU_SEARCH_SEPARATOR_BOTTOM_MARGIN,
+  // Extra top margin for the block section when it follows the Action App Menu
+  // search bar.
+  DISTANCE_ACTION_APP_MENU_SEARCH_BLOCK_MARGIN,
   // Vertical margin for section headers in the Action App Menu.
   DISTANCE_ACTION_APP_MENU_HEADER_VERTICAL_MARGIN,
   // Spacing between buttons in a block action row.
@@ -247,6 +248,12 @@ enum ChromeDistanceMetric {
   DISTANCE_ACTION_APP_MENU_NOTIFICATION_MARGIN,
   // Maximum width for the Action App Menu.
   DISTANCE_ACTION_APP_MENU_MAX_WIDTH,
+  // Maximum width for Action App Menu submenus containing user/web content
+  // (e.g., page titles, bookmark labels, tab group names).
+  DISTANCE_ACTION_APP_MENU_DYNAMIC_SUBMENU_MAX_WIDTH,
+  // Maximum width for Action App Menu submenus nested within submenus
+  // containing user/web content (e.g., bookmark folders, saved tab groups).
+  DISTANCE_ACTION_APP_MENU_NESTED_DYNAMIC_SUBMENU_MAX_WIDTH,
 };
 
 enum ChromeShapeContextTokens : views::ShapeContextToken {

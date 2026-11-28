@@ -396,7 +396,8 @@ class CORE_EXPORT HTMLCanvasElement final
   void updateElementGeometry(const V8UnionElementOrElementImage*,
                              const UpdateElementGeometryOptions*,
                              ExceptionState&);
-  void clearElementGeometry(const V8UnionElementOrElementImage*);
+  void clearElementGeometry(const V8UnionElementOrElementImage*,
+                            ExceptionState&);
 
   // Descendants of this canvas that have been drawn via `drawElementImage()` or
   // added explicitly via a call to `canvas.updateElementGeometry(element)`, in
@@ -412,6 +413,10 @@ class CORE_EXPORT HTMLCanvasElement final
   void RemovedFrom(ContainerNode& insertion_point) override;
 
  private:
+  // Notifies the `cc::LayerTreeHost` that a canvas frame was dispatched
+  // directly (bypassing the main-thread commit).
+  void NotifyOutOfBandFrame();
+
   void Dispose();
 
   void ColorSchemeMayHaveChanged();

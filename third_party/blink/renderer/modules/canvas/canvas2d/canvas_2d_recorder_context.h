@@ -36,6 +36,7 @@
 #include "third_party/blink/renderer/platform/graphics/flush_reason.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_context_types.h"
 #include "third_party/blink/renderer/platform/graphics/memory_managed_paint_canvas.h"
+#include "third_party/blink/renderer/platform/graphics/memory_managed_paint_recorder.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_filter.h"
 #include "third_party/blink/renderer/platform/graphics/predefined_color_space.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_linked_hash_set.h"
@@ -423,7 +424,8 @@ class MODULES_EXPORT Canvas2DRecorderContext : public CanvasPath {
             const gfx::RectF& bounds,
             CanvasRenderingContext2DState::PaintType,
             CanvasRenderingContext2DState::ImageType,
-            CanvasPerformanceMonitor::DrawType);
+            CanvasPerformanceMonitor::DrawType,
+            bool resolve_filter);
 
   void InflateStrokeRect(gfx::RectF&) const;
 
@@ -487,6 +489,13 @@ class MODULES_EXPORT Canvas2DRecorderContext : public CanvasPath {
                         CanvasPerformanceMonitor::DrawType) = 0;
 
   virtual sk_sp<PaintFilter> StateGetFilter() = 0;
+  ALWAYS_INLINE void ResolveFilterIfNeeded() {
+    if (IsTransformInvertible() &&
+        (GetState().IsFilterUnresolved() || GetState().HasCSSFilterWithUrl()))
+        [[unlikely]] {
+      StateGetFilter();
+    }
+  }
 
   virtual CanvasRenderingContextHost* GetCanvasRenderingContextHost() const {
     return nullptr;
@@ -778,16 +787,17 @@ void Canvas2DRecorderContext::Draw(
     const gfx::RectF& bounds,
     CanvasRenderingContext2DState::PaintType paint_type,
     CanvasRenderingContext2DState::ImageType image_type,
-    CanvasPerformanceMonitor::DrawType draw_type) {
+    CanvasPerformanceMonitor::DrawType draw_type,
+    bool resolve_filter) {
   if (!IsTransformInvertible()) [[unlikely]] {
     return;
   }
 
-  if (GetState().IsFilterUnresolved()) [[unlikely]] {
-    // Resolving a filter can synchronously execute script (via style and
-    // layout updates), which may reset the canvas recorder or state stack.
-    // Resolve the filter before acquiring `paint_canvas` and `state`.
-    StateGetFilter();
+  if (resolve_filter) {
+    // Resolving or updating a filter can synchronously execute script (via
+    // style and layout updates), which may reset the canvas recorder or state
+    // stack. Do this before acquiring `paint_canvas` and `state`.
+    ResolveFilterIfNeeded();
     if (!IsTransformInvertible()) [[unlikely]] {
       return;
     }
@@ -860,8 +870,7 @@ void Canvas2DRecorderContext::CompositedDraw(
       static_cast<cc::RecordPaintCanvas*>(c));
 
   const CanvasRenderingContext2DState& state = GetState();
-  sk_sp<PaintFilter> canvas_filter =
-      state.IsFilterResolved() ? StateGetFilter() : nullptr;
+  sk_sp<PaintFilter> canvas_filter = state.GetResolvedFilter();
   DCHECK(ShouldUseCompositedDraw(paint_type, image_type));
   SkM44 ctm = c->getLocalToDevice();
   c->setMatrix(SkM44());

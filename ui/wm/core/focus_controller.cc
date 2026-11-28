@@ -47,7 +47,7 @@ FocusController::FocusController(FocusRules* rules)
     : rules_(rules),
       focus_follows_cursor_(
           base::FeatureList::IsEnabled(features::kFocusFollowsCursor)) {
-  DCHECK(rules);
+  CHECK(rules, base::NotFatalUntil::M163);
 }
 
 FocusController::~FocusController() = default;
@@ -121,7 +121,7 @@ void FocusController::FocusWindow(aura::Window* window) {
 }
 
 void FocusController::ResetFocusWithinActiveWindow(aura::Window* window) {
-  DCHECK(window);
+  CHECK(window, base::NotFatalUntil::M163);
   if (!active_window_) {
     return;
   }
@@ -238,7 +238,7 @@ void FocusController::FocusAndActivateWindow(
   // this function is non-NULL.
   if (window && (!focusable || !activatable))
     return;
-  DCHECK((focusable && activatable) || !window);
+  CHECK((focusable && activatable) || !window, base::NotFatalUntil::M163);
 
   // Activation change observers may change the focused window. If this happens
   // we must not adjust the focus below since this will clobber that change.
@@ -256,6 +256,8 @@ void FocusController::FocusAndActivateWindow(
   } else {
     // Only allow the focused window to change, *not* the active window if
     // called reentrantly.
+    // TODO(crbug.com/585428676): CHECK-exclusion: Convert to a CHECK once
+    // we are confident it won't be triggered.
     DCHECK(!activatable || activatable == pending_activation_.value());
   }
 
@@ -268,11 +270,16 @@ void FocusController::FocusAndActivateWindow(
     const bool activation_changed_focus =
         last_focused_window != focused_window_;
     if (!activation_changed_focus || !focused_window_) {
-      if (new_active_window && focusable)
+      if (new_active_window && focusable) {
+        // TODO(crbug.com/585428676): CHECK-exclusion: Convert to a CHECK once
+        // we are confident it won't be triggered.
         DCHECK(new_active_window->Contains(focusable));
+      }
       SetFocusedWindow(focusable);
     }
     if (new_active_window && focused_window_)
+      // TODO(crbug.com/585428676): CHECK-exclusion: Convert to a CHECK once
+      // we are confident it won't be triggered.
       DCHECK(new_active_window->Contains(focused_window_));
   }
 }
@@ -281,8 +288,10 @@ void FocusController::SetFocusedWindow(aura::Window* window) {
   if (updating_focus_ || window == focused_window_)
     return;
 
-  DCHECK(rules_->CanFocusWindow(window, nullptr));
+  CHECK(rules_->CanFocusWindow(window, nullptr), base::NotFatalUntil::M163);
   if (window) {
+    // TODO(crbug.com/584969301): CHECK-exclusion: Convert to a CHECK once we
+    // are confident it won't be triggered.
     DCHECK_EQ(window, rules_->GetFocusableWindow(window));
   }
 
@@ -348,9 +357,12 @@ bool FocusController::SetActiveWindow(
     return true;
   }
 
+  // TODO(crbug.com/585410215): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(rules_->CanActivateWindow(window));
   if (window)
-    DCHECK_EQ(window, rules_->GetActivatableWindow(window));
+    CHECK_EQ(window, rules_->GetActivatableWindow(window),
+             base::NotFatalUntil::M163);
 
   base::AutoReset<std::optional<aura::Window*>> updating_activation(
       &pending_activation_, std::make_optional(window));

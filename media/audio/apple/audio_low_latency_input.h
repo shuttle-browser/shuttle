@@ -108,7 +108,6 @@ class MEDIA_EXPORT AUAudioInputStream
   size_t requested_buffer_size() const {
     return input_params_.frames_per_buffer();
   }
-  AudioUnit audio_unit() const { return audio_unit_; }
 
   static bool IsEchoCancellationSupported(AudioDeviceID audio_device_id,
                                           const AudioParameters& params);
@@ -193,9 +192,6 @@ class MEDIA_EXPORT AUAudioInputStream
 
   // Reinitializes the AudioUnit to use a new output device.
   void ReinitializeVoiceProcessingAudioUnit();
-
-  // Adds extra UMA stats when it has been detected that startup failed.
-  void AddHistogramsForFailedStartup();
 
   // Called from the dtor and when the stream is reset.
   void ReportAndResetStats();

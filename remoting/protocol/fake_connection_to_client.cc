@@ -10,10 +10,22 @@
 #include "remoting/base/fifo_buffer.h"
 #include "remoting/protocol/audio_source.h"
 #include "remoting/protocol/audio_stream.h"
+#include "remoting/protocol/fake_message_pipe_wrapper.h"
 #include "remoting/protocol/session.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_capturer.h"
 
 namespace remoting::protocol {
+
+FakeAudioStream::FakeAudioStream() = default;
+FakeAudioStream::~FakeAudioStream() = default;
+
+void FakeAudioStream::Pause(bool pause) {
+  is_paused_ = pause;
+}
+
+base::WeakPtr<FakeAudioStream> FakeAudioStream::GetWeakPtr() {
+  return weak_factory_.GetWeakPtr();
+}
 
 FakeVideoStream::FakeVideoStream() = default;
 FakeVideoStream::~FakeVideoStream() = default;
@@ -62,8 +74,11 @@ std::unique_ptr<VideoStream> FakeConnectionToClient::StartVideoStream(
 
 std::unique_ptr<AudioStream> FakeConnectionToClient::StartAudioStream(
     std::unique_ptr<AudioSource> audio_source) {
-  NOTIMPLEMENTED();
-  return nullptr;
+  audio_source_ = std::move(audio_source);
+
+  auto result = std::make_unique<FakeAudioStream>();
+  last_audio_stream_ = result->GetWeakPtr();
+  return result;
 }
 
 void FakeConnectionToClient::SetAudioWriter(
@@ -123,6 +138,20 @@ base::WeakPtr<ConnectionToClient> FakeConnectionToClient::GetWeakPtr() {
 base::WeakPtr<FakeConnectionToClient>
 FakeConnectionToClient::GetWeakPtrForTest() {
   return weak_factory_.GetWeakPtr();
+}
+
+std::unique_ptr<MessagePipe> FakeConnectionToClient::CreateOutgoingDataChannel(
+    const std::string& name) {
+  auto pipe = std::make_unique<FakeMessagePipe>(/*asynchronous=*/false);
+  std::unique_ptr<MessagePipe> wrapper = pipe->Wrap();
+  outgoing_data_channels_[name] = std::move(pipe);
+  return wrapper;
+}
+
+FakeMessagePipe* FakeConnectionToClient::GetOutgoingDataChannel(
+    const std::string& name) const {
+  auto it = outgoing_data_channels_.find(name);
+  return it != outgoing_data_channels_.end() ? it->second.get() : nullptr;
 }
 
 }  // namespace remoting::protocol

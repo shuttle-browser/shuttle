@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "base/containers/span.h"
+#include "base/test/gmock_expected_support.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
@@ -17,19 +18,21 @@
 namespace blink {
 namespace {
 
-// Patch URLs embedded in `roboto-ift.ttf`. The base font only supports 'a'.
-// Supporting 'b' or 'c' requires a table-keyed patch (cmap, hmtx, etc.) and a
-// glyph-keyed patch (outlines). Table-keyed patches are invalidating, so which
-// one is needed depends on the patches already applied.
+// Patch URLs embedded in `roboto-ift.ttf`. The base font only supports 'a' and
+// wght [100, 400]. Supporting 'b' or 'c' requires a table-keyed patch (cmap,
+// hmtx, etc.) and a glyph-keyed patch (outlines). Table-keyed patches are
+// invalidating, so which one is needed depends on the patches already applied.
 //
 // Table-keyed patch for 'b' applied to the base font.
-constexpr char kPatchBTableUrl[] = "0K.ift_tk";
+constexpr char kPatchBTableUrl[] = "1K.ift_tk";
 // Table-keyed patch for 'c' applied after `kPatchBTableUrl`.
-constexpr char kPatchCAfterBTableUrl[] = "0C.ift_tk";
+constexpr char kPatchCAfterBTableUrl[] = "14.ift_tk";
 // Glyph-keyed patch with the outline for 'b'.
 constexpr char kPatchBGlyphUrl[] = "04.1.ift_gk";
 // Glyph-keyed patch with the outline for 'c'.
 constexpr char kPatchCGlyphUrl[] = "08.1.ift_gk";
+// Table-keyed patch for wght [500, 900] applied to the base font.
+constexpr char kPatchWghtTableUrl[] = "1S.ift_tk";
 constexpr uint32_t kLigaTag = 0x6c696761;  // 'liga'
 constexpr uint32_t kWghtTag = 0x77676874;  // 'wght'
 constexpr uint32_t kWdthTag = 0x77647468;  // 'wdth'
@@ -99,7 +102,7 @@ TEST_F(IftPatcherTest, MissingCodepointsReturnsRequiredPatchUrls) {
 
   IftSubsetDefinition subset;
   subset.AddCodepoint('b');
-  Vector<String> patches = patcher->RequestPatches(subset);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches, patcher->RequestPatches(subset));
   EXPECT_THAT(patches,
               testing::UnorderedElementsAre(kPatchBTableUrl, kPatchBGlyphUrl));
 }
@@ -111,7 +114,7 @@ TEST_F(IftPatcherTest, ApplyPatchesUpdatesFontData) {
 
   IftSubsetDefinition subset;
   subset.AddCodepoint('b');
-  Vector<String> patches = patcher->RequestPatches(subset);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches, patcher->RequestPatches(subset));
   ASSERT_THAT(patches,
               testing::UnorderedElementsAre(kPatchBTableUrl, kPatchBGlyphUrl));
 
@@ -121,7 +124,8 @@ TEST_F(IftPatcherTest, ApplyPatchesUpdatesFontData) {
   EXPECT_FALSE(patcher->GetFontData().empty());
   EXPECT_NE(patcher->GetFontData().size(), original_font.size());
   EXPECT_FALSE(patcher->HasPendingPatchRequests());
-  EXPECT_TRUE(patcher->RequestPatches(subset).empty());
+  EXPECT_THAT(patcher->RequestPatches(subset),
+              base::test::ValueIs(testing::IsEmpty()));
 }
 
 TEST_F(IftPatcherTest, RenderedFontRequiresPatchesUntilMarkedRendered) {
@@ -133,7 +137,8 @@ TEST_F(IftPatcherTest, RenderedFontRequiresPatchesUntilMarkedRendered) {
   EXPECT_FALSE(patcher->HasUnrenderedChanges());
   EXPECT_TRUE(patcher->RenderedFontRequiresPatches(subset));
   ASSERT_THAT(patcher->RequestPatches(subset),
-              testing::UnorderedElementsAre(kPatchBTableUrl, kPatchBGlyphUrl));
+              base::test::ValueIs(testing::UnorderedElementsAre(
+                  kPatchBTableUrl, kPatchBGlyphUrl)));
   patcher->AddPatchData(kPatchBTableUrl, LoadTestData(kPatchBTableUrl));
   patcher->AddPatchData(kPatchBGlyphUrl, LoadTestData(kPatchBGlyphUrl));
   ASSERT_EQ(patcher->ApplyPatches(subset), IftPatcher::ApplyStatus::kSuccess);
@@ -147,6 +152,29 @@ TEST_F(IftPatcherTest, RenderedFontRequiresPatchesUntilMarkedRendered) {
   EXPECT_FALSE(patcher->HasUnrenderedChanges());
 }
 
+TEST_F(IftPatcherTest, DesignSpaceOutsideBaseFontRequiresPatches) {
+  std::unique_ptr<IftPatcher> patcher = IftPatcher::Create(IftFont());
+  ASSERT_NE(patcher, nullptr);
+
+  // The base font has wght [100, 400].
+  IftSubsetDefinition light;
+  light.AddCodepoint('a');
+  light.AddDesignSpace(kWghtTag, 300.0, 300.0);
+  EXPECT_FALSE(patcher->RenderedFontRequiresPatches(light));
+
+  // wght [500, 900] is added by a table-keyed patch.
+  IftSubsetDefinition bold;
+  bold.AddCodepoint('a');
+  bold.AddDesignSpace(kWghtTag, 700.0, 700.0);
+  EXPECT_TRUE(patcher->RenderedFontRequiresPatches(bold));
+  ASSERT_THAT(patcher->RequestPatches(bold),
+              base::test::ValueIs(testing::ElementsAre(kPatchWghtTableUrl)));
+  patcher->AddPatchData(kPatchWghtTableUrl, LoadTestData(kPatchWghtTableUrl));
+  ASSERT_EQ(patcher->ApplyPatches(bold), IftPatcher::ApplyStatus::kSuccess);
+  patcher->MarkFontDataRendered();
+  EXPECT_FALSE(patcher->RenderedFontRequiresPatches(bold));
+}
+
 TEST_F(IftPatcherTest, ApplyPatchesSequentiallyUpdatesFontData) {
   Vector<uint8_t> original_font = IftFont();
   std::unique_ptr<IftPatcher> patcher = IftPatcher::Create(original_font);
@@ -154,7 +182,8 @@ TEST_F(IftPatcherTest, ApplyPatchesSequentiallyUpdatesFontData) {
 
   IftSubsetDefinition subset_b;
   subset_b.AddCodepoint('b');
-  Vector<String> patches_b = patcher->RequestPatches(subset_b);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches_b,
+                       patcher->RequestPatches(subset_b));
   ASSERT_THAT(patches_b,
               testing::UnorderedElementsAre(kPatchBTableUrl, kPatchBGlyphUrl));
 
@@ -170,7 +199,8 @@ TEST_F(IftPatcherTest, ApplyPatchesSequentiallyUpdatesFontData) {
   // font.
   IftSubsetDefinition subset_c;
   subset_c.AddCodepoint('c');
-  Vector<String> patches_c = patcher->RequestPatches(subset_c);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches_c,
+                       patcher->RequestPatches(subset_c));
   ASSERT_THAT(patches_c, testing::UnorderedElementsAre(kPatchCAfterBTableUrl,
                                                        kPatchCGlyphUrl));
 
@@ -184,7 +214,8 @@ TEST_F(IftPatcherTest, ApplyPatchesSequentiallyUpdatesFontData) {
 
   IftSubsetDefinition subset_both = subset_b;
   subset_both.Union(subset_c);
-  EXPECT_TRUE(patcher->RequestPatches(subset_both).empty());
+  EXPECT_THAT(patcher->RequestPatches(subset_both),
+              base::test::ValueIs(testing::IsEmpty()));
   EXPECT_EQ(patcher->ApplyPatches(subset_both),
             IftPatcher::ApplyStatus::kSuccess);
 }
@@ -195,7 +226,7 @@ TEST_F(IftPatcherTest, ApplyPatchesWithoutRequiredDataReturnsMissingPatches) {
 
   IftSubsetDefinition subset;
   subset.AddCodepoint('b');
-  Vector<String> patches = patcher->RequestPatches(subset);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches, patcher->RequestPatches(subset));
   ASSERT_THAT(patches,
               testing::UnorderedElementsAre(kPatchBTableUrl, kPatchBGlyphUrl));
 
@@ -209,7 +240,7 @@ TEST_F(IftPatcherTest, ApplyPatchesWithCorruptedPayloadReturnsPatchError) {
 
   IftSubsetDefinition subset;
   subset.AddCodepoint('b');
-  Vector<String> patches = patcher->RequestPatches(subset);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches, patcher->RequestPatches(subset));
   ASSERT_THAT(patches,
               testing::UnorderedElementsAre(kPatchBTableUrl, kPatchBGlyphUrl));
 
@@ -228,7 +259,7 @@ TEST_F(IftPatcherTest, RequestPatchesCreatesPendingPatchRequests) {
 
   IftSubsetDefinition subset;
   subset.AddCodepoint('b');
-  Vector<String> patches = patcher->RequestPatches(subset);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches, patcher->RequestPatches(subset));
   ASSERT_THAT(patches,
               testing::UnorderedElementsAre(kPatchBTableUrl, kPatchBGlyphUrl));
   EXPECT_TRUE(patcher->HasPendingPatchRequests());
@@ -246,11 +277,13 @@ TEST_F(IftPatcherTest, DuplicateOrPreviouslyRequestedPatchesAreOmitted) {
 
   IftSubsetDefinition subset;
   subset.AddCodepoint('b');
-  Vector<String> patches_first = patcher->RequestPatches(subset);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches_first,
+                       patcher->RequestPatches(subset));
   EXPECT_THAT(patches_first,
               testing::UnorderedElementsAre(kPatchBTableUrl, kPatchBGlyphUrl));
 
-  Vector<String> patches_second = patcher->RequestPatches(subset);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches_second,
+                       patcher->RequestPatches(subset));
   EXPECT_TRUE(patches_second.empty());
 }
 
@@ -260,7 +293,8 @@ TEST_F(IftPatcherTest, AlreadyCoveredOrEmptySubsetReturnsNoPatches) {
 
   IftSubsetDefinition empty_subset;
   EXPECT_FALSE(patcher->RenderedFontRequiresPatches(empty_subset));
-  EXPECT_TRUE(patcher->RequestPatches(empty_subset).empty());
+  EXPECT_THAT(patcher->RequestPatches(empty_subset),
+              base::test::ValueIs(testing::IsEmpty()));
   EXPECT_EQ(patcher->ApplyPatches(empty_subset),
             IftPatcher::ApplyStatus::kSuccess);
 
@@ -268,7 +302,8 @@ TEST_F(IftPatcherTest, AlreadyCoveredOrEmptySubsetReturnsNoPatches) {
   IftSubsetDefinition covered_subset;
   covered_subset.AddCodepoint('a');
   EXPECT_FALSE(patcher->RenderedFontRequiresPatches(covered_subset));
-  EXPECT_TRUE(patcher->RequestPatches(covered_subset).empty());
+  EXPECT_THAT(patcher->RequestPatches(covered_subset),
+              base::test::ValueIs(testing::IsEmpty()));
   EXPECT_EQ(patcher->ApplyPatches(covered_subset),
             IftPatcher::ApplyStatus::kSuccess);
   EXPECT_FALSE(patcher->HasPendingPatchRequests());
@@ -282,10 +317,93 @@ TEST_F(IftPatcherTest, UnpatchableSubsetRequiresNoPatches) {
   IftSubsetDefinition unpatchable_subset;
   unpatchable_subset.AddCodepoint('z');
   EXPECT_FALSE(patcher->RenderedFontRequiresPatches(unpatchable_subset));
-  EXPECT_TRUE(patcher->RequestPatches(unpatchable_subset).empty());
+  EXPECT_THAT(patcher->RequestPatches(unpatchable_subset),
+              base::test::ValueIs(testing::IsEmpty()));
   EXPECT_EQ(patcher->ApplyPatches(unpatchable_subset),
             IftPatcher::ApplyStatus::kSuccess);
   EXPECT_FALSE(patcher->HasPendingPatchRequests());
+}
+
+TEST_F(IftPatcherTest, RequestPatchesOverTotalLimitFails) {
+  std::unique_ptr<IftPatcher> patcher = IftPatcher::Create(IftFont());
+  ASSERT_NE(patcher, nullptr);
+  patcher->SetPatchLimitsForTesting(/*max_invalidating_patches=*/100,
+                                    /*max_total_patches=*/1);
+
+  IftSubsetDefinition subset;
+  subset.AddCodepoint('b');
+  EXPECT_THAT(
+      patcher->RequestPatches(subset),
+      base::test::ErrorIs(IftPatcher::RequestError::kPatchLimitExceeded));
+  // No patch was recorded as requested.
+  EXPECT_FALSE(patcher->HasPendingPatchRequests());
+  // The limit stays exceeded for the rest of the extension.
+  EXPECT_EQ(patcher->ApplyPatches(subset),
+            IftPatcher::ApplyStatus::kPatchLimitExceeded);
+}
+
+TEST_F(IftPatcherTest, ApplyPatchesOverInvalidatingLimitFails) {
+  std::unique_ptr<IftPatcher> patcher = IftPatcher::Create(IftFont());
+  ASSERT_NE(patcher, nullptr);
+  patcher->SetPatchLimitsForTesting(/*max_invalidating_patches=*/1,
+                                    /*max_total_patches=*/2000);
+
+  // Supporting 'b' and 'c' applies two table-keyed (invalidating) patches.
+  IftSubsetDefinition subset;
+  subset.AddCodepoint('b');
+  subset.AddCodepoint('c');
+  ASSERT_THAT(patcher->RequestPatches(subset),
+              base::test::ValueIs(testing::UnorderedElementsAre(
+                  kPatchBTableUrl, kPatchBGlyphUrl, kPatchCGlyphUrl)));
+  patcher->AddPatchData(kPatchBTableUrl, LoadTestData(kPatchBTableUrl));
+  patcher->AddPatchData(kPatchBGlyphUrl, LoadTestData(kPatchBGlyphUrl));
+  patcher->AddPatchData(kPatchCGlyphUrl, LoadTestData(kPatchCGlyphUrl));
+  ASSERT_EQ(patcher->ApplyPatches(subset),
+            IftPatcher::ApplyStatus::kMissingPatches);
+  const Vector<uint8_t> font_data_b(patcher->GetFontData());
+
+  ASSERT_THAT(patcher->RequestPatches(subset),
+              base::test::ValueIs(testing::ElementsAre(kPatchCAfterBTableUrl)));
+  patcher->AddPatchData(kPatchCAfterBTableUrl,
+                        LoadTestData(kPatchCAfterBTableUrl));
+  EXPECT_EQ(patcher->ApplyPatches(subset),
+            IftPatcher::ApplyStatus::kPatchLimitExceeded);
+  // The patch over the limit was not applied.
+  EXPECT_EQ(patcher->GetFontData(), base::span(font_data_b));
+}
+
+TEST_F(IftPatcherTest, BeginExtensionResetsPatchLimits) {
+  std::unique_ptr<IftPatcher> patcher = IftPatcher::Create(IftFont());
+  ASSERT_NE(patcher, nullptr);
+  patcher->SetPatchLimitsForTesting(/*max_invalidating_patches=*/1,
+                                    /*max_total_patches=*/2);
+
+  // Supporting 'b' requests the only two patches allowed and applies the only
+  // invalidating patch allowed.
+  IftSubsetDefinition subset_b;
+  subset_b.AddCodepoint('b');
+  ASSERT_OK(patcher->RequestPatches(subset_b));
+  patcher->AddPatchData(kPatchBTableUrl, LoadTestData(kPatchBTableUrl));
+  patcher->AddPatchData(kPatchBGlyphUrl, LoadTestData(kPatchBGlyphUrl));
+  ASSERT_EQ(patcher->ApplyPatches(subset_b), IftPatcher::ApplyStatus::kSuccess);
+
+  // Supporting 'c' requests two more patches and applies another invalidating
+  // patch, which is only allowed in a new extension.
+  IftSubsetDefinition subset_c;
+  subset_c.AddCodepoint('c');
+  std::unique_ptr<IftPatcher> new_extension = patcher->Clone();
+  new_extension->BeginExtension();
+  EXPECT_THAT(
+      patcher->RequestPatches(subset_c),
+      base::test::ErrorIs(IftPatcher::RequestError::kPatchLimitExceeded));
+  ASSERT_THAT(new_extension->RequestPatches(subset_c),
+              base::test::ValueIs(testing::UnorderedElementsAre(
+                  kPatchCAfterBTableUrl, kPatchCGlyphUrl)));
+  new_extension->AddPatchData(kPatchCAfterBTableUrl,
+                              LoadTestData(kPatchCAfterBTableUrl));
+  new_extension->AddPatchData(kPatchCGlyphUrl, LoadTestData(kPatchCGlyphUrl));
+  EXPECT_EQ(new_extension->ApplyPatches(subset_c),
+            IftPatcher::ApplyStatus::kSuccess);
 }
 
 TEST_F(IftPatcherTest, SubsetDefinitionUnionCombinesSubsets) {
@@ -301,7 +419,7 @@ TEST_F(IftPatcherTest, SubsetDefinitionUnionCombinesSubsets) {
 
   // Both glyph-keyed patches are requested, but only one of the table-keyed
   // patches since they are mutually exclusive.
-  Vector<String> patches = patcher->RequestPatches(subset);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches, patcher->RequestPatches(subset));
   EXPECT_THAT(patches, testing::UnorderedElementsAre(
                            kPatchBTableUrl, kPatchBGlyphUrl, kPatchCGlyphUrl));
 }
@@ -316,7 +434,7 @@ TEST_F(IftPatcherTest, FeatureTagsAndDesignSpaceCanBeAddedToSubset) {
   subset.AddDesignSpace(0x77676874, 100.0, 900.0);  // 'wght'
   subset.AddDesignSpace(0x77647468, 75.0, 125.0);   // 'wdth'
 
-  Vector<String> patches = patcher->RequestPatches(subset);
+  ASSERT_OK_AND_ASSIGN(Vector<String> patches, patcher->RequestPatches(subset));
   EXPECT_FALSE(patches.empty());
 }
 

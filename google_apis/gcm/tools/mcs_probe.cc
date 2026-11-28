@@ -138,12 +138,10 @@ void MessageReceivedCallback(const MCSMessage& message) {
   }
 }
 
-void MessageSentCallback(int64_t user_serial_number,
-                         const std::string& app_id,
+void MessageSentCallback(const std::string& app_id,
                          const std::string& message_id,
                          MCSClient::MessageSendStatus status) {
-  LOG(INFO) << "Message sent. Serial number: " << user_serial_number
-            << " Application ID: " << app_id
+  LOG(INFO) << "Message sent. Application ID: " << app_id
             << " Message ID: " << message_id
             << " Message send status: " << status;
 }
@@ -213,7 +211,6 @@ class MCSProbe {
 
   void LoadCallback(std::unique_ptr<GCMStore::LoadResult> load_result);
   void UpdateCallback(bool success);
-  void ErrorCallback();
   void OnCheckInCompleted(
       net::HttpStatusCode response_code,
       const checkin_proto::AndroidCheckinResponse& checkin_response);
@@ -335,10 +332,9 @@ void MCSProbe::LoadCallback(std::unique_ptr<GCMStore::LoadResult> load_result) {
     secret_ = load_result->device_security_token;
     DVLOG(1) << "Loaded MCS id " << android_id_;
   }
-  mcs_client_->Initialize(
-      base::BindRepeating(&MCSProbe::ErrorCallback, base::Unretained(this)),
-      base::BindRepeating(&MessageReceivedCallback),
-      base::BindRepeating(&MessageSentCallback), std::move(load_result));
+  mcs_client_->Initialize(base::BindRepeating(&MessageReceivedCallback),
+                          base::BindRepeating(&MessageSentCallback),
+                          std::move(load_result));
 
   if (!android_id_ || !secret_) {
     DVLOG(1) << "Checkin to generate new MCS credentials.";
@@ -395,10 +391,6 @@ void MCSProbe::InitializeNetworkState() {
   shared_url_loader_factory_ =
       base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
           url_loader_factory_.get());
-}
-
-void MCSProbe::ErrorCallback() {
-  LOG(INFO) << "MCS error happened";
 }
 
 void MCSProbe::RequestProxyResolvingSocketFactory(

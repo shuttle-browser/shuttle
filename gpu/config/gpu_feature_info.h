@@ -24,14 +24,19 @@ class GLContext;
 namespace gpu {
 
 // Flags indicating the status of a GPU feature (see gpu_feature_type.h).
+//
+// These values are persisted to logs (GPU.BlocklistFeatureTestResults.*).
+// Entries should not be renumbered and numeric values should never be reused.
+// LINT.IfChange(GpuFeatureStatus)
 enum GpuFeatureStatus {
-  kGpuFeatureStatusEnabled,
-  kGpuFeatureStatusBlocklisted,
-  kGpuFeatureStatusDisabled,
-  kGpuFeatureStatusSoftware,
-  kGpuFeatureStatusUndefined,
+  kGpuFeatureStatusEnabled = 0,
+  kGpuFeatureStatusBlocklisted = 1,
+  kGpuFeatureStatusDisabled = 2,
+  kGpuFeatureStatusSoftware = 3,
+  kGpuFeatureStatusUndefined = 4,
   kGpuFeatureStatusMax
 };
+// LINT.ThenChange(//tools/metrics/histograms/metadata/gpu/enums.xml:GPUBlocklistFeatureTestResults)
 
 struct GPU_CONFIG_EXPORT GpuFeatureInfo {
   GpuFeatureInfo();
@@ -50,7 +55,7 @@ struct GPU_CONFIG_EXPORT GpuFeatureInfo {
   // Return true if GpuFeatureInfo is computed.
   bool IsInitialized() const;
 
-  bool IsFeatureEnabled(GpuFeatureType feature);
+  bool IsFeatureEnabled(GpuFeatureType feature) const;
 
   // An array of GpuFeatureStatus values, one per GpuFeatureType.
   // By default, all features are disabled.

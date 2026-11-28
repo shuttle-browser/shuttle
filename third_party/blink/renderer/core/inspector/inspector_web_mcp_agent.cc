@@ -95,6 +95,7 @@ std::unique_ptr<protocol::WebMCP::Tool> InspectorWebMCPAgent::BuildProtocolTool(
   DCHECK(frame);
 
   auto tool = protocol::WebMCP::Tool::create()
+                  .setToolId(String(tool_data.Id().ToString()))
                   .setName(tool_data.Name())
                   .setDescription(tool_data.ScriptTool().description)
                   .setFrameId(IdentifiersFactory::FrameId(frame))
@@ -103,6 +104,12 @@ std::unique_ptr<protocol::WebMCP::Tool> InspectorWebMCPAgent::BuildProtocolTool(
     if (auto parsed =
             protocol::DictionaryValue::cast(ParseJSON(input_schema))) {
       tool->setInputSchema(std::move(parsed));
+    }
+  }
+  if (auto output_schema = tool_data.ScriptTool().output_schema) {
+    if (auto parsed =
+            protocol::DictionaryValue::cast(ParseJSON(output_schema))) {
+      tool->setOutputSchema(std::move(parsed));
     }
   }
 
@@ -194,6 +201,7 @@ void InspectorWebMCPAgent::WebMCPToolRemoved(Document* document,
   auto tools =
       std::make_unique<protocol::Array<protocol::WebMCP::RemovedTool>>();
   tools->push_back(protocol::WebMCP::RemovedTool::create()
+                       .setToolId(String(tool.Id().ToString()))
                        .setName(tool.Name())
                        .setFrameId(IdentifiersFactory::FrameId(frame))
                        .build());
@@ -203,15 +211,21 @@ void InspectorWebMCPAgent::WebMCPToolRemoved(Document* document,
 void InspectorWebMCPAgent::WebMCPToolExecuted(
     Document* document,
     const String& name,
+    const std::optional<ScriptToolToken>& tool_id,
     const String& input_arguments,
     const ToolInvocationToken& invocation_id) {
   if (!enabled_.Get()) {
     return;
   }
   if (LocalFrame* frame = document->GetFrame()) {
-    GetFrontend()->toolInvoked(name, IdentifiersFactory::FrameId(frame),
-                               String(invocation_id.ToString()),
-                               input_arguments);
+    std::optional<String> protocol_name =
+        name.IsNull() ? std::nullopt : std::make_optional(name);
+    std::optional<String> protocol_tool_id =
+        tool_id ? std::make_optional<String>(tool_id->ToString())
+                : std::nullopt;
+    GetFrontend()->toolInvoked(
+        IdentifiersFactory::FrameId(frame), String(invocation_id.ToString()),
+        input_arguments, std::move(protocol_name), std::move(protocol_tool_id));
   }
 }
 

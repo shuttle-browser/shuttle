@@ -3333,6 +3333,7 @@ Starting worker: resources/global-interface-listing-worker.js
 [Worker]     getter anticipatedConcurrentIncomingBidirectionalStreams
 [Worker]     getter anticipatedConcurrentIncomingUnidirectionalStreams
 [Worker]     getter closed
+[Worker]     getter congestionControl
 [Worker]     getter datagrams
 [Worker]     getter draining
 [Worker]     getter incomingBidirectionalStreams
@@ -3344,7 +3345,9 @@ Starting worker: resources/global-interface-listing-worker.js
 [Worker]     method close
 [Worker]     method constructor
 [Worker]     method createBidirectionalStream
+[Worker]     method createSendGroup
 [Worker]     method createUnidirectionalStream
+[Worker]     method exportKeyingMaterial
 [Worker]     setter anticipatedConcurrentIncomingBidirectionalStreams
 [Worker]     setter anticipatedConcurrentIncomingUnidirectionalStreams
 [Worker] interface WebTransportBidirectionalStream
@@ -3364,17 +3367,41 @@ Starting worker: resources/global-interface-listing-worker.js
 [Worker]     getter readable
 [Worker]     getter writable
 [Worker]     method constructor
+[Worker]     method createWritable
 [Worker]     setter incomingHighWaterMark
 [Worker]     setter incomingMaxAge
 [Worker]     setter incomingMaxBufferedDatagrams
 [Worker]     setter outgoingHighWaterMark
 [Worker]     setter outgoingMaxAge
 [Worker]     setter outgoingMaxBufferedDatagrams
+[Worker] interface WebTransportDatagramsWritable : WritableStream
+[Worker]     attribute @@toStringTag
+[Worker]     getter sendGroup
+[Worker]     getter sendOrder
+[Worker]     method constructor
+[Worker]     setter sendGroup
+[Worker]     setter sendOrder
 [Worker] interface WebTransportError : DOMException
 [Worker]     attribute @@toStringTag
 [Worker]     getter source
 [Worker]     getter streamErrorCode
 [Worker]     method constructor
+[Worker] interface WebTransportReceiveStream : ReadableStream
+[Worker]     attribute @@toStringTag
+[Worker]     method constructor
+[Worker]     method getStats
+[Worker] interface WebTransportSendGroup
+[Worker]     attribute @@toStringTag
+[Worker]     method constructor
+[Worker]     method getStats
+[Worker] interface WebTransportSendStream : WritableStream
+[Worker]     attribute @@toStringTag
+[Worker]     getter sendGroup
+[Worker]     getter sendOrder
+[Worker]     method constructor
+[Worker]     method getStats
+[Worker]     setter sendGroup
+[Worker]     setter sendOrder
 [Worker] interface WorkerGlobalScope : EventTarget
 [Worker]     attribute @@toStringTag
 [Worker]     getter caches
@@ -3496,7 +3523,6 @@ Starting worker: resources/global-interface-listing-worker.js
 [Worker]     method open
 [Worker]     method overrideMimeType
 [Worker]     method send
-[Worker]     method setAttributionReporting
 [Worker]     method setPrivateToken
 [Worker]     method setRequestHeader
 [Worker]     setter onreadystatechange

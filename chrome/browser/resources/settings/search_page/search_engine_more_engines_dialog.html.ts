@@ -26,8 +26,7 @@ export function getHtml(this: SettingsSearchEngineMoreEnginesDialogElement) {
       `)}
     </cr-radio-group>
     <div role="status">
-      <div class="no-search-results"
-          ?hidden="${!this.showNoSearchResults_()}">
+      <div class="no-search-results" ?hidden="${!this.showNoSearchResults_()}">
         $i18n{searchEnginesNoSearchResults}
       </div>
     </div>
@@ -40,12 +39,11 @@ export function getHtml(this: SettingsSearchEngineMoreEnginesDialogElement) {
         $i18n{saveGuestChoiceText}
       </cr-checkbox>
     ` : ''}
-    <cr-button id="cancelButton" @click="${this.onCancelClick_}">
-      $i18n{searchEnginesCancelButton}
+    <cr-button id="backButton" @click="${this.onBackClick_}">
+      $i18n{searchEnginesBackButton}
     </cr-button>
     <cr-button id="setAsDefaultButton" class="action-button"
-        @click="${this.onSetAsDefaultClick_}"
-        ?disabled="${!this.selectedId_}">
+        @click="${this.onSetAsDefaultClick_}" ?disabled="${!this.selectedId_}">
       $i18n{searchEnginesSetAsDefaultButton}
     </cr-button>
   </div>

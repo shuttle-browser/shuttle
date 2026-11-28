@@ -58,8 +58,10 @@
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
+#include "content/public/browser/user_browser_context.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/blink/public/mojom/devtools/inspector_issue.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/display/screen.h"
 #include "ui/display/types/display_constants.h"
@@ -308,7 +310,8 @@ void PermissionRequestManager::AddRequest(
 
   const std::optional<PermissionAction> should_auto_approve_request =
       PermissionsClient::Get()->GetAutoApprovalStatus(
-          web_contents()->GetBrowserContext(), request->requesting_origin());
+          content::GetUserBrowserContext(*web_contents()),
+          request->requesting_origin());
 
   if (should_auto_approve_request) {
     PromptOptions prompt_options =
@@ -743,8 +746,8 @@ void PermissionRequestManager::Accept(const PromptOptions& prompt_options) {
     if (content_settings_type.has_value()) {
       PermissionUmaUtil::RecordPermissionRegrantForUnusedSites(
           request->requesting_origin(), content_settings_type.value(),
-          PermissionSourceUI::PROMPT, web_contents()->GetBrowserContext(),
-          base::Time::Now());
+          PermissionSourceUI::PROMPT,
+          content::GetUserBrowserContext(*web_contents()), base::Time::Now());
     }
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
   }
@@ -911,7 +914,8 @@ void PermissionRequestManager::OpenHelpCenterLink(const ui::Event& event) {
           content::OpenURLParams::CreateBrowserInitiated(
               GURL(permissions::kEmbeddedContentHelpCenterURL),
               ui::DispositionFromEventFlags(
-                  event.flags(), WindowOpenDisposition::kNewForegroundTab),
+                  event.flags(),
+                  ui::mojom::WindowOpenDisposition::kNewForegroundTab),
               ui::PAGE_TRANSITION_LINK),
           /*navigation_handle_callback=*/{});
       break;
@@ -984,9 +988,6 @@ content::WebContents* PermissionRequestManager::GetAssociatedWebContents() {
 }
 
 bool PermissionRequestManager::RecreateView() {
-  const bool should_do_auto_response_for_testing =
-      (current_request_prompt_disposition_ ==
-       PermissionPromptDisposition::MAC_OS_PROMPT);
   // Check that a request is filed, and the surface is allowlisted or
   // has an initiated permission prompt. If a flow model is not created even
   // though a permission prompt has been requested, it will cause a crash.
@@ -1021,13 +1022,6 @@ bool PermissionRequestManager::RecreateView() {
   current_request_pepc_prompt_position_ = view_->GetPromptPosition();
   SetCurrentRequestsInitialStatuses();
 
-  if (auto_response_for_test_ != NONE && should_do_auto_response_for_testing) {
-    // MAC_OS_PROMPT disposition has it's own auto-response logic for testing,
-    // so if that was the original disposition we would have skipped our own
-    // auto-response logic. Since the disposition can have changed, trigger
-    // a possible auto response again here.
-    DoAutoResponseForTesting();  // IN-TEST
-  }
   return true;
 }
 
@@ -1111,7 +1105,7 @@ PermissionRequestManager::PermissionRequestManager(
       auto_response_for_test_(NONE),
       permission_ui_selectors_(
           PermissionsClient::Get()->CreatePermissionUiSelectors(
-              web_contents->GetBrowserContext())) {
+              content::GetUserBrowserContext(*web_contents))) {
   // Only register TabInterface observers on desktop to support Split View.
   AdoptTabInterfaceIfNeeded(GetTabInterface(web_contents));
   if (!tab_insert_subscription_) {
@@ -1477,7 +1471,7 @@ void PermissionRequestManager::CurrentRequestsDecided(
 #endif
 
   content::BrowserContext* browser_context =
-      web_contents()->GetBrowserContext();
+      content::GetUserBrowserContext(*web_contents());
 
   if (ShouldRecordUmaForCurrentPrompt()) {
     PermissionUmaUtil::PermissionPromptResolved(
@@ -1836,7 +1830,7 @@ void PermissionRequestManager::StorePermissionActionForUMA(
   if (content_settings_type.has_value()) {
     PermissionsClient::Get()
         ->GetOriginKeyedPermissionActionService(
-            web_contents()->GetBrowserContext())
+            content::GetUserBrowserContext(*web_contents()))
         ->RecordAction(PermissionUtil::GetLastCommittedOriginAsURL(
                            web_contents()->GetPrimaryMainFrame()),
                        content_settings_type.value(), permission_action);
@@ -1950,11 +1944,6 @@ void PermissionRequestManager::LogWarningToConsole(const char* message) {
 }
 
 void PermissionRequestManager::DoAutoResponseForTesting() {
-  // The macOS prompt has its own mechanism of auto responding.
-  if (current_request_prompt_disposition_ ==
-      PermissionPromptDisposition::MAC_OS_PROMPT) {
-    return;
-  }
   switch (auto_response_for_test_) {
     case ACCEPT_ONCE:
       AcceptThisTime(auto_response_prompt_options_for_test_);
@@ -2027,7 +2016,7 @@ void PermissionRequestManager::SetCurrentRequestsInitialStatuses() {
   }
 
   auto* map = PermissionsClient::Get()->GetSettingsMap(
-      web_contents()->GetBrowserContext());
+      content::GetUserBrowserContext(*web_contents()));
   for (const auto& request : requests_) {
     // It's possible in tests for |map| to not be initialized yet. Also there
     // are some permission requests (like SMART_CARD_DATA) which are not for

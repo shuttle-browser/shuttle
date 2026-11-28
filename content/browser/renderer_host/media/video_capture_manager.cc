@@ -154,6 +154,7 @@ void VideoCaptureManager::UnregisterListener(
 }
 
 void VideoCaptureManager::EnumerateDevices(
+    media::mojom::VideoCaptureDeviceEnumerationMode enumeration_mode,
     EnumerationCallback client_callback) {
   CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M158);
   TRACE_EVENT0(TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
@@ -162,9 +163,9 @@ void VideoCaptureManager::EnumerateDevices(
 
   // Pass a timer for UMA histogram collection.
   video_capture_provider_->GetDeviceInfosAsync(
-      base::BindPostTaskToCurrentDefault(
-          base::BindOnce(&VideoCaptureManager::OnDeviceInfosReceived, this,
-                         base::ElapsedTimer(), std::move(client_callback))));
+      enumeration_mode, base::BindPostTaskToCurrentDefault(base::BindOnce(
+                            &VideoCaptureManager::OnDeviceInfosReceived, this,
+                            base::ElapsedTimer(), std::move(client_callback))));
 }
 
 base::UnguessableToken VideoCaptureManager::Open(
@@ -1067,7 +1068,21 @@ void VideoCaptureManager::OnScreenLocked() {
                             &VideoCaptureManager::ReleaseDevices);
   }
 
-  for (auto session_id : desktopcapture_session_ids) {
+  for (const auto& session_id : desktopcapture_session_ids) {
+    auto session_it = sessions_.find(session_id);
+    if (session_it == sessions_.end()) {
+      continue;
+    }
+    // The session is being torn down from under its owner, so report it as
+    // aborted rather than closed. This lets listeners also stop any paired
+    // audio capture, the same way they do for a device error. Copy the type
+    // because a listener may close the session and invalidate `session_it`.
+    const blink::mojom::MediaStreamType type = session_it->second.type;
+    for (auto& listener : listeners_) {
+      listener.Aborted(type, session_id);
+    }
+    // Listeners usually close the session in response to Aborted(). Close()
+    // is a no-op if the session is already gone.
     Close(session_id);
   }
 #endif  // !BUILDFLAG(IS_ANDROID)

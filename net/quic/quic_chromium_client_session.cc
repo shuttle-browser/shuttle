@@ -12,6 +12,7 @@
 
 #include "base/check_deref.h"
 #include "base/compiler_specific.h"
+#include "base/containers/flat_set.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
@@ -49,6 +50,7 @@
 #include "net/cert/signed_certificate_timestamp_and_status.h"
 #include "net/cert/x509_certificate.h"
 #include "net/cert/x509_util.h"
+#include "net/dns/dns_alias_utility.h"
 #include "net/dns/public/secure_dns_policy.h"
 #include "net/http/transport_security_state.h"
 #include "net/log/net_log_event_type.h"
@@ -89,6 +91,9 @@ namespace features {
 BASE_FEATURE(kQuicMigrationIgnoreDisconnectSignalDuringProbing,
              "kQuicMigrationIgnoreDisconnectSignalDuringProbing",
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kQuicRegisterConnectionClosePayload,
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 }  // namespace features
 
@@ -732,12 +737,11 @@ bool QuicChromiumClientSession::Handle::WasEverUsed() const {
   return session_->WasConnectionEverUsed();
 }
 
-const std::set<std::string>&
+const base::flat_set<std::string>&
 QuicChromiumClientSession::Handle::GetDnsAliasesForSessionKey(
     const QuicSessionKey& key) const {
-  static const base::NoDestructor<std::set<std::string>> emptyset_result;
   return session_ ? session_->GetDnsAliasesForSessionKey(key)
-                  : *emptyset_result;
+                  : dns_alias_utility::EmptyDnsAliases();
 }
 
 #if BUILDFLAG(ENABLE_WEBSOCKETS)
@@ -1102,6 +1106,11 @@ QuicChromiumClientSession::QuicChromiumClientSession(
       migrate_idle_session_(migrate_idle_session),
       allow_port_migration_(
           allow_port_migration &&
+          // Check `kQuicEnablePortMigration` here rather than using it as the
+          // default value of `QuicParams::allow_port_migration` so that
+          // embedders or callers that explicitly set `allow_port_migration`
+          // cannot enable port migration when the feature is disabled.
+          base::FeatureList::IsEnabled(features::kQuicEnablePortMigration) &&
           // If the session targets a network, we could migrate to a different
           // port onto the same network. Having said that, this is non-trivial
           // to implement. For the time being don't migrate.
@@ -1492,6 +1501,16 @@ bool QuicChromiumClientSession::was_ever_used_to_create_streams() const {
   return num_total_streams_ > 0;
 }
 
+bool QuicChromiumClientSession::WasClosedByLocalCancellation() const {
+  return (source_ == quic::ConnectionCloseSource::FROM_SELF &&
+          connection_close_error_ == quic::QUIC_CONNECTION_CANCELLED) ||
+         closed_by_proactive_ip_pooling_;
+}
+
+bool QuicChromiumClientSession::ShouldSkipUnconfirmedHandshakeMetrics() const {
+  return closed_by_proactive_ip_pooling_;
+}
+
 QuicChromiumClientStream*
 QuicChromiumClientSession::CreateOutgoingBidirectionalStream() {
   NOTREACHED() << "CreateOutgoingReliableStreamImpl should be called directly";
@@ -1853,6 +1872,10 @@ void QuicChromiumClientSession::OnTlsHandshakeComplete() {
 }
 
 void QuicChromiumClientSession::RegisterQuicConnectionClosePayload() {
+  if (!base::FeatureList::IsEnabled(
+          features::kQuicRegisterConnectionClosePayload)) {
+    return;
+  }
   // Cannot serialize ConnectionClosePacket before handshake is confirmed.
   if (!connection()->IsHandshakeConfirmed()) {
     return;
@@ -1869,6 +1892,10 @@ void QuicChromiumClientSession::RegisterQuicConnectionClosePayload() {
 }
 
 void QuicChromiumClientSession::UnregisterQuicConnectionClosePayload() {
+  if (!base::FeatureList::IsEnabled(
+          features::kQuicRegisterConnectionClosePayload)) {
+    return;
+  }
   static_cast<QuicChromiumPacketWriter*>(connection()->writer())
       ->UnregisterQuicConnectionClosePayload();
 }
@@ -2005,6 +2032,7 @@ void QuicChromiumClientSession::OnConnectionClosed(
   DCHECK(!connection()->connected());
   logger_->OnConnectionClosed(frame, source);
   source_ = source;
+  connection_close_error_ = frame.quic_error_code;
 
   UMA_HISTOGRAM_COUNTS_1000("Net.QuicSession.NumDefaultPathDegrading",
                             connection()->GetStats().num_path_degrading);
@@ -2278,7 +2306,7 @@ void QuicChromiumClientSession::OnConnectionClosed(
       base::UmaHistogramEnumeration(
           "Net.QuicSession.KeyUpdate.Success." + suffix, value);
     }
-  } else {
+  } else if (!ShouldSkipUnconfirmedHandshakeMetrics()) {
     if (error == quic::QUIC_PUBLIC_RESET) {
       RecordHandshakeFailureReason(HANDSHAKE_FAILURE_PUBLIC_RESET);
     } else if (connection()->GetStats().packets_received == 0) {
@@ -2489,9 +2517,9 @@ void QuicChromiumClientSession::MigrateSessionOnWriteError(
       NetLogEventType::QUIC_CONNECTION_MIGRATION_TRIGGERED, "trigger",
       "WriteError");
   pending_migrate_session_on_write_error_ = true;
-  MigrateWithoutProbing(
+  MaybeMigrateWithoutProbing(
       QuicMigrationAttemptCause::kOnWriteError, new_network,
-      ToIPEndPoint(connection()->peer_address()),
+      connection()->peer_address(),
       /*close_session_on_error=*/false,
       base::BindOnce(
           &QuicChromiumClientSession::FinishMigrateSessionOnWriteError,
@@ -3110,14 +3138,14 @@ void QuicChromiumClientSession::MigrateNetworkImmediately(
   if (!base::FeatureList::IsEnabled(
           features::kQuicAlwaysCancelPreExistingProbingOnMigration)) {
     // When enabled, cancellation for any probe happens within
-    // MigrateWithoutProbing.
+    // MaybeMigrateWithoutProbing.
     MaybeCancelSpecificInFlightProbe(network, peer_address(),
                                      ProbingCancellationReason::kSuperseded,
                                      migration_cause);
   }
   pending_migrate_network_immediately_ = true;
-  MigrateWithoutProbing(
-      migration_cause, network, ToIPEndPoint(connection()->peer_address()),
+  MaybeMigrateWithoutProbing(
+      migration_cause, network, connection()->peer_address(),
       /*close_session_on_error=*/true,
       base::BindOnce(
           &QuicChromiumClientSession::FinishMigrateNetworkImmediately,
@@ -3671,41 +3699,35 @@ void QuicChromiumClientSession::StartProbing(
     return;
   }
 
-  // Create and configure socket on `network`.
-  // TODO(crbug.com/518753285): Once we no longer bindToNetwork via
-  // `FinishStartProbing`, bind the socket via this `CreateSocket` call, by
-  // passing in `network` instead of `handles::kInvalidNetworkHandle`.
-  std::unique_ptr<DatagramClientSocket> probing_socket =
-      session_pool_->CreateSocket(handles::kInvalidNetworkHandle,
-                                  net_log_.net_log(), net_log_.source());
-  DatagramClientSocket* probing_socket_ptr = probing_socket.get();
+  StartProbing(
+      CreateMigrationAttemptContext(migration_cause, network, peer_address),
+      std::move(probing_callback));
+}
 
-  RecordUnusedConnectionIdsAtMigrationAttempt();
+void QuicChromiumClientSession::StartProbing(
+    std::unique_ptr<QuicMigrationAttemptContext> context,
+    ProbingCallback probing_callback) {
+  CHECK(context);
+  CHECK(session_pool_);
 
-  auto attempt_context = std::make_unique<QuicMigrationAttemptContext>(
-      migration_cause, GetCurrentNetwork(), network, peer_address,
-      std::make_unique<QuicChromiumPacketReader>(
-          std::move(probing_socket), clock_, this, yield_after_packets_,
-          yield_after_duration_, net_log_),
-      std::make_unique<QuicChromiumPacketWriter>(probing_socket_ptr,
-                                                 task_runner_),
-      CreateSessionAliveCallback(), IsGoogleHost(session_key_.host()));
+  DatagramClientSocket* probing_socket_ptr = context->reader()->socket();
+  IPEndPoint peer_address = ToIPEndPoint(context->target_peer_address());
+  handles::NetworkHandle network = context->target_network();
+  QuicMigrationAttemptCause migration_cause = context->cause();
 
   QuicSessionPool::ConnectAndConfigureCallback configure_callback =
       base::BindOnce(&QuicChromiumClientSession::FinishStartProbing,
                      weak_factory_.GetWeakPtr(), std::move(probing_callback),
-                     std::move(attempt_context));
+                     std::move(context));
 
   if (migration_cause != QuicMigrationAttemptCause::kUnknown &&
       !MidMigrationCallbackForTesting().is_null()) {
     std::move(MidMigrationCallbackForTesting()).Run();  // IN-TEST
   }
 
-  session_pool_->ConnectAndConfigureSocket(
-      std::move(configure_callback), probing_socket_ptr,
-      ToIPEndPoint(peer_address), network, session_key_.socket_tag());
-
-  return;
+  session_pool_->ConnectAndConfigureSocket(std::move(configure_callback),
+                                           probing_socket_ptr, peer_address,
+                                           network, session_key_.socket_tag());
 }
 
 void QuicChromiumClientSession::FinishStartProbing(
@@ -4276,10 +4298,10 @@ void QuicChromiumClientSession::OnCryptoHandshakeComplete() {
   }
 }
 
-void QuicChromiumClientSession::MigrateWithoutProbing(
+void QuicChromiumClientSession::MaybeMigrateWithoutProbing(
     QuicMigrationAttemptCause migration_cause,
     handles::NetworkHandle network,
-    IPEndPoint peer_address,
+    const quic::QuicSocketAddress& peer_address,
     bool close_session_on_error,
     MigrationCallback migration_callback) {
   quic_connection_migration_attempted_ = true;
@@ -4333,28 +4355,48 @@ void QuicChromiumClientSession::MigrateWithoutProbing(
     MaybeCancelAnyInFlightProbe(migration_cause);
   }
 
-  // Create and configure socket on `network`.
+  MigrateWithoutProbing(
+      CreateMigrationAttemptContext(migration_cause, network, peer_address),
+      close_session_on_error, std::move(migration_callback));
+}
+
+std::unique_ptr<QuicMigrationAttemptContext>
+QuicChromiumClientSession::CreateMigrationAttemptContext(
+    QuicMigrationAttemptCause cause,
+    handles::NetworkHandle target_network,
+    const quic::QuicSocketAddress& target_peer_address) {
+  CHECK(session_pool_);
+  // Create socket on `target_network`.
   // TODO(crbug.com/518753285): Once we no longer bindToNetwork via
   // `ConnectAndConfigureSocket`, bind the socket via this `CreateSocket` call,
-  // by passing in `network` instead of `handles::kInvalidNetworkHandle`.
-  std::unique_ptr<DatagramClientSocket> socket(session_pool_->CreateSocket(
-      handles::kInvalidNetworkHandle, net_log_.net_log(), net_log_.source()));
+  // by passing in `target_network` instead of `handles::kInvalidNetworkHandle`.
+  std::unique_ptr<DatagramClientSocket> socket = session_pool_->CreateSocket(
+      handles::kInvalidNetworkHandle, net_log_.net_log(), net_log_.source());
   DatagramClientSocket* socket_ptr = socket.get();
-
   RecordUnusedConnectionIdsAtMigrationAttempt();
-
-  auto migration_context = std::make_unique<QuicMigrationAttemptContext>(
-      migration_cause, GetCurrentNetwork(), network,
-      ToQuicSocketAddress(peer_address),
+  return std::make_unique<QuicMigrationAttemptContext>(
+      cause, GetCurrentNetwork(), target_network, target_peer_address,
       std::make_unique<QuicChromiumPacketReader>(
           std::move(socket), clock_, this, yield_after_packets_,
           yield_after_duration_, net_log_),
       std::make_unique<QuicChromiumPacketWriter>(socket_ptr, task_runner_),
       CreateSessionAliveCallback(), IsGoogleHost(session_key_.host()));
+}
+
+void QuicChromiumClientSession::MigrateWithoutProbing(
+    std::unique_ptr<QuicMigrationAttemptContext> migration_context,
+    bool close_session_on_error,
+    MigrationCallback migration_callback) {
+  CHECK(migration_context);
+  CHECK(session_pool_);
 
   DVLOG(1) << "Force blocking the packet writer";
   static_cast<QuicChromiumPacketWriter*>(connection()->writer())
       ->set_force_write_blocked(true);
+  DatagramClientSocket* socket_ptr = migration_context->reader()->socket();
+  IPEndPoint peer_address =
+      ToIPEndPoint(migration_context->target_peer_address());
+  handles::NetworkHandle network = migration_context->target_network();
   QuicSessionPool::ConnectAndConfigureCallback connect_callback =
       base::BindOnce(&QuicChromiumClientSession::FinishMigrateWithoutProbing,
                      weak_factory_.GetWeakPtr(), std::move(migration_context),
@@ -4608,12 +4650,11 @@ void QuicChromiumClientSession::SendPing() {
   return connection()->SendPing();
 }
 
-const std::set<std::string>&
+const base::flat_set<std::string>&
 QuicChromiumClientSession::GetDnsAliasesForSessionKey(
     const QuicSessionKey& key) const {
-  static const base::NoDestructor<std::set<std::string>> emptyset_result;
   return session_pool_ ? session_pool_->GetDnsAliasesForSessionKey(key)
-                       : *emptyset_result;
+                       : dns_alias_utility::EmptyDnsAliases();
 }
 
 quic::QuicPacketLength

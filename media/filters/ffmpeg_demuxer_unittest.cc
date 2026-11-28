@@ -24,6 +24,7 @@
 #include "base/run_loop.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/mock_callback.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
@@ -427,6 +428,27 @@ TEST_F(FFmpegDemuxerTest, Initialize_NoAudioVideo) {
   WaitableMessageLoopEvent event;
   demuxer_->Initialize(&host_, event.GetPipelineStatusCB());
   event.RunAndWaitForStatus(DEMUXER_ERROR_NO_SUPPORTED_STREAMS);
+}
+
+TEST_F(FFmpegDemuxerTest, RecordsOggVideoCodec) {
+  base::HistogramTester histogram_tester;
+  CreateDemuxer("bear_audio_longer_than_video_vp8.ogv");
+  InitializeDemuxer();
+  histogram_tester.ExpectUniqueSample("Media.SRC.VideoCodec.Ogg",
+                                      VideoCodec::kVP8, 1);
+  histogram_tester.ExpectUniqueSample("Media.SRC.AudioCodec.Ogg",
+                                      AudioCodec::kVorbis, 1);
+  histogram_tester.ExpectTotalCount("Media.SRC.VideoCodec.WebM", 0);
+}
+
+TEST_F(FFmpegDemuxerTest, RecordsWebMVideoCodec) {
+  base::HistogramTester histogram_tester;
+  CreateDemuxer("bear-320x240.webm");
+  InitializeDemuxer();
+  histogram_tester.ExpectUniqueSample("Media.SRC.VideoCodec.WebM",
+                                      VideoCodec::kVP8, 1);
+  histogram_tester.ExpectTotalCount("Media.SRC.VideoCodec.Ogg", 0);
+  histogram_tester.ExpectTotalCount("Media.SRC.AudioCodec.Ogg", 0);
 }
 
 TEST_F(FFmpegDemuxerTest, Initialize_Successful) {
@@ -1934,6 +1956,65 @@ TEST_F(FFmpegDemuxerTest, StreamStatusNotifications) {
   video_stream->Read(1, base::BindOnce(&OnReadDoneExpectEos));
 
   DisableAndEnableDemuxerTracks(demuxer_.get(), &task_environment_);
+}
+
+TEST_F(FFmpegDemuxerTest, TrackChangeSeekDiscardsInFlightRead) {
+  CreateDemuxer("bear-320x240.webm");
+  InitializeDemuxer();
+  FFmpegDemuxerStream* video_stream =
+      static_cast<FFmpegDemuxerStream*>(GetStream(DemuxerStream::VIDEO));
+  ASSERT_NE(nullptr, video_stream);
+
+  // Start an async read at t=0 (packet #0 in bear-320x240.webm is a video
+  // packet at t=0), then immediately issue a track-change seek disabling audio
+  // at t=1s before the in-flight av_read_frame() reply runs on the media
+  // thread. The pre-seek video packet must be discarded and reading must resume
+  // from the post-seek position once the track-change seek completes.
+  scoped_refptr<DecoderBuffer> read_buffer;
+  base::RunLoop read_loop;
+  video_stream->Read(1, base::BindLambdaForTesting(
+                            [&](DemuxerStream::Status status,
+                                DemuxerStream::DecoderBufferVector buffers) {
+                              ASSERT_EQ(status, DemuxerStream::kOk);
+                              ASSERT_EQ(buffers.size(), 1u);
+                              read_buffer = std::move(buffers[0]);
+                              read_loop.Quit();
+                            }));
+
+  base::RunLoop track_change_loop;
+  demuxer_->OnTracksChanged(
+      DemuxerStream::AUDIO, std::nullopt, base::Seconds(1),
+      base::BindOnce(QuitLoop, track_change_loop.QuitClosure()));
+
+  track_change_loop.Run();
+  read_loop.Run();
+  task_environment_.RunUntilIdle();
+
+  ASSERT_TRUE(read_buffer);
+  ASSERT_FALSE(read_buffer->end_of_stream());
+  EXPECT_GT(read_buffer->timestamp(), base::TimeDelta());
+}
+
+TEST_F(FFmpegDemuxerTest, AbortedTrackChangeSeek) {
+  CreateDemuxer("bear-320x240.webm");
+  InitializeDemuxer();
+  FFmpegDemuxerStream* video_stream =
+      static_cast<FFmpegDemuxerStream*>(GetStream(DemuxerStream::VIDEO));
+  ASSERT_NE(nullptr, video_stream);
+
+  // Start a track-change seek to disable video and immediately abort pending
+  // reads via CancelPendingSeek(). The completion callback must still be
+  // invoked rather than dropped.
+  bool aborted_track_change_completed = false;
+  demuxer_->OnTracksChanged(DemuxerStream::VIDEO, std::nullopt,
+                            base::Seconds(1),
+                            base::BindLambdaForTesting([&](DemuxerStream* s) {
+                              EXPECT_EQ(s, nullptr);
+                              aborted_track_change_completed = true;
+                            }));
+  demuxer_->CancelPendingSeek(base::TimeDelta());
+  EXPECT_TRUE(aborted_track_change_completed);
+  task_environment_.RunUntilIdle();
 }
 
 TEST_F(FFmpegDemuxerTest, MultitrackMemoryUsage) {

@@ -120,6 +120,10 @@ BASE_FEATURE(kClipboardOnExtensionServiceWorker,
 BASE_FEATURE(kComputePressureRateObfuscationMitigation,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+// Reports a touch pointerType on contextmenu events dispatched from touch
+// selection menus (non-located context menus). Kill switch.
+BASE_FEATURE(kContextMenuPointerTypeForTouch, base::FEATURE_ENABLED_BY_DEFAULT);
+
 BASE_FEATURE(kCrashReportingAPIMoreContextData,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -750,6 +754,12 @@ BASE_FEATURE(kFlushGpuChannelOnLayerTreeViewRelease,
 
 BASE_FEATURE(kFontAccessCheckFrameIsActive, base::FEATURE_ENABLED_BY_DEFAULT);
 
+BASE_FEATURE(kFontResourceDecodedMemoryAccounting,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kResourceEncodedMemoryAccounting,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kBlockPartialResponseWithoutRange,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -796,10 +806,20 @@ BASE_FEATURE(kFreezeSharedWorker, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kFrequencyCappingForOverlayPopupDetection,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+#if BUILDFLAG(IS_ANDROID)
+// Gates periodic 1 Hz renderer memory metrics sampling timers on renderer
+// visibility on Android.
+BASE_FEATURE(kGateMemoryMetricsOnVisibility, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
+
 BASE_FEATURE(kGlobalPrivacyControlAlwaysSample,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGMSCoreEmoji, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Appends "&compat=none" to the GMS Core "Noto Color Emoji Compat" font query
+// so GMS Core can serve the plain 3D system emoji font when available.
+BASE_FEATURE(kGMSCoreEmojiCompatNone, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE_PARAM(std::string,
                    kHTMLParserYieldEventNameForPause,
@@ -1396,9 +1416,6 @@ BASE_FEATURE(kLightweightNoStatePrefetch,
 // the page is frozen.
 BASE_FEATURE(kLoadingTasksUnfreezable, base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kLogUnexpectedIPCPostedToBackForwardCachedDocuments,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 #if BUILDFLAG(IS_ANDROID)
 // Allow low latency canvas (both 2D and WebGL) to be in overlay (generally
 // meaning scanned out directly to display), even if regular canvases are not
@@ -1787,11 +1804,6 @@ BASE_FEATURE_PARAM(int,
 BASE_FEATURE(kUseAncestorRenderFrameForWorker,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Enable deriving sandboxed frame origins from browser-generated tokens
-// instead of renderer-calculated opaque origins.
-BASE_FEATURE(kUseSandboxTokenForOriginDerivation,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kPrecompileInlineScripts, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Whether we should composite a PLSA (paint layer scrollable area) even if it
@@ -2077,6 +2089,13 @@ const base::FeatureParam<bool> kSpeculativeServiceWorkerWarmUpOnPointerover{
 // Warms up service workers when a pointerdown event is triggered on an anchor.
 const base::FeatureParam<bool> kSpeculativeServiceWorkerWarmUpOnPointerdown{
     &kSpeculativeServiceWorkerWarmUp, "sw_warm_up_on_pointerdown", true};
+
+// Rejects `fetch(event.request)` in a ServiceWorker fetch handler with a
+// dedicated cancellation TypeError message instead of generic "Failed to fetch"
+// when a `race-network-and-fetch-handler` request fails with `net::ERR_ABORTED`
+// before receiving response headers.
+BASE_FEATURE(kServiceWorkerRaceNetworkRequestAbortedErrorMessage,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables fallback to network request when the RaceNetworkRequest Mojo pipe is
 // disconnected.

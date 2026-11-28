@@ -60,7 +60,7 @@ class FakeBackgroundColorPaintImageGenerator
     if (!npw_data || !npw_data->GetAnimationCurve()) {
       return nullptr;
     }
-    return BitmapImage::Create();
+    return BitmapImage::CreateForTesting();
   }
 
   Animation* GetAnimationIfCompositable(const Element* element) override {
@@ -1380,6 +1380,100 @@ TEST_F(BackgroundColorPaintDefinitionTest, EnforceCompositingDecision) {
   EXPECT_EQ(element_animations->CompositedBackgroundColorStatus(),
             ElementAnimations::CompositedPaintStatus::kNotComposited);
   EXPECT_FALSE(fade_animation->HasActiveAnimationsOnCompositor());
+}
+
+TEST_F(BackgroundColorPaintDefinitionTest,
+       DeferredKeyframeSnapshotUpdateAcrossStyleRecalcs) {
+  SetBodyInnerHTML(R"HTML(
+    <style>
+      @keyframes colorize {
+        from { background-color: currentcolor; }
+        to   { background-color: white; }
+      }
+      #target {
+        animation: colorize 1s forwards;
+        height: 100px;
+        width: 100px;
+        color: rgb(10, 20, 30);
+      }
+    </style>
+    <div id="target"></div>
+  )HTML");
+  UpdateAllLifecyclePhasesForTest();
+  Element* element = GetElementById("target");
+  ElementAnimations* element_animations = element->GetElementAnimations();
+  ASSERT_TRUE(element_animations);
+  NativePaintWorkletData* npw_data =
+      element_animations->GetBackgroundColorNpwData();
+  ASSERT_TRUE(npw_data);
+  EXPECT_FALSE(npw_data->NeedsKeyframeSnapshotUpdate());
+
+  // First style recalc changes color without running paint. The keyframe
+  // snapshot update should remain deferred until paint / curve retrieval.
+  element->style()->setProperty(
+      element->GetExecutionContext(),
+      CSSPropertyName(CSSPropertyID::kColor).ToAtomicString(), "rgb(1, 2, 3)",
+      "", ASSERT_NO_EXCEPTION);
+  GetDocument().UpdateStyleAndLayoutTree();
+  EXPECT_TRUE(npw_data->NeedsKeyframeSnapshotUpdate());
+
+  // A subsequent style recalc for another property before paint must not
+  // prematurely evaluate or clear the deferred keyframe snapshot update.
+  element->style()->setProperty(
+      element->GetExecutionContext(),
+      CSSPropertyName(CSSPropertyID::kWidth).ToAtomicString(), "120px", "",
+      ASSERT_NO_EXCEPTION);
+  GetDocument().UpdateStyleAndLayoutTree();
+  EXPECT_TRUE(npw_data->NeedsKeyframeSnapshotUpdate());
+
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_FALSE(npw_data->NeedsKeyframeSnapshotUpdate());
+  Animation* animation = GetAnimation(element);
+  ASSERT_TRUE(animation);
+  scoped_refptr<CompositorAnimationColorCurve> curve = ColorCurve(animation);
+  ASSERT_TRUE(curve);
+  EXPECT_EQ(curve->GetTypedKeyframe(0).value, Color(1, 2, 3));
+}
+
+TEST_F(BackgroundColorPaintDefinitionTest, FinishOffscreen) {
+  SetBodyInnerHTML(R"HTML(
+    <style>
+      @keyframes colorize {
+        from { background-color: red; }
+        to { background-color: green; }
+      }
+      #target {
+        animation: colorize 1s forwards;
+        height: 100px;
+        width: 100px;
+      }
+      #spacer {
+        height: 10000px;
+      }
+    </style>
+    <div id="target"></div>
+    <div id="spacer"></div>
+  )HTML");
+  UpdateAllLifecyclePhasesForTest();
+  Element* element = GetElementById("target");
+  ElementAnimations* element_animations = element->GetElementAnimations();
+  ASSERT_TRUE(element_animations);
+  EXPECT_EQ(element_animations->Animations().size(), 1u);
+  EXPECT_EQ(element_animations->CompositedBackgroundColorStatus(),
+            ElementAnimations::CompositedPaintStatus::kComposited);
+  Animation* animation = GetAnimation(element);
+  ASSERT_TRUE(animation);
+  EXPECT_TRUE(animation->HasActiveAnimationsOnCompositor());
+
+  // Scroll the animation far off-screen and finish it.
+  GetDocument().scrollingElement()->setScrollTop(10000);
+  UpdateAllLifecyclePhasesForTest();
+  animation->finish(ASSERT_NO_EXCEPTION);
+  UpdateAllLifecyclePhasesForTest();
+
+  EXPECT_EQ(element_animations->CompositedBackgroundColorStatus(),
+            ElementAnimations::CompositedPaintStatus::kNotComposited);
+  EXPECT_FALSE(animation->HasActiveAnimationsOnCompositor());
 }
 
 }  // namespace blink

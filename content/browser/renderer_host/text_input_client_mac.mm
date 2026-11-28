@@ -27,6 +27,9 @@
 #include "content/public/browser/browser_thread.h"
 #include "third_party/abseil-cpp/absl/functional/overload.h"
 #include "ui/base/mojom/attributed_string.mojom.h"
+#include "ui/gfx/geometry/rect_conversions.h"
+#include "ui/gfx/geometry/rect_f.h"
+#include "ui/gfx/geometry/transform.h"
 
 namespace content {
 
@@ -99,11 +102,24 @@ gfx::Rect TransformFirstRectResult(base::WeakPtr<RenderFrameHostImpl> rfhi,
             // `rect` is in (child) frame coordinate and needs to be transformed
             // to the root frame coordinate. If `rfhi` has been deleted, it's
             // too late to do the transform but the result is moot anyway.
-            return rfhi ? gfx::Rect(
-                              rfhi->GetView()->TransformPointToRootCoordSpace(
-                                  rect.origin()),
-                              rect.size())
-                        : gfx::Rect();
+            if (!rfhi) {
+              return gfx::Rect();
+            }
+            RenderWidgetHostViewBase* view = rfhi->GetView();
+            if (!view) {
+              return gfx::Rect();
+            }
+            RenderWidgetHostViewBase* root_view = view->GetRootView();
+            gfx::Transform to_root;
+            if (!root_view ||
+                !view->GetTransformToViewCoordSpace(root_view, &to_root)) {
+              return gfx::Rect();
+            }
+            // `rect` is in physical pixels, but the transform works in DIPs.
+            const float scale = view->GetDeviceScaleFactor();
+            const gfx::RectF root_rect_in_dips =
+                to_root.MapRect(gfx::ScaleRect(gfx::RectF(rect), 1.f / scale));
+            return gfx::ToRoundedRect(gfx::ScaleRect(root_rect_in_dips, scale));
           },
       },
       result);
@@ -205,7 +221,7 @@ void TextInputClientMac::AsyncGetFirstRectForRange(
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   base::WeakPtr<RenderFrameHostImpl> rfhi =
       GetWeakFocusedRenderFrameHostImpl(rwh);
-  AsyncRequest(rfhi, range, "FirstRect",
+  AsyncRequest(rfhi, range, "AsyncFirstRect",
                base::BindOnce(&TransformFirstRectResult, rfhi)
                    .Then(std::move(result_callback)));
 }

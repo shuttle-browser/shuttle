@@ -17,7 +17,6 @@
 #include "base/notreached.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
-#include "base/task/thread_pool/thread_pool_instance.h"
 #include "base/trace_event/trace_event.h"
 #include "base/trace_event/typed_macros.h"
 #include "mojo/public/cpp/bindings/lib/default_construct_tag_internal.h"
@@ -84,14 +83,10 @@ const char* Page::MessageToMethodName_(mojo::Message& message) {
 uint32_t Page::OnSomethingHappened_Sym::IPCStableHash() {
   // This method's address is used for identifying the mojo method name after
   // symbolization. So each IPCStableHash should have a unique address.
-  // We cannot use NO_CODE_FOLDING() here - it relies on the uniqueness of
-  // __LINE__ value, which is not unique across different mojo modules.
-  // The code below is very similar to NO_CODE_FOLDING, but it uses a unique
-  // hash instead of __LINE__.
-  static constexpr uint32_t kHash = 0x3d2c8bb6;  // IPCStableHash for golden::Page::OnSomethingHappened
-  const uint32_t hash = kHash;
-  base::debug::Alias(&hash);
-  return hash;
+  // Returning a unique hash ensures that the function body is unique, and thus
+  // prevents identical code folding (except for the variants of the same
+  // method, e.g. blink and non-blink, which is fine).
+  return 0x3d2c8bb6;  // IPCStableHash for golden::Page::OnSomethingHappened
 }
 # endif // !BUILDFLAG(IS_FUCHSIA)
 
@@ -118,7 +113,7 @@ void PageProxy::OnSomethingHappened(
 
   const size_t estimated_payload_size =
     0;
-  mojo::Message message(
+  STACK_UNINITIALIZED mojo::Message message(
       std::to_underlying(messages::Page::kOnSomethingHappened), kFlags, estimated_payload_size);
   mojo::internal::MessageFragment<
       ::golden::internal::Page_OnSomethingHappened_Params_Data> params(
@@ -151,10 +146,8 @@ bool PageStubDispatch::Accept(
       Page_OnSomethingHappened_ParamsDataView input_data_view(params, message);
       
       if (!success) {
-        ReportValidationErrorForMessage(
-            message,
-            mojo::internal::VALIDATION_ERROR_DESERIALIZATION_FAILED,
-            Page::Name_, 0, false);
+        mojo::internal::ReportDeserializationErrorForMessage(
+            message, Page::Name_, 0, false);
         return false;
       }
       // A null |impl| means no implementation was bound.
@@ -238,14 +231,10 @@ const char* PageHandler::MessageToMethodName_(mojo::Message& message) {
 uint32_t PageHandler::DoSomething_Sym::IPCStableHash() {
   // This method's address is used for identifying the mojo method name after
   // symbolization. So each IPCStableHash should have a unique address.
-  // We cannot use NO_CODE_FOLDING() here - it relies on the uniqueness of
-  // __LINE__ value, which is not unique across different mojo modules.
-  // The code below is very similar to NO_CODE_FOLDING, but it uses a unique
-  // hash instead of __LINE__.
-  static constexpr uint32_t kHash = 0x3a41f374;  // IPCStableHash for golden::PageHandler::DoSomething
-  const uint32_t hash = kHash;
-  base::debug::Alias(&hash);
-  return hash;
+  // Returning a unique hash ensures that the function body is unique, and thus
+  // prevents identical code folding (except for the variants of the same
+  // method, e.g. blink and non-blink, which is fine).
+  return 0x3a41f374;  // IPCStableHash for golden::PageHandler::DoSomething
 }
 # endif // !BUILDFLAG(IS_FUCHSIA)
 
@@ -272,7 +261,7 @@ void PageHandlerProxy::DoSomething(
 
   const size_t estimated_payload_size =
     0;
-  mojo::Message message(
+  STACK_UNINITIALIZED mojo::Message message(
       std::to_underlying(messages::PageHandler::kDoSomething), kFlags, estimated_payload_size);
   mojo::internal::MessageFragment<
       ::golden::internal::PageHandler_DoSomething_Params_Data> params(
@@ -305,10 +294,8 @@ bool PageHandlerStubDispatch::Accept(
       PageHandler_DoSomething_ParamsDataView input_data_view(params, message);
       
       if (!success) {
-        ReportValidationErrorForMessage(
-            message,
-            mojo::internal::VALIDATION_ERROR_DESERIALIZATION_FAILED,
-            PageHandler::Name_, 0, false);
+        mojo::internal::ReportDeserializationErrorForMessage(
+            message, PageHandler::Name_, 0, false);
         return false;
       }
       // A null |impl| means no implementation was bound.
@@ -392,14 +379,10 @@ const char* WebUiPageHandlerFactory::MessageToMethodName_(mojo::Message& message
 uint32_t WebUiPageHandlerFactory::CreatePageHandler_Sym::IPCStableHash() {
   // This method's address is used for identifying the mojo method name after
   // symbolization. So each IPCStableHash should have a unique address.
-  // We cannot use NO_CODE_FOLDING() here - it relies on the uniqueness of
-  // __LINE__ value, which is not unique across different mojo modules.
-  // The code below is very similar to NO_CODE_FOLDING, but it uses a unique
-  // hash instead of __LINE__.
-  static constexpr uint32_t kHash = 0x722803d6;  // IPCStableHash for golden::WebUiPageHandlerFactory::CreatePageHandler
-  const uint32_t hash = kHash;
-  base::debug::Alias(&hash);
-  return hash;
+  // Returning a unique hash ensures that the function body is unique, and thus
+  // prevents identical code folding (except for the variants of the same
+  // method, e.g. blink and non-blink, which is fine).
+  return 0x722803d6;  // IPCStableHash for golden::WebUiPageHandlerFactory::CreatePageHandler
 }
 # endif // !BUILDFLAG(IS_FUCHSIA)
 
@@ -436,7 +419,7 @@ void WebUiPageHandlerFactoryProxy::CreatePageHandler(
 
   const size_t estimated_payload_size =
     0;
-  mojo::Message message(
+  STACK_UNINITIALIZED mojo::Message message(
       std::to_underlying(messages::WebUiPageHandlerFactory::kCreatePageHandler), kFlags, estimated_payload_size);
   mojo::internal::MessageFragment<
       ::golden::internal::WebUiPageHandlerFactory_CreatePageHandler_Params_Data> params(
@@ -496,19 +479,13 @@ bool WebUiPageHandlerFactoryStubDispatch::Accept(
       ::mojo::PendingReceiver<PageHandler> p_handler{};
       WebUiPageHandlerFactory_CreatePageHandler_ParamsDataView input_data_view(params, message);
       
-      if (success) {
-        p_page =
-            input_data_view.TakePage<decltype(p_page)>();
-      }
-      if (success) {
-        p_handler =
-            input_data_view.TakeHandler<decltype(p_handler)>();
-      }
+      if (success)
+        input_data_view.TakePage(&p_page);
+      if (success)
+        input_data_view.TakeHandler(&p_handler);
       if (!success) {
-        ReportValidationErrorForMessage(
-            message,
-            mojo::internal::VALIDATION_ERROR_DESERIALIZATION_FAILED,
-            WebUiPageHandlerFactory::Name_, 0, false);
+        mojo::internal::ReportDeserializationErrorForMessage(
+            message, WebUiPageHandlerFactory::Name_, 0, false);
         return false;
       }
       // A null |impl| means no implementation was bound.

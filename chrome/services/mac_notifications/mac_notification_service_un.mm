@@ -9,12 +9,15 @@
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <UserNotifications/UserNotifications.h>
 
+#include <algorithm>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "base/apple/bundle_locations.h"
 #include "base/apple/foundation_util.h"
+#include "base/check.h"
+#include "base/check_op.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_file.h"
@@ -28,6 +31,7 @@
 #include "base/strings/sys_string_conversions.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/types/optional_util.h"
 #include "chrome/common/notifications/notification_constants.h"
 #include "chrome/common/notifications/notification_operation.h"
 #import "chrome/services/mac_notifications/mac_notification_service_utils.h"
@@ -140,6 +144,7 @@ struct MacNotificationServiceUN::PendingDelivery {
   UNMutableNotificationContent* __strong content;
   base::ScopedTempFile icon_file;
   bool is_retry_without_attachment = false;
+  DisplayNotificationCallback callback;
 };
 
 // static
@@ -150,12 +155,12 @@ MacNotificationServiceUN::MacNotificationServiceUN(
     base::RepeatingCallback<void(mojom::PermissionStatus)>
         permission_status_changed_callback,
     UNUserNotificationCenter* notification_center)
-    : binding_(this),
-      action_handler_(std::move(handler)),
+    : action_handler_(std::move(handler)),
       notification_center_(notification_center),
       category_manager_(notification_center),
       permission_status_changed_callback_(
-          std::move(permission_status_changed_callback)) {
+          std::move(permission_status_changed_callback)),
+      binding_(this) {
   delegate_ = [[AlertUNNotificationCenterDelegate alloc]
       initWithActionHandler:base::BindRepeating(
                                 &MacNotificationServiceUN::OnNotificationAction,
@@ -223,9 +228,33 @@ void MacNotificationServiceUN::Bind(
 }
 
 void MacNotificationServiceUN::DisplayNotification(
-    mojom::NotificationPtr notification) {
+    mojom::NotificationPtr notification,
+    DisplayNotificationCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   std::string notification_id = DeriveMacNotificationId(notification->meta->id);
+  // Fail fast when OS notification permission is undecided (`kPromptPending`
+  // or `kNotDetermined`). On macOS, `addNotificationRequest:` completes with
+  // `error == nil` while `usernoted` silently drops the notification whenever
+  // `authorizationStatus == UNAuthorizationStatusNotDetermined`, and an app in
+  // `UNAuthorizationStatusNotDetermined` does not appear in System Settings
+  // until `RequestPermission()` is called on this service. (By contrast, when
+  // `last_permission_status_ == kDenied`, we still attempt delivery in case the
+  // user re-enabled notifications in System Settings while the app was in the
+  // background.)
+  if (MaybeFailDisplayForUndecidedPermission(notification_id, callback)) {
+    return;
+  }
+
+  ++in_flight_display_notifications_;
+  callback = std::move(callback).Then(base::BindOnce(
+      [](base::WeakPtr<MacNotificationServiceUN> service) {
+        if (service) {
+          DCHECK_CALLED_ON_VALID_SEQUENCE(service->sequence_checker_);
+          CHECK_GT(service->in_flight_display_notifications_, 0u);
+          --service->in_flight_display_notifications_;
+        }
+      },
+      weak_factory_.GetWeakPtr()));
 
   // If this notification is not set to renotify, and we think it is currently
   // displayed already, we need to synchronize displayed notifications to make
@@ -236,23 +265,27 @@ void MacNotificationServiceUN::DisplayNotification(
   if (!notification->renotify && existing != delivered_notifications_.end()) {
     // Cleared when `DoDisplayNotification` overwrites this entry.
     existing->second.is_being_replaced = true;
-    SynchronizeNotifications(
-        base::BindOnce(&MacNotificationServiceUN::DoDisplayNotification,
-                       base::Unretained(this), std::move(notification)));
+    SynchronizeNotifications(base::BindOnce(
+        &MacNotificationServiceUN::DoDisplayNotification,
+        base::Unretained(this), std::move(notification), std::move(callback)));
     return;
   }
 
-  // To avoid the cached permission status from going too stale, any time we
-  // display a notification is as good a time as any to poll the current
-  // permission status.
-  SynchronizePermissionStatus(/*log_result=*/false);
-
-  DoDisplayNotification(std::move(notification));
+  DoDisplayNotification(std::move(notification), std::move(callback));
 }
 
 void MacNotificationServiceUN::DoDisplayNotification(
-    mojom::NotificationPtr notification) {
+    mojom::NotificationPtr notification,
+    DisplayNotificationCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  std::string notification_id = DeriveMacNotificationId(notification->meta->id);
+  // Re-check after the asynchronous `SynchronizeNotifications()` hop for
+  // `renotify = false` replacements, in case a permission prompt started or
+  // permissions were reset while synchronization was in flight.
+  if (MaybeFailDisplayForUndecidedPermission(notification_id, callback)) {
+    return;
+  }
+
   UNMutableNotificationContent* content =
       [[UNMutableNotificationContent alloc] init];
 
@@ -261,7 +294,6 @@ void MacNotificationServiceUN::DoDisplayNotification(
   content.body = base::SysUTF16ToNSString(notification->body);
   content.userInfo = GetMacNotificationUserInfo(notification);
 
-  std::string notification_id = DeriveMacNotificationId(notification->meta->id);
   NSString* notification_id_ns = base::SysUTF8ToNSString(notification_id);
 
   // Keep track of delivered notifications to detect when they get closed.
@@ -336,7 +368,35 @@ void MacNotificationServiceUN::DoDisplayNotification(
   DeliverNotificationContent({.notification_id = std::move(notification_id),
                               .replace_content = replace_content,
                               .content = content,
-                              .icon_file = std::move(icon_file)});
+                              .icon_file = std::move(icon_file),
+                              .callback = std::move(callback)});
+}
+
+bool MacNotificationServiceUN::MaybeFailDisplayForUndecidedPermission(
+    const std::string& notification_id,
+    DisplayNotificationCallback& callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  std::optional<mojom::DisplayNotificationResult> result;
+  if (is_permission_prompt_pending_ ||
+      last_permission_status_ == mojom::PermissionStatus::kPromptPending) {
+    result = mojom::DisplayNotificationResult::kPermissionPromptPending;
+  } else if (last_permission_status_ ==
+             mojom::PermissionStatus::kNotDetermined) {
+    result = mojom::DisplayNotificationResult::kPermissionNotDetermined;
+  }
+  if (!result.has_value()) {
+    return false;
+  }
+
+  auto it = delivered_notifications_.find(notification_id);
+  if (it != delivered_notifications_.end() && !it->second.pending_content) {
+    [notification_center_ removeDeliveredNotificationsWithIdentifiers:@[
+      base::SysUTF8ToNSString(notification_id)
+    ]];
+  }
+  OnNotificationsClosed({notification_id});
+  std::move(callback).Run(*result);
+  return true;
 }
 
 void MacNotificationServiceUN::DeliverNotificationContent(
@@ -380,45 +440,117 @@ void MacNotificationServiceUN::OnNotificationDelivered(PendingDelivery delivery,
 
   // If the notification was closed or overwritten by a newer
   // `DisplayNotification` call with the same ID while this delivery request was
-  // in flight, ignore this completion so a stale failure doesn't retry, clear
-  // `pending_content`, or erase the newer notification's tracking entry and
-  // category.
+  // in flight, do not retry attachments, but still query settings and report
+  // the actual delivery result.
   auto it = delivered_notifications_.find(delivery.notification_id);
-  if (it == delivered_notifications_.end() ||
-      it->second.pending_content != delivery.content) {
-    return;
+  if (it != delivered_notifications_.end() &&
+      it->second.pending_content == delivery.content) {
+    // If `UNUserNotificationCenter` rejected the icon attachment, retry once
+    // without attachments so the notification text is still delivered.
+    if (!delivery.is_retry_without_attachment && IsAttachmentError(error) &&
+        delivery.content.attachments.count > 0) {
+      delivery.content = [delivery.content mutableCopy];
+      [delivery.content setAttachments:@[]];
+      delivery.is_retry_without_attachment = true;
+      it->second.pending_content = delivery.content;
+      DeliverNotificationContent(std::move(delivery));
+      return;
+    }
   }
 
-  // If `UNUserNotificationCenter` rejected the icon attachment, retry once
-  // without attachments so the notification text is still delivered.
-  if (!delivery.is_retry_without_attachment && IsAttachmentError(error) &&
-      delivery.content.attachments.count > 0) {
-    delivery.content = [delivery.content mutableCopy];
-    [delivery.content setAttachments:@[]];
-    delivery.is_retry_without_attachment = true;
-    it->second.pending_content = delivery.content;
-    DeliverNotificationContent(std::move(delivery));
-    return;
+  // Always query `getNotificationSettingsWithCompletionHandler:` rather than
+  // assuming `!error` means `UNAuthorizationStatusAuthorized`: macOS
+  // `addNotificationRequest:` only returns `UNErrorCodeNotificationsNotAllowed`
+  // when `authorizationStatus == UNAuthorizationStatusDenied`, and completes
+  // with `error == nil` while silently dropping the notification when
+  // `authorizationStatus == UNAuthorizationStatusNotDetermined` (e.g. if OS
+  // permissions were reset externally while `last_permission_status_` was
+  // `kGranted`).
+  __block auto on_got_settings =
+      base::BindPostTaskToCurrentDefault(base::BindOnce(
+          &MacNotificationServiceUN::OnNotificationDeliveredWithStatus,
+          weak_factory_.GetWeakPtr(), std::move(delivery), error != nil));
+  [notification_center_ getNotificationSettingsWithCompletionHandler:^(
+                            UNNotificationSettings* _Nonnull settings) {
+    std::move(on_got_settings).Run(settings.authorizationStatus);
+  }];
+}
+
+void MacNotificationServiceUN::OnNotificationDeliveredWithStatus(
+    PendingDelivery delivery,
+    bool has_error,
+    UNAuthorizationStatus status) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  OnGotAuthorizationStatus(status);
+  CHECK(last_permission_status_.has_value());
+
+  auto it = delivered_notifications_.find(delivery.notification_id);
+  if (it != delivered_notifications_.end() &&
+      it->second.pending_content == delivery.content) {
+    it->second.pending_content = nil;
+    if ((has_error && !delivery.replace_content) ||
+        *last_permission_status_ != mojom::PermissionStatus::kGranted) {
+      // A failed `addNotificationRequest:` (including a `renotify = true`
+      // replacement, where `SynchronizeNotifications()` was skipped and the
+      // browser has already overwritten the NotificationDatabase row), or any
+      // delivery where OS permission is no longer granted (where `usernoted`
+      // either silently drops the notification when `NotDetermined` or has
+      // cleared delivered notifications when `Denied`), means the notification
+      // is not on screen. Stop tracking it so `SynchronizeNotifications()`
+      // does not report a phantom user close. A failed in-place
+      // `replace_content` when permission is still granted leaves the
+      // existing notification on screen.
+      OnNotificationsClosed({delivery.notification_id});
+    }
   }
 
-  it->second.pending_content = nil;
-
-  // A failed `addNotificationRequest:` (including a `renotify = true`
-  // replacement, where `SynchronizeNotifications()` was skipped and the browser
-  // has already overwritten the NotificationDatabase row) means the new
-  // notification was not delivered, and when `addNotificationRequest:` fails
-  // due to revoked OS permissions macOS has also cleared any older delivered
-  // notifications. Stop tracking it so `SynchronizeNotifications()` does not
-  // report a phantom user close. A failed in-place `replace_content` leaves the
-  // existing notification on screen.
-  if (error && !delivery.replace_content) {
-    OnNotificationsClosed({delivery.notification_id});
+  switch (*last_permission_status_) {
+    case mojom::PermissionStatus::kNotDetermined:
+      std::move(delivery.callback)
+          .Run(mojom::DisplayNotificationResult::kPermissionNotDetermined);
+      return;
+    case mojom::PermissionStatus::kPromptPending:
+      std::move(delivery.callback)
+          .Run(mojom::DisplayNotificationResult::kPermissionPromptPending);
+      return;
+    case mojom::PermissionStatus::kDenied:
+      std::move(delivery.callback)
+          .Run(mojom::DisplayNotificationResult::kPermissionDenied);
+      return;
+    case mojom::PermissionStatus::kGranted:
+      std::move(delivery.callback)
+          .Run(has_error ? mojom::DisplayNotificationResult::kDeliveryFailed
+                         : mojom::DisplayNotificationResult::kSuccess);
+      return;
   }
 }
 
 void MacNotificationServiceUN::GetDisplayedNotifications(
     mojom::ProfileIdentifierPtr profile,
     const std::optional<GURL>& origin,
+    GetDisplayedNotificationsCallback callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  mojom::ProfileIdentifierPtr profile_filter = profile.Clone();
+  GetDeliveredNotifications(
+      std::move(profile), base::OptionalToPtr(origin),
+      base::BindOnce(
+          [](base::WeakPtr<MacNotificationServiceUN> service,
+             mojom::ProfileIdentifierPtr profile,
+             const std::optional<GURL>& origin,
+             std::vector<mojom::NotificationIdentifierPtr> notifications) {
+            if (service) {
+              service->AddInFlightNotifications(
+                  profile.get(), base::OptionalToPtr(origin), notifications);
+            }
+            return notifications;
+          },
+          weak_factory_.GetWeakPtr(), std::move(profile_filter), origin)
+          .Then(std::move(callback)));
+}
+
+void MacNotificationServiceUN::GetDeliveredNotifications(
+    mojom::ProfileIdentifierPtr profile,
+    const GURL* origin,
     GetDisplayedNotificationsCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
@@ -433,7 +565,7 @@ void MacNotificationServiceUN::GetDisplayedNotifications(
   // Note: |profile| might be null if we want all notifications.
   NSString* profile_id = profile ? base::SysUTF8ToNSString(profile->id) : nil;
   bool incognito = profile && profile->incognito;
-  __block std::optional<GURL> block_origin = origin;
+  __block std::optional<GURL> block_origin = base::OptionalFromPtr(origin);
 
   // We need to call |callback| on the same sequence as this method is called.
   scoped_refptr<base::SequencedTaskRunner> task_runner =
@@ -470,6 +602,29 @@ void MacNotificationServiceUN::GetDisplayedNotifications(
     task_runner->PostTask(FROM_HERE, base::BindOnce(std::move(block_callback),
                                                     std::move(notifications)));
   }];
+}
+
+void MacNotificationServiceUN::AddInFlightNotifications(
+    const mojom::ProfileIdentifier* profile,
+    const GURL* origin,
+    std::vector<mojom::NotificationIdentifierPtr>& notifications) const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  for (const auto& [notification_id, notification] : delivered_notifications_) {
+    if (!notification.pending_content && !notification.is_being_replaced) {
+      continue;
+    }
+    if (profile && *notification.meta->id->profile != *profile) {
+      continue;
+    }
+    if (origin &&
+        !url::IsSameOriginWith(notification.meta->origin_url, *origin)) {
+      continue;
+    }
+    if (std::ranges::contains(notifications, notification.meta->id)) {
+      continue;
+    }
+    notifications.push_back(notification.meta->id.Clone());
+  }
 }
 
 void MacNotificationServiceUN::CloseNotification(
@@ -538,10 +693,20 @@ void MacNotificationServiceUN::OkayToTerminateService(
 
   GetDisplayedNotifications(
       /*profile=*/nullptr, /*origin=*/std::nullopt,
-      base::BindOnce([](std::vector<mojom::NotificationIdentifierPtr>
-                            notifications) {
-        return notifications.empty();
-      }).Then(std::move(callback)));
+      base::BindOnce(
+          [](base::WeakPtr<MacNotificationServiceUN> service,
+             std::vector<mojom::NotificationIdentifierPtr> notifications) {
+            if (service) {
+              DCHECK_CALLED_ON_VALID_SEQUENCE(service->sequence_checker_);
+              if (!service->pending_permission_requests_.empty() ||
+                  service->in_flight_display_notifications_ > 0) {
+                return false;
+              }
+            }
+            return notifications.empty();
+          },
+          weak_factory_.GetWeakPtr())
+          .Then(std::move(callback)));
 }
 
 bool MacNotificationServiceUN::DidRecentlyHandleClickAction() const {
@@ -721,7 +886,17 @@ void MacNotificationServiceUN::DoInitializeDeliveredNotifications(
   category_manager_.InitializeExistingCategories(std::move(notifications),
                                                  std::move(categories));
 
-  CHECK(!finished_initialization_);
+  CHECK(!delivered_notifications_initialized_);
+  delivered_notifications_initialized_ = true;
+  MaybeFinishInitialization();
+}
+
+void MacNotificationServiceUN::MaybeFinishInitialization() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (finished_initialization_ || !delivered_notifications_initialized_ ||
+      !last_permission_status_.has_value()) {
+    return;
+  }
   finished_initialization_ = true;
   if (after_initialization_callback_) {
     std::move(after_initialization_callback_).Run();
@@ -747,8 +922,12 @@ void MacNotificationServiceUN::SynchronizeNotifications(
     return;
   }
   is_synchronizing_notifications_ = true;
-  GetDisplayedNotifications(
-      /*profile=*/nullptr, /*origin=*/std::nullopt,
+  // Query raw OS-delivered notifications rather than
+  // `GetDisplayedNotifications()` so `DoSynchronizeNotifications()` can detect
+  // when a previously delivered notification (including one with
+  // `is_being_replaced` set) was dismissed from macOS Notification Center.
+  GetDeliveredNotifications(
+      /*profile=*/nullptr, /*origin=*/nullptr,
       base::BindOnce(&MacNotificationServiceUN::DoSynchronizeNotifications,
                      weak_factory_.GetWeakPtr()));
 }
@@ -800,30 +979,34 @@ void MacNotificationServiceUN::DoSynchronizeNotifications(
   }
 }
 
-void MacNotificationServiceUN::SynchronizePermissionStatus(bool log_result) {
+void MacNotificationServiceUN::SynchronizePermissionStatus(
+    SynchronizePermissionStatusCallback callback) {
+  SynchronizePermissionStatus(/*log_result=*/false, std::move(callback));
+}
+
+void MacNotificationServiceUN::SynchronizePermissionStatus(
+    bool log_result,
+    SynchronizePermissionStatusCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (callback) {
+    pending_synchronize_permission_callbacks_.push_back(std::move(callback));
+  }
   if (is_synchronizing_permission_status_) {
     return;
   }
 
   is_synchronizing_permission_status_ = true;
-  __block auto permission_status_callback = base::BindPostTaskToCurrentDefault(
-      base::BindOnce(&MacNotificationServiceUN::OnGotAuthorizationStatus,
-                     weak_factory_.GetWeakPtr())
-          .Then(base::BindOnce(
-              [](base::WeakPtr<MacNotificationServiceUN> service) {
-                if (service) {
-                  DCHECK_CALLED_ON_VALID_SEQUENCE(service->sequence_checker_);
-                  service->is_synchronizing_permission_status_ = false;
-                }
-              },
-              weak_factory_.GetWeakPtr())));
+  __block auto permission_status_callback =
+      base::BindPostTaskToCurrentDefault(base::BindOnce(
+          &MacNotificationServiceUN::OnSynchronizePermissionStatusComplete,
+          weak_factory_.GetWeakPtr()));
   [notification_center_ getNotificationSettingsWithCompletionHandler:^(
                             UNNotificationSettings* _Nonnull settings) {
     if (log_result) {
       LogUNNotificationSettings(settings);
     }
-    std::move(permission_status_callback).Run(settings.authorizationStatus);
+    std::move(permission_status_callback)
+        .Run(settings.authorizationStatus, settings.badgeSetting);
   }];
 }
 
@@ -850,6 +1033,20 @@ void MacNotificationServiceUN::OnNotificationsClosed(
     delivered_notifications_.erase(notification_id);
 }
 
+void MacNotificationServiceUN::OnSynchronizePermissionStatusComplete(
+    UNAuthorizationStatus status,
+    UNNotificationSetting badge_setting) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  is_synchronizing_permission_status_ = false;
+  auto callbacks = std::exchange(pending_synchronize_permission_callbacks_, {});
+  OnGotAuthorizationStatus(status);
+  CHECK(last_permission_status_.has_value());
+  const bool badge_enabled = badge_setting == UNNotificationSettingEnabled;
+  for (auto& callback : callbacks) {
+    std::move(callback).Run(*last_permission_status_, badge_enabled);
+  }
+}
+
 void MacNotificationServiceUN::OnGotAuthorizationStatus(
     UNAuthorizationStatus status) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -870,11 +1067,11 @@ void MacNotificationServiceUN::OnGotAuthorizationStatus(
       is_permission_prompt_pending_) {
     mojo_status = mojom::PermissionStatus::kPromptPending;
   }
-  if (mojo_status == last_permission_status_) {
-    return;
+  if (mojo_status != last_permission_status_) {
+    last_permission_status_ = mojo_status;
+    permission_status_changed_callback_.Run(mojo_status);
   }
-  last_permission_status_ = mojo_status;
-  permission_status_changed_callback_.Run(mojo_status);
+  MaybeFinishInitialization();
 }
 
 }  // namespace mac_notifications

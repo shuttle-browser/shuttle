@@ -229,11 +229,6 @@
       '--extra-browser-args=--use-angle=swiftshader',
     ],
   },
-  'gpu_force_angle_vulkan': {
-    'args': [
-      '--extra-browser-args=--use-angle=vulkan',
-    ],
-  },
   'gpu_force_command_decoder_passthrough': {
     'args': [
       '--extra-browser-args=--use-cmd-decoder=passthrough --use-gl=angle',
@@ -605,6 +600,18 @@
       },
     },
   },
+  'linux_intel_uhd_770_wayland_stable': {
+    'fail_if_unused': False,
+    'swarming': {
+      'dimensions': {
+        'gpu': '8086:4680-26.0.8',
+        'os': 'Ubuntu-26.04',
+        'display_attached': '1',
+        'display_server': 'wayland',
+        'pool': 'chromium.tests.gpu',
+      },
+    },
+  },
   'linux_nvidia_gtx_1660_experimental': {
     'fail_if_unused': False,
     'swarming': {
@@ -621,8 +628,8 @@
     'swarming': {
       'dimensions': {
         'display_server': 'x11',
-        'gpu': '10de:2184-535.183.01',
-        'os': 'Ubuntu-22.04',
+        'gpu': '10de:2184-535.183.01|10de:2184-595.104.02',
+        'os': 'Ubuntu-22.04|Ubuntu-24.04',
         'pool': 'chromium.tests.gpu',
       },
     },
@@ -631,6 +638,7 @@
     'fail_if_unused': False,
     'swarming': {
       'dimensions': {
+        'display_attached': '1',
         'display_server': 'wayland',
         'gpu': '10de:2783-595.91.07',
         'os': 'Ubuntu-26.04',
@@ -1131,6 +1139,15 @@
         'gpu': 'qcom:0c36-31.0.121.1',
         'os': 'Windows-11-26100',
         'pool': 'chromium.tests.gpu',
+      },
+    },
+  },
+  'win_cpu_ai_wpt_dimensions': {
+    'fail_if_unused': False,
+    'swarming': {
+      'dimensions': {
+        'cpu': 'x86-64',
+        'os': 'Windows',
       },
     },
   },

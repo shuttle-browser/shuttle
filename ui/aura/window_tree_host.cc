@@ -77,6 +77,8 @@ class ScopedLocalSurfaceIdValidator {
 
   ~ScopedLocalSurfaceIdValidator() {
     if (window_) {
+      // TODO(crbug.com/583557534): CHECK-exclusion: Convert to a CHECK once we
+      // are confident it won't be triggered.
       DCHECK_EQ(local_surface_id_, window_->GetLocalSurfaceId());
     }
   }
@@ -118,7 +120,8 @@ const char WindowTreeHost::kWindowTreeHostUsesParent[] =
 
 WindowTreeHost::~WindowTreeHost() {
   DCHECK(!compositor_) << "compositor must be destroyed before root window";
-  DCHECK(!HostFrameRateThrottler::GetInstance().hosts().contains(this));
+  CHECK(!HostFrameRateThrottler::GetInstance().hosts().contains(this),
+        base::NotFatalUntil::M163);
 }
 
 // static
@@ -303,7 +306,7 @@ void WindowTreeHost::SetSharedInputMethod(ui::InputMethod* input_method) {
 ui::EventDispatchDetails WindowTreeHost::DispatchKeyEventPostIME(
     ui::KeyEvent* event) {
   // If dispatch to IME is already disabled we shouldn't reach here.
-  DCHECK(!dispatcher_->should_skip_ime());
+  CHECK(!dispatcher_->should_skip_ime(), base::NotFatalUntil::M163);
   dispatcher_->set_skip_ime(true);
 
   // InputMethod::DispatchKeyEvent() is called in PRE_DISPATCH phase, so event
@@ -329,8 +332,9 @@ int64_t WindowTreeHost::GetDisplayId() {
 void WindowTreeHost::Show() {
   // Ensure that compositor has been properly initialized, see InitCompositor()
   // and InitHost().
-  DCHECK(compositor());
-  DCHECK_EQ(compositor()->root_layer(), window()->layer());
+  CHECK(compositor(), base::NotFatalUntil::M163);
+  CHECK_EQ(compositor()->root_layer(), window()->layer(),
+           base::NotFatalUntil::M163);
   OnAcceleratedWidgetMadeVisible(true);
   ShowImpl();
   window()->Show();
@@ -355,12 +359,20 @@ gfx::Rect WindowTreeHost::GetBoundsInAcceleratedWidgetPixelCoordinates() {
 std::unique_ptr<ScopedKeyboardHook> WindowTreeHost::CaptureSystemKeyEvents(
     std::optional<base::flat_set<ui::DomCode>> dom_codes) {
   // TODO(joedow): Remove the simple hook class/logic once this flag is removed.
-  if (!base::FeatureList::IsEnabled(features::kSystemKeyboardLock))
-    return std::make_unique<ScopedSimpleKeyboardHook>(std::move(dom_codes));
+  if (!base::FeatureList::IsEnabled(features::kSystemKeyboardLock)) {
+    auto hook =
+        std::make_unique<ScopedSimpleKeyboardHook>(std::move(dom_codes));
+    simple_keyboard_hook_ = hook->GetWeakPtr();
+    return hook;
+  }
 
   if (CaptureSystemKeyEventsImpl(std::move(dom_codes)))
     return std::make_unique<ScopedKeyboardHook>(weak_factory_.GetWeakPtr());
   return nullptr;
+}
+
+bool WindowTreeHost::IsKeyLocked(ui::DomCode dom_code) {
+  return simple_keyboard_hook_ && simple_keyboard_hook_->IsKeyLocked(dom_code);
 }
 
 bool WindowTreeHost::ShouldSendKeyEventToIme() {
@@ -425,7 +437,7 @@ bool WindowTreeHost::SupportsMouseLock() {
 
 void WindowTreeHost::LockMouse(Window* window) {
   Window* root_window = window->GetRootWindow();
-  DCHECK(root_window);
+  CHECK(root_window, base::NotFatalUntil::M163);
 
   auto* cursor_client = client::GetCursorClient(root_window);
   if (cursor_client) {
@@ -437,7 +449,7 @@ void WindowTreeHost::LockMouse(Window* window) {
 void WindowTreeHost::UnlockMouse(Window* window) {
   Window* root_window = window->GetRootWindow();
   CHECK_EQ(root_window, window_);
-  DCHECK(root_window);
+  CHECK(root_window, base::NotFatalUntil::M163);
   Window::ScopedDeleteBlocker blocker(root_window);
 
   if (window->HasCapture())
@@ -545,10 +557,13 @@ void WindowTreeHost::CreateCompositor(bool use_external_begin_frame_control,
                                       size_t memory_limit_when_visible_mb) {
   Env* env = Env::GetInstance();
   ui::ContextFactory* context_factory = env->context_factory();
-  DCHECK(context_factory);
+  CHECK(context_factory, base::NotFatalUntil::M163);
+  // Note: `ui::Compositor` retains this task runner for its entire lifetime
+  // (including after startup completes). Implementations that prioritize a
+  // startup queue should reset that queue's priority once startup finishes.
   compositor_ = std::make_unique<ui::Compositor>(
       context_factory->AllocateFrameSinkId(), context_factory,
-      base::SingleThreadTaskRunner::GetCurrentDefault(),
+      context_factory->GetCompositorTaskRunner(),
       features::IsPixelCanvasRecordingEnabled(),
       use_external_begin_frame_control, enable_compositing_based_throttling,
       memory_limit_when_visible_mb);
@@ -562,7 +577,7 @@ void WindowTreeHost::CreateCompositor(bool use_external_begin_frame_control,
 }
 
 void WindowTreeHost::InitCompositor() {
-  DCHECK(!compositor_->root_layer());
+  CHECK(!compositor_->root_layer(), base::NotFatalUntil::M163);
   compositor_->SetScaleAndSize(device_scale_factor_, GetBoundsInPixels().size(),
                                window()->GetLocalSurfaceId());
   compositor_->SetRootLayer(window()->layer());
@@ -664,7 +679,7 @@ void WindowTreeHost::OnDisplayMetricsChanged(const display::Display& display,
 
 void WindowTreeHost::OnDisplayColorSpacesChanged(
     scoped_refptr<gfx::DisplayColorSpacesRef> color_spaces) {
-  DCHECK(color_spaces);
+  CHECK(color_spaces, base::NotFatalUntil::M163);
   display_color_spaces_ = color_spaces;
   if (compositor_) {
     compositor_->SetDisplayColorSpaces(color_spaces->color_spaces());
@@ -687,7 +702,8 @@ void WindowTreeHost::SetNativeWindowOcclusionEnabled(bool enable) {
 // WindowTreeHost, private:
 
 void WindowTreeHost::DecrementVideoCaptureCountForOcclusionTracking() {
-  DCHECK_GT(video_capture_count_for_occlusion_tracking_, 0);
+  CHECK_GT(video_capture_count_for_occlusion_tracking_, 0,
+           base::NotFatalUntil::M163);
   --video_capture_count_for_occlusion_tracking_;
   MaybeUpdateComposibleVisibilityForVideoLockCountChange();
 }
@@ -784,7 +800,7 @@ bool WindowTreeHost::NativeOcclusionAffectsVisibility() const {
 bool WindowTreeHost::ShouldThrottle() const {
   // Only throttle if allowed and there are no video captures and we are
   // occluded.
-  DCHECK(NativeOcclusionAffectsThrottle());
+  CHECK(NativeOcclusionAffectsThrottle(), base::NotFatalUntil::M163);
   return video_capture_count_for_occlusion_tracking_ == 0 &&
          occlusion_state_ == Window::OcclusionState::OCCLUDED;
 }

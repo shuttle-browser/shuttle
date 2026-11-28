@@ -30,6 +30,7 @@ namespace media {
 namespace {
 
 // Used to log errors in `CrasUnifiedStream::Open`.
+// LINT.IfChange(StreamOpenResult)
 enum class StreamOpenResult {
   kCallbackOpenSuccess = 0,
   kCallbackOpenUnsupportedAudioFrequency = 1,
@@ -38,8 +39,10 @@ enum class StreamOpenResult {
   kCallbackOpenCannotRunCrasClient = 4,
   kMaxValue = kCallbackOpenCannotRunCrasClient
 };
+// LINT.ThenChange(//tools/metrics/histograms/metadata/media/enums.xml:CrasUnifiedStreamOpenSuccess)
 
 // Used to log errors in `CrasUnifiedStream::Start`.
+// LINT.IfChange(StreamStartResult)
 enum class StreamStartResult {
   kCallbackStartSuccess = 0,
   kCallbackStartCreatingStreamParamsFailed = 1,
@@ -48,6 +51,7 @@ enum class StreamStartResult {
   kCallbackStartAddingStreamFailed = 4,
   kMaxValue = kCallbackStartAddingStreamFailed
 };
+// LINT.ThenChange(//tools/metrics/histograms/metadata/media/enums.xml:CrasUnifiedStreamStartSuccess)
 
 void ReportStreamOpenResult(StreamOpenResult result) {
   base::UmaHistogramEnumeration("Media.Audio.CrasUnifiedStreamOpenSuccess",
@@ -283,7 +287,7 @@ void CrasUnifiedStream::Start(AudioSourceCallback* callback) {
   // Channel map to CRAS_CHANNEL, values in the same order of
   // corresponding source in Chromium defined Channels.
   static constexpr int kUnsupportedChannel = -4;
-  static const int kChannelMap[] = {
+  static constexpr int kChannelMap[] = {
       CRAS_CH_FL, CRAS_CH_FR, CRAS_CH_FC, CRAS_CH_LFE, CRAS_CH_RL, CRAS_CH_RR,
       CRAS_CH_FLC, CRAS_CH_FRC, CRAS_CH_RC, CRAS_CH_SL, CRAS_CH_SR,
       // CRAS doesn't currently define explicit mappings for all channels.

@@ -216,12 +216,14 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
   // Elements in this enum should not be deleted or rearranged; the only
   // permitted operation is to add new elements before kMaxValue and update
   // kMaxValue.
+  // LINT.IfChange(StreamCreationResult)
   enum class StreamCreationResult {
     kOk = 0,
     kCreateFailed = 1,
     kOpenFailed = 2,
     kMaxValue = kOpenFailed,
   };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/media/enums.xml:AudioOutputStreamCreationResult)
 
   // Used to store various stats about a stream. The lifetime of this object is
   // from play until pause. The underlying physical stream may be changed when
@@ -285,9 +287,6 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
   // reason is LOCAL_OUTPUT_TOGGLE, the new stream will be a fake one and UMA
   // counts will not be incremented.
   void RecreateStream(RecreateReason reason);
-
-  // Notifies the EventHandler that an error has occurred.
-  void ReportError();
 
   // Helper method that starts the physical stream. Must only be called in state
   // kCreated or kPaused.
@@ -363,6 +362,12 @@ class OutputController : public media::AudioOutputStream::AudioSourceCallback,
 
   // Scans audio samples from OnMoreData() as input to compute power levels.
   media::AudioPowerMonitor power_monitor_;
+
+  // Timestamp of the last `power_monitor_.Scan()` call in `OnMoreData()`. Used
+  // to avoid returning stale power readings when `OnMoreData()` stops being
+  // called (e.g. a wedged/suspended platform stream) or continuously times out.
+  base::Lock power_lock_;
+  base::TimeTicks last_power_monitor_scan_time_ GUARDED_BY(power_lock_);
 
   // Updated each time a power measurement is logged.
   base::TimeTicks last_audio_level_log_time_;

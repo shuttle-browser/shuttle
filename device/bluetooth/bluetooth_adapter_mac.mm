@@ -440,6 +440,8 @@ void BluetoothAdapterMac::InitForTest(
     scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner) {
   BluetoothLowEnergyAdapterApple::InitForTest(ui_task_runner);
   is_present_for_testing_ = false;
+  controller_state_function_ =
+      base::BindRepeating([] { return HostControllerState(); });
 }
 
 BluetoothLowEnergyAdapterApple::GetDevicePairedStatusCallback
@@ -511,7 +513,7 @@ void BluetoothAdapterMac::StartScanWithFilter(
   }
 
   if (transport & BLUETOOTH_TRANSPORT_LE) {
-    StartScanLowEnergy();
+    StartScanLowEnergy(discovery_filter.get());
   }
   for (auto& observer : observers_)
     observer.AdapterDiscoveringChanged(this, true);
@@ -602,6 +604,14 @@ void BluetoothAdapterMac::ClassicDeviceAdded(
 }
 
 void BluetoothAdapterMac::AddPairedDevices() {
+  // Do not query the system's paired devices in unit tests (where
+  // InitForTest() sets `is_present_for_testing_`). Calling
+  // +[IOBluetoothDevice pairedDevices] when the process lacks Bluetooth
+  // permission triggers a blocking macOS TCC permission prompt.
+  if (is_present_for_testing_.has_value()) {
+    return;
+  }
+
   uint32_t count = 0;
   for (IOBluetoothDevice* device in [IOBluetoothDevice pairedDevices]) {
     // pairedDevices sometimes includes unknown devices that are not paired.

@@ -45,16 +45,18 @@ PRIMITIVES_MAPPING = {
   mojom.NULLABLE_STRING: ("string", "String"),
 }
 # Map raw Mojo handle kinds to their Fuzzilli UniqueName
-# TODO(crbug.com/553473421): Add support for MSGPIPE and PLATFORMHANDLE
+# TODO(crbug.com/553473421): Add support for MSGPIPE
 HANDLES_MAPPING = {
   mojom.HANDLE: "MojoHandle",
   mojom.DPPIPE: "MojoDataPipeProducerHandle",
   mojom.DCPIPE: "MojoDataPipeConsumerHandle",
   mojom.SHAREDBUFFER: "MojoSharedBufferHandle",
+  mojom.PLATFORMHANDLE: "MojoPlatformHandle",
   mojom.NULLABLE_HANDLE: "MojoHandle",
   mojom.NULLABLE_DPPIPE: "MojoDataPipeProducerHandle",
   mojom.NULLABLE_DCPIPE: "MojoDataPipeConsumerHandle",
   mojom.NULLABLE_SHAREDBUFFER: "MojoSharedBufferHandle",
+  mojom.NULLABLE_PLATFORMHANDLE: "MojoPlatformHandle",
 }
 # List of types skipped during profile generation. These types should be
 # hand-defined in testing/libfuzzer/research/fuzzilli_mojom_fuzzing/common/. The
@@ -87,18 +89,28 @@ class Generator(generator.Generator):
     self.interface_remotes = {}
     self.interface_receivers = {}
 
-    # The following track which pending endpoint types are used from the JS
-    # side.
+    # TODO(crbug.com/522372048): Consider improving the organization of all
+    # these types.
+    # The following track which endpoint types are used from the JS side.
     self.interface_pending_remotes = set()
     self.interface_associated_pending_remotes = set()
     self.interface_pending_receivers = set()
     self.interface_associated_pending_receivers = set()
 
-    self.arrays = {}
-    self.maps = {}
+    # Track each type by the side whence they are used. This ensures that the
+    # generated profiles do not include constructors or CodeGenerators that
+    # cannot successfully run. For instance, if a type can not be synthesized
+    # from the JS side, Fuzzilli should never try to use a constructor for it,
+    # instead relying on the API that retrieves it from the browser.
+    self.js_arrays = {}
+    self.browser_arrays = {}
+    self.js_maps = {}
+    self.browser_maps = {}
     self.enums = {}
-    self.unions = {}
-    self.structs = {}
+    self.js_unions = {}
+    self.browser_unions = {}
+    self.js_structs = {}
+    self.browser_structs = {}
     # Methods with a response return a Promise that resolves to a JavaScript
     # object holding the response parameters. Represent these objects as
     # `mojom.Struct` objects, since we can then handle them the same way we
@@ -141,11 +153,19 @@ class Generator(generator.Generator):
       "interface_associated_pending_receivers": list(
         self.interface_associated_pending_receivers
       ),
-      "arrays": list(self.arrays.values()),
-      "maps": list(self.maps.values()),
+      "js_arrays": list(self.js_arrays.values()),
+      # Union of `js_arrays` and `browser_arrays`
+      "arrays": list((self.js_arrays | self.browser_arrays).values()),
+      "js_maps": list(self.js_maps.values()),
+      # Union of `js_maps` and `browser_maps`
+      "maps": list((self.js_maps | self.browser_maps).values()),
       "enums": list(self.enums.values()),
-      "unions": list(self.unions.values()),
-      "structs": list(self.structs.values()),
+      "js_unions": list(self.js_unions.values()),
+      # Union of `js_unions` and `browser_unions`
+      "unions": list((self.js_unions | self.browser_unions).values()),
+      "js_structs": list(self.js_structs.values()),
+      # Union of `js_structs` and `browser_structs`
+      "structs": list((self.js_structs | self.browser_structs).values()),
       "response_structs": list(self.response_structs.values()),
     }
 
@@ -172,25 +192,28 @@ class Generator(generator.Generator):
       self._CollectUnion(kind, is_in_js)
 
   def _CollectStruct(self, struct, is_in_js):
+    structs = self.js_structs if is_in_js else self.browser_structs
     name = self._FormatUniqueName(struct)
-    if name in self.structs:
+    if name in structs:
       return
-    self.structs[name] = struct
+    structs[name] = struct
     for field in struct.fields:
       self._CollectInterfaceAndTypes(field.kind, is_in_js)
 
   def _CollectArray(self, array, is_in_js):
+    arrays = self.js_arrays if is_in_js else self.browser_arrays
     name = self._FormatUniqueName(array.kind)
-    if name in self.arrays:
+    if name in arrays:
       return
-    self.arrays[name] = array
+    arrays[name] = array
     self._CollectInterfaceAndTypes(array.kind, is_in_js)
 
   def _CollectMap(self, m, is_in_js):
+    maps = self.js_maps if is_in_js else self.browser_maps
     name = self._FormatUniqueName(m)
-    if name in self.maps:
+    if name in maps:
       return
-    self.maps[name] = m
+    maps[name] = m
     self._CollectInterfaceAndTypes(m.key_kind, is_in_js)
     self._CollectInterfaceAndTypes(m.value_kind, is_in_js)
 
@@ -199,10 +222,11 @@ class Generator(generator.Generator):
     self.enums[name] = enum
 
   def _CollectUnion(self, union, is_in_js):
+    unions = self.js_unions if is_in_js else self.browser_unions
     name = self._FormatUniqueName(union)
-    if name in self.unions:
+    if name in unions:
       return
-    self.unions[name] = union
+    unions[name] = union
     for field in union.fields:
       self._CollectInterfaceAndTypes(field.kind, is_in_js)
 

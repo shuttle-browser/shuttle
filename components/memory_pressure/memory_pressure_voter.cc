@@ -15,12 +15,13 @@ namespace memory_pressure {
 
 class MemoryPressureVoterImpl : public MemoryPressureVoter {
  public:
-  explicit MemoryPressureVoterImpl(MemoryPressureVoteAggregator* aggregator)
-      : aggregator_(aggregator) {}
+  MemoryPressureVoterImpl(MemoryPressureVoteAggregator* aggregator,
+                          MemoryPressureVoterType voter_type)
+      : aggregator_(aggregator), voter_type_(voter_type) {}
   ~MemoryPressureVoterImpl() override {
     // Remove this voter's vote.
     if (vote_) {
-      aggregator_->OnVote(vote_, std::nullopt);
+      aggregator_->OnVote(voter_type_, vote_, std::nullopt);
     }
   }
 
@@ -31,7 +32,7 @@ class MemoryPressureVoterImpl : public MemoryPressureVoter {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     auto old_vote = vote_;
     vote_ = {.level = level, .periodic_renotify = true};
-    if (aggregator_->OnVote(old_vote, vote_)) {
+    if (aggregator_->OnVote(voter_type_, old_vote, vote_)) {
       aggregator_->NotifyListeners();
     }
   }
@@ -41,7 +42,7 @@ class MemoryPressureVoterImpl : public MemoryPressureVoter {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
     auto old_vote = vote_;
     vote_ = {.level = level, .periodic_renotify = false};
-    aggregator_->OnVote(old_vote, vote_);
+    aggregator_->OnVote(voter_type_, old_vote, vote_);
     if (notify_listeners) {
       aggregator_->ResetRenotifyTimer();
       aggregator_->NotifyListeners();
@@ -51,6 +52,8 @@ class MemoryPressureVoterImpl : public MemoryPressureVoter {
  private:
   // This is the aggregator to which this voter's votes will be cast.
   const raw_ptr<MemoryPressureVoteAggregator> aggregator_;
+
+  const MemoryPressureVoterType voter_type_;
 
   // optional<> is used here as the vote will be null until the voter's
   // first vote calculation.
@@ -69,12 +72,33 @@ MemoryPressureVoteAggregator::~MemoryPressureVoteAggregator() {
             0);
 }
 
-std::unique_ptr<MemoryPressureVoter>
-MemoryPressureVoteAggregator::CreateVoter() {
-  return std::make_unique<MemoryPressureVoterImpl>(this);
+std::unique_ptr<MemoryPressureVoter> MemoryPressureVoteAggregator::CreateVoter(
+    MemoryPressureVoterType voter_type) {
+  return std::make_unique<MemoryPressureVoterImpl>(this, voter_type);
+}
+
+MemoryPressureVoterTypeSet MemoryPressureVoteAggregator::GetVotersForLevel(
+    base::MemoryPressureLevel level) const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  MemoryPressureVoterTypeSet voters;
+  const size_t level_idx = static_cast<size_t>(level);
+  for (size_t type_idx = 0; type_idx < kVoterTypeCount; ++type_idx) {
+    if (votes_by_type_[type_idx][level_idx] > 0) {
+      voters.Put(static_cast<MemoryPressureVoterType>(type_idx));
+    }
+  }
+  return voters;
 }
 
 void MemoryPressureVoteAggregator::OnVoteForTesting(
+    std::optional<base::MemoryPressureLevel> old_pressure_level,
+    std::optional<base::MemoryPressureLevel> new_pressure_level) {
+  OnVoteForTesting(MemoryPressureVoterType::kUnknown,  // IN-TEST
+                   old_pressure_level, new_pressure_level);
+}
+
+void MemoryPressureVoteAggregator::OnVoteForTesting(
+    MemoryPressureVoterType voter_type,
     std::optional<base::MemoryPressureLevel> old_pressure_level,
     std::optional<base::MemoryPressureLevel> new_pressure_level) {
   std::optional<Vote> old_vote = std::nullopt;
@@ -85,7 +109,7 @@ void MemoryPressureVoteAggregator::OnVoteForTesting(
   if (new_pressure_level) {
     new_vote = Vote{.level = *new_pressure_level, .periodic_renotify = false};
   }
-  OnVote(old_vote, new_vote);
+  OnVote(voter_type, old_vote, new_vote);
 }
 
 void MemoryPressureVoteAggregator::NotifyListenersForTesting() {
@@ -97,13 +121,28 @@ MemoryPressureVoteAggregator::EvaluateVotesForTesting() {
   return EvaluateVotes();
 }
 
-bool MemoryPressureVoteAggregator::OnVote(std::optional<Vote> old_vote,
+bool MemoryPressureVoteAggregator::OnVote(MemoryPressureVoterType voter_type,
+                                          std::optional<Vote> old_vote,
                                           std::optional<Vote> new_vote) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(old_vote || new_vote);
+  const bool old_disk_only_critical = IsDiskOnlyCritical();
+  // Only a real change ends an attribution interval. Votes are re-cast
+  // periodically without changing, and those must not flush the histogram.
+  const std::optional<base::MemoryPressureLevel> old_level =
+      old_vote ? std::optional(old_vote->level) : std::nullopt;
+  const std::optional<base::MemoryPressureLevel> new_level =
+      new_vote ? std::optional(new_vote->level) : std::nullopt;
+  if (old_level != new_level) {
+    delegate_->OnBeforeVoteChange();
+  }
+  size_t type_idx = static_cast<size_t>(voter_type);
+  DCHECK_LT(type_idx, kVoterTypeCount);
   if (old_vote) {
     DCHECK_LT(0u, votes_[old_vote->level]);
     votes_[old_vote->level]--;
+    DCHECK_LT(0u, votes_by_type_[type_idx][old_vote->level]);
+    votes_by_type_[type_idx][old_vote->level]--;
     if (old_vote->periodic_renotify) {
       DCHECK_LT(0u, periodic_renotify_votes_[old_vote->level]);
       periodic_renotify_votes_[old_vote->level]--;
@@ -111,11 +150,13 @@ bool MemoryPressureVoteAggregator::OnVote(std::optional<Vote> old_vote,
   }
   if (new_vote) {
     votes_[new_vote->level]++;
+    votes_by_type_[type_idx][new_vote->level]++;
     if (new_vote->periodic_renotify) {
       periodic_renotify_votes_[new_vote->level]++;
     }
   }
   auto old_pressure_level = current_pressure_level_;
+  const bool new_disk_only_critical = IsDiskOnlyCritical();
 
   // If the pressure level is not None then an asynchronous event will have been
   // started below, it needs to be ended.
@@ -140,14 +181,29 @@ bool MemoryPressureVoteAggregator::OnVote(std::optional<Vote> old_vote,
   }
 
   const bool level_changed = old_pressure_level != current_pressure_level_;
+  // The disk-only state is passed along with a level change so the delegate
+  // can update both at once.
   if (level_changed) {
-    delegate_->OnMemoryPressureLevelChanged(current_pressure_level_);
+    delegate_->OnMemoryPressureLevelChanged(current_pressure_level_,
+                                            new_disk_only_critical);
+  } else if (new_disk_only_critical != old_disk_only_critical) {
+    delegate_->OnDiskOnlyCriticalChanged(new_disk_only_critical);
   }
   // The timer is re-evaluated after every vote, not only when the aggregate
   // level changes: a vote joining or leaving the aggregate level can change
   // whether anyone at that level still wants periodic re-notification.
   UpdateRenotifyTimer(level_changed);
   return level_changed;
+}
+
+bool MemoryPressureVoteAggregator::IsDiskOnlyCritical() const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  const size_t critical_votes = votes_[base::MEMORY_PRESSURE_LEVEL_CRITICAL];
+  const size_t disk_critical_votes =
+      votes_by_type_[static_cast<size_t>(MemoryPressureVoterType::kDiskSpace)]
+                    [base::MEMORY_PRESSURE_LEVEL_CRITICAL];
+  CHECK_LE(disk_critical_votes, critical_votes);
+  return critical_votes > 0 && critical_votes == disk_critical_votes;
 }
 
 void MemoryPressureVoteAggregator::UpdateRenotifyTimer(bool level_changed) {
@@ -203,6 +259,7 @@ void MemoryPressureVoteAggregator::SetVotesForTesting(size_t none_votes,
   votes_[1] = moderate_votes;
   votes_[2] = critical_votes;
   periodic_renotify_votes_ = {};
+  votes_by_type_ = {};
 }
 
 }  // namespace memory_pressure

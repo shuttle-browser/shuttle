@@ -26,10 +26,6 @@ const TableBorders* TableNode::GetTableBorders() const {
   return table_borders;
 }
 
-const BoxStrut& TableNode::GetTableBordersStrut() const {
-  return GetTableBorders()->TableBorder();
-}
-
 scoped_refptr<const TableTypes::Columns> TableNode::GetColumnConstraints(
     const TableGroupedChildren& grouped_children,
     const BoxStrut& border_padding) const {
@@ -71,14 +67,14 @@ bool TableNode::AllowColumnPercentages(bool is_layout_pass) const {
   // In the future, we could have a bit on a LayoutObject which indicates if we
   // should allow column percentages, and maintain this when adding/removing
   // from the tree.
-  const LayoutBox* block = box_->ContainingBlock();
-  while (!block->IsLayoutView()) {
-    if (block->IsTableCell() || block->IsFlexibleBox() ||
-        block->IsLayoutGridOrGridLanes()) {
+  const LayoutBox* container = box_->ContainingBox();
+  while (!container->IsLayoutView()) {
+    if (container->IsTableCell() || container->IsFlexibleBox() ||
+        container->IsLayoutGridOrGridLanes()) {
       return false;
     }
 
-    block = block->ContainingBlock();
+    container = container->ContainingBox();
   }
   return true;
 }

@@ -665,7 +665,7 @@ class ContentSettingNotificationsBubbleModel
   void OnDoneButtonClicked() override;
   void OnCancelButtonClicked() override;
 };
-#endif
+#endif  // BUILDFLAG(IS_MAC)
 
 #if !BUILDFLAG(IS_ANDROID)
 // The model for the blocked Framebust bubble.

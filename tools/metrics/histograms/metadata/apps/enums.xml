@@ -349,6 +349,19 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="Dismissed by Nudge"/>
 </enum>
 
+<!-- LINT.IfChange(AppShimLifecycleState) -->
+
+<enum name="AppShimLifecycleState">
+  <int value="0" label="Launch Initiated"/>
+  <int value="1" label="PID Received"/>
+  <int value="2" label="Bootstrap Connected"/>
+  <int value="3" label="Disconnected Before Handshake"/>
+  <int value="4" label="Terminated After Connect"/>
+  <int value="5" label="Launch Failed"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/apps/app_shim/app_shim_host_mac.h:AppShimLifecycleState) -->
+
 <!-- LINT.IfChange(AppShimNotificationProviderOutcome) -->
 
 <enum name="AppShimNotificationProviderOutcome">
@@ -800,6 +813,9 @@ chromium-metrics-reviews@google.com.
   <int value="8" label="Created directory contents is corrupted"/>
   <int value="9" label="Created application menu shortcut is corrupted"/>
   <int value="10" label="Fail to install shortcut in application menu"/>
+  <int value="11"
+      label="DynamicLauncher portal install failed; fell back to legacy
+             install"/>
 </enum>
 
 <enum name="WebAppCreateShortcutMacResult">
@@ -832,9 +848,12 @@ chromium-metrics-reviews@google.com.
   </summary>
   <int value="0" label="Signature is invalid"/>
   <int value="1" label="The app shim had a valid ad-hoc signature"/>
-  <int value="2" label="The app shim had a valid legacy signature"/>
+  <int value="2"
+      label="(Obsolete) The app shim had a valid legacy signature. Removed in
+             2026/10."/>
   <int value="3"
-      label="Expected an ad-hoc signature, but got a valid legacy signature"/>
+      label="(Obsolete) Expected an ad-hoc signature, but got a valid legacy
+             signature. Removed in 2026/10."/>
 </enum>
 
 <enum name="ZeroStateResultType">

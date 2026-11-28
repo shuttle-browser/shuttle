@@ -74,6 +74,13 @@ class CORE_EXPORT AnimationTrigger : public ScriptWrappable,
     return compositor_trigger_.get();
   }
 
+  // Syncs the activations and deactivations that the compositor trigger
+  // observed on the impl thread since the previous main frame. PageAnimator
+  // calls this after "update animations and send events", so that finish event
+  // listeners and finished promise callbacks, which run in that step, run
+  // before the trigger acts.
+  virtual void ExecutePendingCompositorNotifications() {}
+
   void Dispose();
 
   void Trace(Visitor* visitor) const override;
@@ -111,9 +118,9 @@ class CORE_EXPORT AnimationTrigger : public ScriptWrappable,
   // thread version is cloned from this.
   scoped_refptr<cc::AnimationTrigger> compositor_trigger_;
 
-  // Set to true during PerformActivate and PerformDeactivate to prevent
-  // mutations of the behavior map.
-  bool is_activating_or_deactivating_ = false;
+  // Set to true while iterating or acting on `animation_behavior_map_` to
+  // prevent re-entrant mutations of the map.
+  bool forbid_behavior_map_updates_ = false;
 
  private:
   virtual void WillAddAnimation(Animation* animation,

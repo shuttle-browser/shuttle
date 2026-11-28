@@ -290,6 +290,8 @@ static_library("test_support") {
     "../public/test/permissions_test_utils.h",
     "../public/test/policy_container_utils.cc",
     "../public/test/policy_container_utils.h",
+    "../public/test/popup_test_utils.cc",
+    "../public/test/popup_test_utils.h",
     "../public/test/preconnect_test_util.cc",
     "../public/test/preconnect_test_util.h",
     "../public/test/prefetch_test_util.cc",
@@ -822,7 +824,7 @@ static_library("test_support") {
     ]
   }
 
-  if (is_chromeos) {
+  if (enable_smart_card) {
     sources += [
     ]
   }
@@ -834,10 +836,6 @@ static_library("test_support") {
   if (use_dbus) {
     deps += [ "//components/dbus" ]
   }
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 
 # Fuchsia performance tests on smart displays use web_engine and a browser

@@ -4,6 +4,7 @@
 
 #import "components/remote_cocoa/app_shim/views_nswindow_delegate.h"
 
+#include <cmath>
 #include <optional>
 
 #include "base/check.h"
@@ -18,15 +19,8 @@
 #include "ui/base/ui_base_features.h"
 #include "ui/gfx/geometry/resize_utils.h"
 
-enum NSWindowLiveResizeEdge {
-  kLeftEdge = 1 << 0,
-  kBottomEdge = 1 << 1,
-  kRightEdge = 1 << 2,
-  kTopEdge = 1 << 3
-};
-
 @interface NSWindow (SPI)
-- (NSWindowLiveResizeEdge)liveResizeEdges;
+- (NSWindowLiveResizeEdges)liveResizeEdges;
 @end
 
 @implementation ViewsNSWindowDelegate {
@@ -186,17 +180,45 @@ enum NSWindowLiveResizeEdge {
   // when the new frame is ready.
   if (base::FeatureList::IsEnabled(features::kAsyncLiveResize) &&
       [_parent->ns_window() inLiveResize]) {
+    NSWindowLiveResizeEdges edge = [_parent->ns_window() liveResizeEdges];
+
+    // If the user is resizing the window interactively without directly
+    // manipulating the window itself, e.g., through native window tiling,
+    // `liveResizeEdges` will report that no edges are being live resized. In
+    // that case, simply accept the proposed size so as not to break resizing
+    // (see https://crbug.com/583338534).
+    if (edge == NSWindowLiveResizeEdgesNone) {
+      return size;
+    }
+
     NSRect newWindowFrame = windowFrame;
     newWindowFrame.size = size;
 
-    NSWindowLiveResizeEdge edge = [_parent->ns_window() liveResizeEdges];
-    if (edge & kLeftEdge) {
-      newWindowFrame.origin.x -=
-          newWindowFrame.size.width - windowFrame.size.width;
+    const CGFloat width_delta =
+        newWindowFrame.size.width - windowFrame.size.width;
+    const CGFloat height_delta =
+        newWindowFrame.size.height - windowFrame.size.height;
+    // Holding down the Option key while resizing a window causes the window to
+    // resize symmetrically around its center instead of anchoring the opposite
+    // edge or corner. In that case, the window's height and width values will
+    // change at double the rate of the origin shift along the active axes
+    // (e.g., a 100px change in width causes a 50px shift to the x origin).
+    const bool is_resizing_from_horizontal_center =
+        (edge & NSWindowLiveResizeEdgesHorizontal) ==
+        NSWindowLiveResizeEdgesHorizontal;
+    const bool is_resizing_from_vertical_center =
+        (edge & NSWindowLiveResizeEdgesVertical) ==
+        NSWindowLiveResizeEdgesVertical;
+    const CGFloat horizontal_divisor =
+        is_resizing_from_horizontal_center ? 2.0 : 1.0;
+    const CGFloat vertical_divisor =
+        is_resizing_from_vertical_center ? 2.0 : 1.0;
+
+    if (edge & NSWindowLiveResizeEdgesLeft) {
+      newWindowFrame.origin.x -= std::round(width_delta / horizontal_divisor);
     }
-    if (edge & kBottomEdge) {
-      newWindowFrame.origin.y -=
-          newWindowFrame.size.height - windowFrame.size.height;
+    if (edge & NSWindowLiveResizeEdgesBottom) {
+      newWindowFrame.origin.y -= std::round(height_delta / vertical_divisor);
     }
 
     _parent->OnLiveResizeToFrame(newWindowFrame);

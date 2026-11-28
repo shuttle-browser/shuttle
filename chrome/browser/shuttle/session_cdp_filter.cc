@@ -31,6 +31,49 @@ namespace shuttle {
 
 namespace {
 
+// captureArea "browserWindow" (159) records the tab's whole top-level window:
+// browser UI and whichever tab is shown, possibly another agent's or the
+// user's. Agent sessions may only record their own target.
+bool IsWindowRecording(std::string_view method,
+                       const base::DictValue* params) {
+  if (method != "Page.startScreenRecording" || !params) {
+    return false;
+  }
+  const std::string* area = params->FindString("captureArea");
+  return area && *area != "target";
+}
+
+constexpr char kWindowRecordingError[] =
+    "Shuttle: agent sessions can only record their own tab";
+
+// Non-flattened sessions wrap page commands in Target.sendMessageToTarget
+// strings that reach the agent host without passing this filter again; check
+// what they carry (nested envelopes up to a small depth; deeper or
+// unparseable = refused).
+bool WrapsWindowRecording(const base::DictValue* params, int depth = 0) {
+  const std::string* inner = params ? params->FindString("message") : nullptr;
+  if (!inner) {
+    return false;
+  }
+  if (depth >= 3) {
+    return true;
+  }
+  std::optional<base::DictValue> dict =
+      base::JSONReader::ReadDict(*inner, base::JSON_PARSE_RFC);
+  const std::string* method = dict ? dict->FindString("method") : nullptr;
+  if (!method) {
+    // Not inspectable (e.g. nested deeper than JSONReader allows, while the
+    // CDP parser accepts more): refuse rather than forward unchecked.
+    return true;
+  }
+  const base::DictValue* inner_params = dict->FindDict("params");
+  if (IsWindowRecording(*method, inner_params)) {
+    return true;
+  }
+  return *method == "Target.sendMessageToTarget" &&
+         WrapsWindowRecording(inner_params, depth + 1);
+}
+
 constexpr int kServerError = -32000;
 
 // Responses start with their id ({"id":N,...}); events with their method.
@@ -211,6 +254,13 @@ void SessionCdpFilter::OnClientMessage(std::string message) {
       base::JSONReader::ReadDict(message, base::JSON_PARSE_RFC);
   const std::string* method = dict ? dict->FindString("method") : nullptr;
   const base::Value* id = dict ? dict->Find("id") : nullptr;
+  if (!dict) {
+    // Not inspectable (e.g. nested deeper than JSONReader allows, while the
+    // CDP parser accepts more): refuse rather than forward unchecked.
+    SendError(base::Value(), nullptr,
+              "Shuttle: message could not be parsed by the session filter");
+    return;
+  }
   if (!method || !id) {
     // Malformed: the agent host answers with the protocol error.
     to_agent_.Run(std::move(message));
@@ -228,7 +278,6 @@ void SessionCdpFilter::OnClientMessage(std::string message) {
              name == "Target.activateTarget" ||
              name == "Target.closeTarget" ||
              name == "Target.getTargetInfo" ||
-             name == "Target.exposeDevToolsProtocol" ||
              name == "Target.autoAttachRelated" ||
              name == "Target.sendMessageToTarget" ||
              name == "Target.detachFromTarget") {
@@ -243,6 +292,10 @@ void SessionCdpFilter::OnClientMessage(std::string message) {
       BringToFront(*id, session, target_id);
       return;
     }
+    if (name == "Target.sendMessageToTarget" && WrapsWindowRecording(params)) {
+      SendError(*id, session, kWindowRecordingError);
+      return;
+    }
   } else if (name == "Page.bringToFront") {
     // Agents switch tabs with it; upstream it activates the window and, on
     // macOS, the app: Shuttle would jump in front of the user's work.
@@ -254,6 +307,12 @@ void SessionCdpFilter::OnClientMessage(std::string message) {
       target_id = it->second;
     }
     BringToFront(*id, session, target_id);
+    return;
+  } else if (name == "Target.exposeDevToolsProtocol") {
+    // It gives the page a binding to a fresh browser-level connection that
+    // doesn't pass this filter (all targets, browser commands).
+    SendError(*id, session,
+              "Shuttle: an agent session can't expose the DevTools protocol");
     return;
   } else if (name == "Target.attachToBrowserTarget") {
     SendError(*id, session,
@@ -273,6 +332,9 @@ void SessionCdpFilter::OnClientMessage(std::string message) {
     return;
   } else if (name == "Browser.crash" || name == "Browser.crashGpuProcess") {
     SendError(*id, session, "Shuttle: not allowed for agent sessions");
+    return;
+  } else if (IsWindowRecording(name, params)) {
+    SendError(*id, session, kWindowRecordingError);
     return;
   } else if (!page_connection_ && !session &&
              base::StartsWith(name, "Storage.")) {

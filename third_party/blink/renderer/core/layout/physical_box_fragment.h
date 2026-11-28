@@ -278,6 +278,14 @@ class CORE_EXPORT PhysicalBoxFragment final : public PhysicalFragment {
     return PhysicalBoxStrut();
   }
 
+  const PhysicalBoxStrut& UsedPositionInsets() const {
+    if (!used_position_insets_) {
+      DEFINE_STATIC_LOCAL(const PhysicalBoxStrut, zero_insets, ());
+      return zero_insets;
+    }
+    return used_position_insets_->insets;
+  }
+
   PhysicalOffset ContentOffset() const {
     if (!HasBorders() && !HasPadding())
       return PhysicalOffset();
@@ -489,19 +497,6 @@ class CORE_EXPORT PhysicalBoxFragment final : public PhysicalFragment {
     return *rare_data_->mathml_paint_info_;
   }
 
-  class MutableForStyleRecalc {
-    STACK_ALLOCATED();
-
-   public:
-    MutableForStyleRecalc(base::PassKey<PhysicalBoxFragment>,
-                          PhysicalBoxFragment& fragment);
-    void SetScrollableOverflow(const PhysicalRect& scrollable_overflow);
-
-   private:
-    PhysicalBoxFragment& fragment_;
-  };
-  MutableForStyleRecalc GetMutableForStyleRecalc() const;
-
   class MutableForContainerLayout {
     STACK_ALLOCATED();
 
@@ -516,6 +511,26 @@ class CORE_EXPORT PhysicalBoxFragment final : public PhysicalFragment {
   };
 
   MutableForContainerLayout GetMutableForContainerLayout() const;
+
+  class MutableForPositioned {
+    STACK_ALLOCATED();
+
+   public:
+    void SetUsedPositionInsets(const PhysicalBoxStrut& insets) {
+      fragment_.used_position_insets_ =
+          insets.IsZero() ? nullptr : MakeGarbageCollected<UsedInsets>(insets);
+    }
+
+   private:
+    friend class PhysicalBoxFragment;
+    explicit MutableForPositioned(const PhysicalBoxFragment& fragment)
+        : fragment_(const_cast<PhysicalBoxFragment&>(fragment)) {}
+
+    PhysicalBoxFragment& fragment_;
+  };
+  MutableForPositioned GetMutableForPositioned() const {
+    return MutableForPositioned(*this);
+  }
 
   // Painters can use const methods only, except for these explicitly declared
   // methods.
@@ -620,10 +635,6 @@ class CORE_EXPORT PhysicalBoxFragment final : public PhysicalFragment {
     return MutableForOofFragmentation(*this);
   }
 
-  // Returns if this fragment can compute ink overflow.
-  bool CanUseFragmentsForInkOverflow() const {
-    return !layout_object_->IsLayoutReplaced();
-  }
   // Recalculates and updates |*InkOverflow|.
   void RecalcInkOverflow();
   // |RecalcInkOverflow| using the given contents ink overflow rect.
@@ -747,11 +758,18 @@ class CORE_EXPORT PhysicalBoxFragment final : public PhysicalFragment {
   void CheckIntegrity() const;
 #endif
 
+  struct UsedInsets : public GarbageCollected<UsedInsets> {
+    explicit UsedInsets(const PhysicalBoxStrut& insets) : insets(insets) {}
+    void Trace(Visitor*) const {}
+    PhysicalBoxStrut insets;
+  };
+
   BitField bit_field_;
 
   LayoutUnit first_baseline_;
   LayoutUnit last_baseline_;
   Member<PhysicalFragmentRareData> rare_data_;
+  Member<UsedInsets> used_position_insets_;
   InkOverflow ink_overflow_;
   HeapVector<PhysicalFragmentLink> children_;
   // fragment_items is after |children_| if they are not empty/initial.

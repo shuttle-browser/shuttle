@@ -90,7 +90,7 @@ export class OmniboxPopupAppElement extends SearchboxSelectionMixin
   accessor isDebug: boolean = false;
   protected accessor hasVisibleMatches_: boolean = false;
   protected accessor result_: AutocompleteResult|null = null;
-  protected accessor webuiOmniboxPopupSelectionControlEnabled_: boolean =
+  private accessor webuiOmniboxPopupSelectionControlEnabled_: boolean =
       loadTimeData.getBoolean('webuiOmniboxPopupSelectionControlEnabled');
   private searchboxBrowserProxy_: SearchboxBrowserProxy;
   private eventTracker_ = new EventTracker();
@@ -246,7 +246,7 @@ export class OmniboxPopupAppElement extends SearchboxSelectionMixin
   // Opens the current popup selection (the one visually indicated by the
   // element with popup-focus).
   private openCurrentSelection_(disposition: WindowOpenDisposition) {
-    this.searchboxBrowserProxy_.handler.openPopupSelection(
+    this.searchboxBrowserProxy_.handler.openPopupSelectionWithDisposition(
         this.result_?.sequenceId || 0, this.selection, disposition);
   }
 

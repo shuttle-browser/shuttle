@@ -15,6 +15,7 @@
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/events/event.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/geometry/rounded_corners_f.h"
@@ -155,7 +156,7 @@ bool WebDialogView::AcceleratorPressed(const ui::Accelerator& accelerator) {
     return true;
   }
 
-  DCHECK_EQ(ui::VKEY_ESCAPE, accelerator.key_code());
+  CHECK_EQ(ui::VKEY_ESCAPE, accelerator.key_code(), base::NotFatalUntil::M163);
   if (delegate_ && !delegate_->ShouldCloseDialogOnEscape()) {
     return false;
   }
@@ -363,7 +364,7 @@ content::WebContents* WebDialogView::AddNewContents(
     content::WebContents* source,
     std::unique_ptr<content::WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
@@ -423,7 +424,7 @@ bool WebDialogView::CheckMediaAccessPermission(
 
 void WebDialogView::SetWebViewCornersRadii(const gfx::RoundedCornersF& radii) {
   views::NativeViewHost* host = web_view_->holder();
-  DCHECK(host);
+  CHECK(host, base::NotFatalUntil::M163);
 
   host->SetNativeViewCornerRadii(radii);
 }
@@ -443,11 +444,12 @@ void WebDialogView::InitDialog() {
   // the comment above WebDialogUI in its header file for why.
   WebDialogUI::SetDelegate(web_contents, delegate_);
 
+  // Must precede the initial load so that anything the embedder attaches here
+  // sees the dialog's first navigation.
+  OnDialogWebContentsCreated(web_contents);
+
   if (!disable_url_load_for_test_) {
-    auto policy = (delegate_ && delegate_->ShouldDisableHttpsUpgrades())
-                      ? views::WebView::HttpsUpgradePolicy::kNoUpgrade
-                      : views::WebView::HttpsUpgradePolicy::kAllowUpgrade;
-    web_view_->LoadInitialURL(delegate_->GetDialogContentURL(), policy);
+    web_view_->LoadInitialURL(delegate_->GetDialogContentURL());
   }
 }
 

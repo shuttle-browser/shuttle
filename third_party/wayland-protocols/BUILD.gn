@@ -59,10 +59,6 @@ wayland_protocol("gtk_primary_selection_protocol") {
   sources = [ "unstable/gtk-primary-selection/gtk-primary-selection.xml" ]
 }
 
-wayland_protocol("gtk_shell_protocol") {
-  sources = [ "gtk/gdk/wayland/protocol/gtk-shell.xml" ]
-}
-
 wayland_protocol("idle_inhibit_protocol") {
   sources = [ "src/unstable/idle-inhibit/idle-inhibit-unstable-v1.xml" ]
 }
@@ -108,11 +104,11 @@ wayland_protocol("notification_shell_protocol") {
 }
 
 wayland_protocol("org_kde_kwin_appmenu") {
-  sources = [ "kde/src/protocols/appmenu.xml" ]
+  sources = [ "kde/src/src/protocols/appmenu.xml" ]
 }
 
 wayland_protocol("org_kde_kwin_idle") {
-  sources = [ "kde/src/protocols/idle.xml" ]
+  sources = [ "kde/src/src/protocols/idle.xml" ]
 }
 
 wayland_protocol("pointer_constraints_protocol") {

@@ -1247,7 +1247,9 @@ ci.builder(
     ),
     contact_team_email = "clank-engprod@google.com",
     siso_output_local_strategy = "full",
-    siso_remote_jobs = siso.remote_jobs.DEFAULT,
+    # Local ThinLTO links are much faster than remote ones (e.g. ~2 minutes
+    # vs ~8 minutes for libchrome.so).
+    siso_remote_linking = False,
 )
 
 ci.builder(
@@ -1810,7 +1812,6 @@ ci.thin_tester(
             "14-x64-emulator",
             "emulator-8-cores",
             "has_native_resultdb_integration",
-            "isolate_profile_data",
             "linux-jammy",
         ],
     ),
@@ -1859,7 +1860,6 @@ ci.thin_tester(
             "15-x64-emulator",
             "emulator-8-cores",
             "has_native_resultdb_integration",
-            "isolate_profile_data",
             "linux-jammy",
         ],
     ),
@@ -2332,6 +2332,7 @@ ci.builder(
                 targets = [
                     "android_10_emulator_gtests",
                     "android_10_isolated_scripts",
+                    "android_isolated_scripts_once",
                 ],
             ),
             "chromium_android_scripts",
@@ -2341,7 +2342,6 @@ ci.builder(
         ],
         mixins = [
             "has_native_resultdb_integration",
-            "isolate_profile_data",
             "10-x86-emulator",
             "emulator-4-cores",
             "linux-jammy",
@@ -2536,6 +2536,7 @@ ci.builder(
                 targets = [
                     "android_10_emulator_gtests",
                     "android_10_isolated_scripts",
+                    "android_isolated_scripts_once",
                 ],
             ),
             "chromium_android_scripts",
@@ -2567,15 +2568,14 @@ ci.builder(
                     shards = 2,
                 ),
             ),
-            # TODO(https://crbug.com/549938718): Re-enable on CQ
-            "android_webview_unittests": targets.mixin(
-                ci_only = True,
-            ),
             "base_unittests_android_death_tests": targets.mixin(
                 ci_only = True,
             ),
             "blink_unittests": targets.mixin(
                 enable_rts_filtering = True,
+                swarming = targets.swarming(
+                    shards = 10,
+                ),
             ),
             "chrome_public_test_apk": targets.mixin(
                 args = [
@@ -2602,7 +2602,7 @@ ci.builder(
             ),
             "components_browsertests": targets.mixin(
                 swarming = targets.swarming(
-                    shards = 4,
+                    shards = 8,
                 ),
             ),
             "components_unittests": targets.mixin(
@@ -2684,13 +2684,23 @@ ci.builder(
             ),
             # TODO(crbug.com/579036143): Remove once e4 failures are fixed.
             "ui_junit_tests": "e2-standard-8",
+            "unit_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 5,
+                ),
+            ),
+            "webview_cts_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 5,
+                ),
+            ),
             "webview_instrumentation_test_apk_multiple_process_mode": targets.mixin(
                 args = [
                     "--disable-field-trial-config",
                     "--skia-gold-consider-unsupported",
                 ],
                 swarming = targets.swarming(
-                    shards = 18,
+                    shards = 25,
                 ),
             ),
             "webview_instrumentation_test_apk_single_process_mode": targets.mixin(
@@ -2898,7 +2908,6 @@ ci.builder(
             "12-x64-emulator",
             "emulator-8-cores",
             "has_native_resultdb_integration",
-            "isolate_profile_data",
             "linux-jammy",
         ],
         per_test_modifications = {
@@ -3207,11 +3216,6 @@ ci.builder(
             "panther_on_14",
         ],
         per_test_modifications = {
-            "android_webview_unittests": targets.mixin(
-                # TODO(crbug.com/546581718): Re-enable on CQ once the high
-                # pending time is gone.
-                ci_only = True,
-            ),
             "android_browsertests": targets.mixin(
                 args = [
                     "--test-launcher-filter-file=../../testing/buildbot/filters/android.phone.android_browsertests.filter",
@@ -4156,12 +4160,6 @@ ci.builder(
                     shards = 4,
                 ),
             ),
-            # TODO(https://crbug.com/549938718): Investigate the long runtime.
-            "android_webview_unittests": targets.mixin(
-                swarming = targets.swarming(
-                    shards = 4,
-                ),
-            ),
             "base_unittests": targets.mixin(
                 args = [
                     "--test-launcher-filter-file=../../testing/buildbot/filters/android.emulator_14_15_16.base_unittests.filter",
@@ -4390,7 +4388,7 @@ ci.builder(
             "linux-jammy",
         ],
         per_test_modifications = {
-            "webview_64_cts_hostside_tests full_mode": targets.mixin(
+            "webview_64_cts_hostside_tests": targets.mixin(
                 swarming = targets.swarming(
                     shards = 1,
                 ),

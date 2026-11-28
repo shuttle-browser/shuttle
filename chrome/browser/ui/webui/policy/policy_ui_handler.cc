@@ -81,6 +81,7 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
 #include "extensions/buildflags/buildflags.h"
+#include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "ui/base/clipboard/clipboard_buffer.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
@@ -289,6 +290,10 @@ void PolicyUIHandler::SendInitialState(const base::ListValue&) {
 }
 
 void PolicyUIHandler::HandleReloadPolicies(const base::ListValue&) {
+  ReloadPolicies();
+}
+
+void PolicyUIHandler::ReloadPolicies() {
   reload_policies_count_ += 1;
 #if BUILDFLAG(IS_CHROMEOS)
   // Allow user to manually fetch remote commands. Useful for testing or when
@@ -457,11 +462,22 @@ void PolicyUIHandler::GetPolicyLogs(GetPolicyLogsCallback callback) {
 
 #if !BUILDFLAG(IS_CHROMEOS)
 void PolicyUIHandler::HandleUploadReport(const base::ListValue& args) {
+  CHECK_EQ(1u, args.size(), base::NotFatalUntil::M162);
+  UploadReportImpl(
+      base::BindOnce(&PolicyUIHandler::OnReportUploadedWebUiWrapper,
+                     weak_factory_.GetWeakPtr(), args[0].Clone()));
+}
+
+void PolicyUIHandler::UploadReport(UploadReportCallback callback) {
+  UploadReportImpl(
+      mojo::WrapCallbackWithDefaultInvokeIfNotRun(std::move(callback)));
+}
+
+void PolicyUIHandler::UploadReportImpl(base::OnceClosure on_report_uploaded) {
   // Shuttle: cloud reporting is removed; nothing to upload. The button is
   // hidden (see PolicyUI), resolve right away for robustness.
   upload_report_count_ += 1;
-  CHECK_EQ(1u, args.size(), base::NotFatalUntil::M162);
-  OnReportUploaded(args[0].GetString());
+  OnReportUploaded(std::move(on_report_uploaded));
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
@@ -544,13 +560,16 @@ void PolicyUIHandler::RecordBannerRedirected() {
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if !BUILDFLAG(IS_CHROMEOS)
-void PolicyUIHandler::OnReportUploaded(const std::string& callback_id) {
+void PolicyUIHandler::OnReportUploaded(base::OnceClosure on_report_uploaded) {
+  SendStatus();
+  std::move(on_report_uploaded).Run();
+}
+
+void PolicyUIHandler::OnReportUploadedWebUiWrapper(base::Value callback_id) {
   if (!IsJavascriptAllowed()) {
     return;
   }
-  ResolveJavascriptCallback(base::Value(callback_id),
-                            /*response=*/base::Value());
-  SendStatus();
+  ResolveJavascriptCallback(callback_id, /*response=*/base::Value());
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 

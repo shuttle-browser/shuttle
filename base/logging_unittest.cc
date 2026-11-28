@@ -236,6 +236,17 @@ TEST_F(LoggingTest, LogToStdErrFlag) {
   LOG(INFO) << mock_log_source_stderr.Log();
 }
 
+TEST_F(LoggingTest, GetLoggingDestination) {
+  LoggingSettings settings;
+  settings.logging_dest = LOG_NONE;
+  InitLogging(settings);
+  EXPECT_EQ(LOG_NONE, GetLoggingDestination());
+
+  settings.logging_dest = LOG_TO_STDERR | LOG_TO_SYSTEM_DEBUG_LOG;
+  InitLogging(settings);
+  EXPECT_EQ(LOG_TO_STDERR | LOG_TO_SYSTEM_DEBUG_LOG, GetLoggingDestination());
+}
+
 // Check that messages with severity ERROR or higher are always logged to
 // stderr if no log-destinations are set, other than LOG_TO_FILE.
 // This test is currently only POSIX-compatible.
@@ -371,6 +382,25 @@ TEST_F(LoggingTest, DuplicateLogFile) {
   fclose(log_file_dup);
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
+TEST_F(LoggingTest, GetLogFileFullPath) {
+  base::ScopedTempDir temp_dir;
+  ASSERT_TRUE(temp_dir.CreateUniqueTempDir());
+  base::FilePath file_log_path =
+      temp_dir.GetPath().Append(FILE_PATH_LITERAL("file.log"));
+
+  LoggingSettings settings;
+  settings.logging_dest = LOG_TO_FILE;
+  settings.log_file_path = file_log_path.value();
+  ASSERT_TRUE(InitLogging(settings));
+
+  EXPECT_EQ(file_log_path.value(), GetLogFileFullPath());
+
+  // Close the log file, so that `temp_dir` can be deleted on Windows.
+  CloseLogFile();
+}
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
 
 #if !CHECK_WILL_STREAM() && BUILDFLAG(IS_WIN)
 // Tell clang to not optimize this function or else it will remove the CHECKs.

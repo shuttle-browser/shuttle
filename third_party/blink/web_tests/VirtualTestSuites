@@ -29,19 +29,6 @@
   "TODO(crbug.com/380755410): Find a way to do this systematically.",
 
   {
-    "prefix": "temporal-input-coarse-pointer",
-    "platforms": ["Android", "Linux"],
-    "bases": [
-      "external/wpt/html/semantics/forms/the-input-element/focus-dynamic-type-change-on-blur.html"
-    ],
-    "args": [
-      "--enable-blink-features=InputMultipleFieldsUIWithPointerChecks",
-      "--blink-settings=availablePointerTypes=2,primaryPointerType=2"
-    ],
-    "owners": ["julio@gitstart.com"],
-    "expires": "never"
-  },
-  {
     "prefix": "ai_tool_use",
     "platforms": ["Linux", "Mac", "Win"],
     "bases": [
@@ -214,39 +201,6 @@
       "--web-settings-for-testing=autoplayPolicy:2"
     ],
     "expires": "never"
-  },
-  {
-    "prefix": "area-display-inline",
-    "owners": [
-      "helmut@januschka.com"
-    ],
-    "platforms": [
-      "Linux"
-    ],
-    "bases": [
-      "accessibility/image-map1.html",
-      "external/wpt/css/css-break/area-crash.html",
-      "external/wpt/css/css-break/area-in-inline-crash.html",
-      "external/wpt/css/css-multicol/crashtests/oof-in-area-001.html",
-      "external/wpt/css/css-multicol/crashtests/oof-in-area-002.html",
-      "external/wpt/css/css-multicol/crashtests/oof-in-area-003.html",
-      "external/wpt/css/css-multicol/crashtests/oof-in-area-004.html",
-      "external/wpt/css/css-multicol/crashtests/oof-in-area-005.html",
-      "external/wpt/html/rendering/non-replaced-elements/hidden-elements.html",
-      "external/wpt/html/semantics/embedded-content/the-area-element",
-      "external/wpt/html/semantics/interestfor/interestfor-area-event-dispatch.tentative.html",
-      "external/wpt/html/semantics/interestfor/interestfor-pseudo-element-appearance.tentative.html",
-      "fast/css/area-computedStyle.html",
-      "fast/dom/HTMLAreaElement",
-      "fast/spatial-navigation/snav-imagemap-area-not-focusable.html",
-      "images/imagemap-circle-focus-ring.html",
-      "images/imagemap-focus-ring.html",
-      "images/imagemap-polygon-focus-ring.html"
-    ],
-    "args": [
-      "--disable-blink-features=HTMLAreaElementDisplayNone"
-    ],
-    "expires": "Aug 1, 2027"
   },
   {
     "prefix": "backface-visibility-interop",
@@ -425,6 +379,25 @@
     "expires": "Jan 1, 2027"
   },
   {
+    "prefix": "composite-hover-text-decoration",
+    "platforms": [
+      "Linux"
+    ],
+    "bases": [
+      "wpt_internal/css/css-text-decor/composite-hover"
+    ],
+    "exclusive_tests": "ALL",
+    "args": [
+      "--enable-blink-features=CompositeHoverStyle",
+      "--enable-threaded-compositing"
+    ],
+    "owners": [
+      "awogbemila@chromium.org",
+      "blink-interactions-team@google.com"
+    ],
+    "expires": "Oct 1, 2027"
+  },
+  {
     "prefix": "connection-allowlist",
     "owners": [
       "mkwst@chromium.org",
@@ -518,7 +491,7 @@
       "wpt_internal/html/canvas/context-lost"
     ],
     "args": [
-      "--disable-gpu-compositing",
+      "--disable-gpu",
       "--enable-threaded-compositing"
     ],
     "expires": "never"
@@ -676,6 +649,22 @@
       "--blink-settings=preferredColorScheme=0,forceDarkModeEnabled=true"
     ],
     "expires": "Jul 1, 2027"
+  },
+  {
+    "prefix": "force-dark-light",
+    "owners": [
+      "helmut@januschka.com"
+    ],
+    "platforms": [
+      "Linux"
+    ],
+    "bases": [
+      "dark-mode/force-dark"
+    ],
+    "args": [
+      "--blink-settings=preferredColorScheme=1,forceDarkModeEnabled=true"
+    ],
+    "expires": "May 1, 2027"
   },
   {
     "prefix": "dbsc-enabled",
@@ -1162,7 +1151,7 @@
     ],
     "exclusive_tests": "ALL",
     "args": [
-      "--enable-features=FedCmWellKnownEndpointValidation,FedCmPreservePortsForTesting"
+      "--enable-features=FedCmWellKnownEndpointValidation"
     ],
     "owners": [
       "cbiesinger@chromium.org",
@@ -1263,7 +1252,7 @@
       "--enable-threaded-compositing",
       "--disable-features=RasterInducingScroll"
     ],
-    "expires": "Jul 1, 2026",
+    "expires": "Jul 1, 2027",
     "owners": [
       "gastonr@microsoft.com",
       "gerchiko@microsoft.com"
@@ -1456,7 +1445,9 @@
   {
     "prefix": "global-privacy-control-force",
     "owners": [
-      "arichiv@chromium.org"
+      "arichiv@chromium.org",
+      "zalmashni@google.com",
+      "arabm@google.com"
     ],
     "platforms": [
       "Linux",
@@ -1470,7 +1461,7 @@
     "args": [
       "--enable-features=GlobalPrivacyControlForce"
     ],
-    "expires": "Nov 7, 2026"
+    "expires": "Nov 7, 2027"
   },
   "This never expires because it tests a shipping configuration",
   {
@@ -1828,25 +1819,6 @@
       "--enable-features=V8Flag_js_defer_import_eval"
     ],
     "expires": "Apr 4, 2027"
-  },
-  {
-    "prefix": "js-shared-memory",
-    "platforms": [
-      "Linux",
-      "Mac",
-      "Win"
-    ],
-    "bases": [
-      "wpt_internal/js/shared_memory"
-    ],
-    "exclusive_tests": "ALL",
-    "args": [
-      "--js-flags=--harmony-struct"
-    ],
-    "owners": [
-      "syg@chromium.org"
-    ],
-    "expires": "Jul 1, 2025"
   },
   {
     "prefix": "lcp-script-observer",
@@ -2235,8 +2207,8 @@
       "external/wpt/html/browsers/origin/cross-origin-objects/cross-origin-objects-on-new-window.html",
       "external/wpt/html/browsers/the-windowproxy-exotic-object/windowproxy-prototype-setting-same-origin-domain.sub.html",
       "external/wpt/wasm/serialization/module/window-domain-success.sub.html",
+      "external/wpt/wasm/serialization/module/window-same-site-success.sub.html",
       "external/wpt/wasm/serialization/module/window-similar-but-cross-origin-success.sub.html",
-      "external/wpt/wasm/serialization/module/share-module-cross-origin-fails.sub.html",
       "external/wpt/navigation-api/navigate-event/cross-window/click-crossdocument-crossorigin-sameorigindomain.sub.html",
       "external/wpt/navigation-api/navigate-event/cross-window/click-samedocument-crossorigin-sameorigindomain.sub.html",
       "external/wpt/navigation-api/navigate-event/cross-window/location-crossdocument-crossorigin-sameorigindomain.sub.html",
@@ -2248,7 +2220,8 @@
       "external/wpt/longtask-timing/longtask-in-childiframe-crossorigin.html",
       "external/wpt/longtask-timing/longtask-in-sibling-iframe-crossorigin.html",
       "http/tests/security/drag-drop-same-unique-origin.html",
-      "fast/dom/raf-throttling-out-of-view-cross-origin-page.html"
+      "fast/dom/raf-throttling-out-of-view-cross-origin-page.html",
+      "external/wpt/svg/styling/svg-filter-render-swap-content-visibility.tentative.https.html"
     ],
     "exclusive_tests": "ALL",
     "args": [
@@ -2485,13 +2458,14 @@
       "http/tests/inspector-protocol/issues/port-mismatch-exclusion.js",
       "http/tests/inspector-protocol/network/blocked-cookie-port-mismatch.js"
     ],
-    "expires": "Nov 1, 2026",
+    "expires": "July 1, 2027",
     "exclusive_tests": "ALL",
     "args": [
       "--enable-features=EnablePortBoundCookies"
     ],
     "owners": [
-      "amarjotgill@chromium.org"
+      "chlily@chromium.org",
+      "chrome-secure-web-and-net@chromium.org"
     ]
   },
   "This never expires because it tests a shipping configuration",
@@ -2887,13 +2861,14 @@
       "http/tests/inspector-protocol/issues/scheme-mismatch-exclusion.js",
       "http/tests/inspector-protocol/network/blocked-cookie-scheme-mismatch.js"
     ],
-    "expires": "Nov 1, 2026",
+    "expires": "July 1, 2027",
     "exclusive_tests": "ALL",
     "args": [
       "--enable-features=EnableSchemeBoundCookies"
     ],
     "owners": [
-      "amarjotgill@chromium.org"
+      "chlily@chromium.org",
+      "chrome-secure-web-and-net@chromium.org"
     ]
   },
   {
@@ -3426,8 +3401,8 @@
       "external/wpt/webmessaging/broadcastchannel/cross-partition.https.tentative.html",
       "external/wpt/IndexedDB",
       "external/wpt/webstorage/localstorage-about-blank-3P-iframe-opens-3P-window.partitioned.html",
-      "external/wpt/secure-contexts/shared-worker-insecure-first.https.html",
-      "external/wpt/secure-contexts/shared-worker-secure-first.https.html",
+      "external/wpt/secure-contexts/shared-worker-insecure-first.tentative.https.html",
+      "external/wpt/secure-contexts/shared-worker-secure-first.tentative.https.html",
       "fast/filesystem",
       "http/tests/inspector-protocol/storage/dom-storage-set-items-by-storage-key.js",
       "http/tests/inspector-protocol/storage/indexed-db-set-items-by-storage-key.js",

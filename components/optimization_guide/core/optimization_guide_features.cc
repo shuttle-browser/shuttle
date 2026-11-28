@@ -11,6 +11,8 @@
 #include "base/metrics/field_trial_params.h"
 #include "base/system/sys_info.h"
 #include "base/time/time.h"
+#include "build/build_config.h"
+#include "url/url_constants.h"
 
 namespace optimization_guide::features {
 

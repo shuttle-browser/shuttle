@@ -16,6 +16,7 @@
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/string_view_util.h"
+#include "crypto/keypair.h"
 #include "crypto/openssl_util.h"
 #include "crypto/sha2.h"
 #include "net/base/features.h"
@@ -256,7 +257,6 @@ ChromeRootStoreData::CreateFromRootStoreProto(
         std::move(chrome_root_store_data_anchor.value()));
   }
 
-  std::vector<ChromeRootStoreData::Anchor> additional_certs;
   for (const auto& anchor : proto.additional_certs()) {
     std::optional<ChromeRootStoreData::Anchor> chrome_root_store_data_anchor =
         CreateChromeRootStoreDataAnchor(anchor);
@@ -449,23 +449,13 @@ TrustStoreChrome::TrustStoreChrome(
         }
       }
 
-      std::shared_ptr<const bssl::MTCAnchor> bssl_mtc_anchor;
-      switch (issuer.spec_version) {
-        case chrome_root_store::SPEC_VERSION_DRAFT05:
-          bssl_mtc_anchor = std::make_shared<const bssl::MTCAnchor>(
+      // Unknown and unsupported spec versions are filtered out in
+      // ParseAndFilterSigner, so we don't need to cleanly handle them here.
+      CHECK_EQ(issuer.spec_version, chrome_root_store::SPEC_VERSION_DRAFT07);
+      std::shared_ptr<const bssl::MTCAnchor> bssl_mtc_anchor =
+          bssl::MTCAnchor::CreatePlants07(
               issuer.base_id, issuer.signature_algorithm,
               bssl::UpRef(issuer.key.get()), std::move(trusted_subtrees));
-          break;
-        case chrome_root_store::SPEC_VERSION_DRAFT07:
-          bssl_mtc_anchor = bssl::MTCAnchor::CreatePlants07(
-              issuer.base_id, issuer.signature_algorithm,
-              bssl::UpRef(issuer.key.get()), std::move(trusted_subtrees));
-          break;
-        default:
-          // Unknown spec versions are filtered out in ParseAndFilterSigner, so
-          // we don't need to cleanly handle it here.
-          NOTREACHED();
-      }
       if (!bssl_mtc_anchor ||
           !trust_store_.AddMTCTrustAnchor(std::move(bssl_mtc_anchor))) {
         // TODO(crbug.com/452986180): ignoring an invalid issuer at this point
@@ -1079,24 +1069,21 @@ bool ParseAndFilterSigner(const chrome_root_store::Signer& signer_proto,
   }
 
   switch (signer_proto.spec_version()) {
-    case chrome_root_store::SPEC_VERSION_DRAFT05:
     case chrome_root_store::SPEC_VERSION_DRAFT07:
       signer.spec_version = signer_proto.spec_version();
       break;
+
+    // Ignore issuers with unknown or unsupported versions, or from before
+    // versions were added to the proto. They are not considered parsing
+    // failures.
+    case chrome_root_store::SPEC_VERSION_DRAFT05:
     case chrome_root_store::SPEC_VERSION_UNSET:
-      // TODO(crbug.com/452986180): The signer_set.textproto doesn't have spec
-      // version on existing issuers, so consider any issuer without a version
-      // as plants-05. Remove this after the proto has been updated with
-      // versions on all issuers.
-      signer.spec_version = chrome_root_store::SPEC_VERSION_DRAFT05;
-      break;
     default:
       if (signer.type == chrome_root_store::SIGNER_TYPE_ISSUER) {
-        // An unknown spec version causes an issuer to be ignored, but is not
-        // considered a parsing failure. Spec version is not required on
-        // mirrors.
+        // Spec version is not required on mirrors.
         return true;
       }
+      break;
   }
 
   std::optional<bssl::SignatureAlgorithm> sigalg =
@@ -1311,11 +1298,12 @@ Signer Signer::CreateForTesting(chrome_root_store::SignerType type,
   signer.operator_history.emplace_back(
       x509_util::RelativeOidToString(base_id),
       base::Time::FromSecondsSinceUnixEpoch(1));
-  // Signer will be returned with a fake key, which is good enough for most
-  // tests since the key isn't parsed until doing a signature verification.
-  // Tests that actually need to test signature verification can set the key
-  // field on the returned object to their chosen key.
-  signer.key = x509_util::CreateCryptoBuffer(std::string_view("fake key"));
+  // Signer will be returned with a well-formed key that tests do not have the
+  // private key for, which is good enough for most tests. Tests that actually
+  // need to test signature verification can set the key field on the returned
+  // object to their chosen key.
+  signer.key = x509_util::CreateCryptoBuffer(
+      crypto::keypair::PrivateKey::GenerateMldsa44().ToSubjectPublicKeyInfo());
   signer.type = type;
   signer.realm = chrome_root_store::REALM_PUBLICLY_TRUSTED;
   signer.signature_algorithm = bssl::SignatureAlgorithm::kMldsa44;

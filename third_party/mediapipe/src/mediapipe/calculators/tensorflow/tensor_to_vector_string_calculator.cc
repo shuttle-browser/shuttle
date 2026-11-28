@@ -16,12 +16,12 @@
 // vector<std::string> OR from (batched) two-dimensional Tensor of DT_STRING to
 // vector<vector<std::string>.
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensorflow/tensor_to_vector_string_calculator_options.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/tensor.h"  // from @org_tensorflow
+#include "tensorflow/core/framework/types.h"   // from @org_tensorflow
 
 namespace mediapipe {
 
@@ -85,7 +85,7 @@ absl::Status TensorToVectorStringCalculator::Process(CalculatorContext* cc) {
     RET_CHECK(2 == input_tensor.dims())
         << "Expected 2-dimensional Tensor, but the tensor shape is: "
         << input_tensor.shape().DebugString();
-    auto output = absl::make_unique<std::vector<std::vector<std::string>>>(
+    auto output = std::make_unique<std::vector<std::vector<std::string>>>(
         input_tensor.dim_size(0),
         std::vector<std::string>(input_tensor.dim_size(1)));
     for (int i = 0; i < input_tensor.dim_size(0); ++i) {
@@ -104,7 +104,7 @@ absl::Status TensorToVectorStringCalculator::Process(CalculatorContext* cc) {
           << "tensor shape is: " << input_tensor.shape().DebugString();
     }
     auto output =
-        absl::make_unique<std::vector<std::string>>(input_tensor.NumElements());
+        std::make_unique<std::vector<std::string>>(input_tensor.NumElements());
     const auto& tensor_values = input_tensor.flat<tensorflow::tstring>();
     for (int i = 0; i < input_tensor.NumElements(); ++i) {
       output->at(i) = tensor_values(i);

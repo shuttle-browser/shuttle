@@ -59,7 +59,8 @@ ChromeBrowserContextLifetimeTracker::~ChromeBrowserContextLifetimeTracker() =
 void ChromeBrowserContextLifetimeTracker::StartObserving(
     content::BrowserContext& context,
     BrowserContextLifetimeObserver& observer) {
-  DCHECK(watchers_.find(&observer) == watchers_.end());
+  CHECK(watchers_.find(&observer) == watchers_.end(),
+        base::NotFatalUntil::M163);
   Profile* profile = Profile::FromBrowserContext(&context);
   CHECK(!profile->IsOffTheRecord());
   watchers_[&observer] = std::make_unique<ProfileWatcher>(*profile, observer);

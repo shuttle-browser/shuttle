@@ -8,6 +8,7 @@
 #include <optional>
 #include <utility>
 
+#include "base/containers/adapters.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/to_string.h"
 #include "base/types/expected.h"
@@ -135,23 +136,17 @@ mojom::TabStripService::GetTabResult TabStripServiceImpl::GetTab(
 
   ASSIGN_OR_RETURN(auto tab_id, utils::GetContentNativeTabId(tab_mojom_id));
 
-  tabs_api::mojom::TabPtr tab_result;
   // TODO (crbug.com/412709270) TabStripModel or TabCollections should have an
   // api that can fetch id without of relying  on indices.
   auto tabs = tab_strip_model_adapter().GetTabs();
-  for (unsigned int i = 0; i < tabs.size(); ++i) {
-    auto& handle = tabs.at(i);
+  for (const auto& handle : tabs) {
     if (tab_id == handle.raw_value()) {
-      ASSIGN_OR_RETURN(tab_result, translation_adapter().ToMojoTab(handle));
+      return translation_adapter().ToMojoTab(handle);
     }
   }
 
-  if (tab_result) {
-    return std::move(tab_result);
-  } else {
-    return base::unexpected(mojo_base::mojom::Error::New(
-        mojo_base::mojom::Code::kNotFound, "Tab not found"));
-  }
+  return base::unexpected(mojo_base::mojom::Error::New(
+      mojo_base::mojom::Code::kNotFound, "Tab not found"));
 }
 
 mojom::TabStripService::CreateTabAtResult TabStripServiceImpl::CreateTabAt(
@@ -238,8 +233,11 @@ void TabStripServiceImpl::CloseTabs(
 
   // Close from last to first, that way the removals won't change the index of
   // the next target.
-  std::ranges::sort(tab_strip_indices, std::ranges::greater());
-  for (auto idx : tab_strip_indices) {
+  // We intentionally avoid using std::ranges::greater() to sort, which would
+  // bypass libc++'s pre-instantiated sort for arithmetic types and inflate
+  // binary size.
+  std::ranges::sort(tab_strip_indices);
+  for (auto idx : base::Reversed(tab_strip_indices)) {
     tab_strip_model_adapter().CloseTab(idx);
   }
 }

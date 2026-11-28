@@ -15,6 +15,7 @@
 #include "chrome/browser/extensions/low_trust_policy_install_block_manager.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/policy/core/common/policy_logger.h"
+#include "extensions/browser/extension_util.h"
 #include "extensions/browser/managed_installation_mode.h"
 #include "extensions/browser/manifest_v2_handler.h"
 #include "extensions/buildflags/buildflags.h"

@@ -15,10 +15,11 @@
 #include <memory>
 #include <string>
 
-#include "absl/log/absl_log.h"
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/file_helpers.h"
-#include "mediapipe/framework/port/status.h"
 
 namespace mediapipe {
 
@@ -48,7 +49,7 @@ class LocalFilePatternContentsCalculator : public CalculatorBase {
   }
 
   absl::Status Open(CalculatorContext* cc) override {
-    MP_RETURN_IF_ERROR(mediapipe::file::MatchFileTypeInDirectory(
+    ABSL_RETURN_IF_ERROR(mediapipe::file::MatchFileTypeInDirectory(
         cc->InputSidePackets().Tag(kFileDirectoryTag).Get<std::string>(),
         cc->InputSidePackets().Tag(kFileSuffixTag).Get<std::string>(),
         &filenames_));
@@ -60,7 +61,7 @@ class LocalFilePatternContentsCalculator : public CalculatorBase {
     if (current_output_ < filenames_.size()) {
       auto contents = absl::make_unique<std::string>();
       ABSL_LOG(INFO) << filenames_[current_output_];
-      MP_RETURN_IF_ERROR(mediapipe::file::GetContents(
+      ABSL_RETURN_IF_ERROR(mediapipe::file::GetContents(
           filenames_[current_output_], contents.get()));
       ++current_output_;
       cc->Outputs()

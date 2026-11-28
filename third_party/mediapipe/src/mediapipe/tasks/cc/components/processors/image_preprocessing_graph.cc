@@ -20,8 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/calculators/image/image_clone_calculator.pb.h"
 #include "mediapipe/calculators/tensor/image_to_tensor_calculator.pb.h"
 #include "mediapipe/calculators/tensor/inference_calculator.pb.h"
@@ -38,7 +39,7 @@ limitations under the License.
 #include "mediapipe/tasks/cc/core/proto/acceleration.pb.h"
 #include "mediapipe/tasks/cc/core/proto/base_options.pb.h"
 #include "mediapipe/tasks/cc/vision/utils/image_tensor_specs.h"
-#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/schema/schema_generated.h"  // from @litert
 
 namespace mediapipe {
 namespace tasks {
@@ -119,6 +120,7 @@ absl::Status ConfigureImageToTensorCalculator(
 bool DetermineImagePreprocessingGpuBackend(
     const core::proto::Acceleration& acceleration) {
   return acceleration.has_gpu() ||
+         (acceleration.has_litert() && acceleration.litert().has_gpu()) ||
          (acceleration.has_nnapi() &&
           acceleration.nnapi().accelerator_name() == "google-edgetpu");
 }
@@ -134,9 +136,9 @@ absl::Status ConfigureImagePreprocessingGraph(
     const ModelResources& model_resources, bool use_gpu,
     GpuOrigin::Mode gpu_origin,
     proto::ImagePreprocessingGraphOptions* options) {
-  MP_ASSIGN_OR_RETURN(auto image_tensor_specs,
-                      vision::BuildInputImageTensorSpecs(model_resources));
-  MP_RETURN_IF_ERROR(ConfigureImageToTensorCalculator(
+  ABSL_ASSIGN_OR_RETURN(auto image_tensor_specs,
+                        vision::BuildInputImageTensorSpecs(model_resources));
+  ABSL_RETURN_IF_ERROR(ConfigureImageToTensorCalculator(
       image_tensor_specs, gpu_origin,
       options->mutable_image_to_tensor_options()));
   // The GPU backend isn't able to process int data. If the input tensor is

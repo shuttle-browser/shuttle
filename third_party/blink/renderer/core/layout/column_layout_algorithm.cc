@@ -13,6 +13,7 @@
 #include "third_party/blink/renderer/core/layout/column_spanner_path.h"
 #include "third_party/blink/renderer/core/layout/constraint_space_builder.h"
 #include "third_party/blink/renderer/core/layout/fragmentation_utils.h"
+#include "third_party/blink/renderer/core/layout/fragmented_oof_container.h"
 #include "third_party/blink/renderer/core/layout/geometry/fragment_geometry.h"
 #include "third_party/blink/renderer/core/layout/geometry/layout_unit_diffuser.h"
 #include "third_party/blink/renderer/core/layout/geometry/logical_size.h"
@@ -248,6 +249,16 @@ LayoutUnit CombinedColumnGapSize(const ComputedStyle& style,
 ColumnLayoutAlgorithm::ColumnLayoutAlgorithm(
     const LayoutAlgorithmParams& params)
     : LayoutAlgorithm(params) {
+  if (const FragmentedOofContainer* fragmented_oof_container =
+          container_builder_.GetFragmentedOofContainer()) {
+    if (!GetConstraintSpace().HasBlockFragmentation()) {
+      // Set up the FragmentedOofContainer tree for children. The outermost
+      // fragmentation context root (this node) doesn't participate in block
+      // fragmentation on its own, so this is just for the subtree.
+      fragmented_oof_container_for_children_ = fragmented_oof_container;
+      container_builder_.SetFragmentedOofContainer(nullptr);
+    }
+  }
   // When a list item has multicol, |ColumnLayoutAlgorithm| needs to keep
   // track of the list marker instead of the child layout algorithm. See
   // |BlockLayoutAlgorithm|.
@@ -263,6 +274,31 @@ ColumnLayoutAlgorithm::ColumnLayoutAlgorithm(
 }
 
 const LayoutResult* ColumnLayoutAlgorithm::Layout() {
+  const LayoutResult* result = LayoutInternal();
+
+  if (result->Status() == LayoutResult::kDisableFragmentation) {
+    return RelayoutWithoutFragmentation<ColumnLayoutAlgorithm>();
+  }
+
+  if ((relayout_mode_ & kRelayoutForFragmentedOof) ||
+      GetConstraintSpace().HasBlockFragmentation()) {
+    return result;
+  }
+
+  // We're at the outermost fragmentation context root. If there are OOFs
+  // inside, we need to relayout in order to place them correctly.
+  do {
+    if (!BuildFragmentedOofContainerTree(*result, &container_builder_)) {
+      return result;
+    }
+
+    // Need to lay out again, because there may be OOFs that were incorrectly
+    // positioned and/or sized.
+    result = RelayoutWithPrecollectedOofs<ColumnLayoutAlgorithm>();
+  } while (true);
+}
+
+const LayoutResult* ColumnLayoutAlgorithm::LayoutInternal() {
   const LogicalSize border_box_size = container_builder_.InitialBorderBoxSize();
   DCHECK_GE(ChildAvailableSize().inline_size, LayoutUnit());
   row_gap_size_ =
@@ -429,7 +465,21 @@ const LayoutResult* ColumnLayoutAlgorithm::Layout() {
                       unconstrained_intrinsic_block_size, container_builder_);
   }
 
-  container_builder_.HandleOofsAndSpecialDescendants();
+  if (!GetConstraintSpace().HasBlockFragmentation()) {
+    // If at the outermost fragmentation context root, grab any OOFs that don't
+    // participate in block fragmentation. These are either contained by the
+    // outermost multicol container (this one) itself, or by something on the
+    // outside. If we relayout for OOF fragmentation, these will not be
+    // automatically discovered in that pass, since discovery is then managed by
+    // FragmentedOofContainer.
+    container_builder_.CollectUnfragmentedOofs();
+  }
+
+  LayoutResult::EStatus oof_status =
+      container_builder_.HandleOofsAndSpecialDescendants();
+  if (oof_status != LayoutResult::kSuccess) {
+    return container_builder_.Abort(oof_status);
+  }
 
   if (gap_accumulator_) {
     const GapGeometry* gap_geometry = gap_accumulator_->BuildGapGeometry(
@@ -443,7 +493,7 @@ const LayoutResult* ColumnLayoutAlgorithm::Layout() {
     if (GetConstraintSpace().HasBlockFragmentation()) {
       const wtf_size_t first_unprocessed_row_gap_index =
           first_unprocessed_row_gap_index_ +
-          (gap_geometry ? gap_geometry->MulticolPaintableMainGapCount() : 0u) +
+          (gap_geometry ? gap_geometry->PaintableGapCount(kForRows) : 0u) +
           suppressed_row_gap_count_;
       if (auto* existing_data = container_builder_.GetBreakTokenData()) {
         To<MulticolBreakTokenData>(existing_data)
@@ -555,7 +605,7 @@ const PhysicalBoxFragment& ColumnLayoutAlgorithm::CreateEmptyColumn(
   ConstraintSpace child_space = CreateConstraintSpaceForFragmentainer(
       parent_space, kFragmentColumn, column_size,
       /*percentage_resolution_size=*/column_size, /*balance_columns=*/false,
-      kBreakAppealLastResort);
+      kBreakAppealLastResort, /*block_start_annotation_space=*/LayoutUnit());
   FragmentGeometry fragment_geometry =
       CalculateInitialFragmentGeometry(child_space, node, break_token);
   LayoutAlgorithmParams params(node, fragment_geometry, child_space);
@@ -665,8 +715,8 @@ BreakStatus ColumnLayoutAlgorithm::LayoutChildren() {
       // multicol container.
       DCHECK(RuntimeEnabledFeatures::FragmentedOofInCbEnabled());
       CHECK(child_break_token);
-      container_builder_.AddOutOfFlowChildCandidate(entry.descendant_node,
-                                                    *child_break_token);
+      container_builder_.AddOutOfFlowChildCandidate(
+          entry.descendant_node, LogicalStaticPosition(), child_break_token);
       walker.Next();
       continue;
     }
@@ -797,9 +847,17 @@ const LayoutResult* ColumnLayoutAlgorithm::LayoutFragmentationContext(
       }
     }
 
+    LayoutUnit block_start_annotation_space;
+    if (RuntimeEnabledFeatures::AnnotationSpaceForMultiColEnabled() &&
+        GetConstraintSpace().ContainsAnnotations() &&
+        !IsBreakInside(GetBreakToken()) &&
+        line_offset == BorderScrollbarPadding().block_start) {
+      block_start_annotation_space = Padding().block_start;
+    }
+
     const LayoutResult* new_result =
         LayoutLine(next_column_token, line_offset, minimum_column_block_size,
-                   !is_first_row, margin_strut);
+                   !is_first_row, block_start_annotation_space, margin_strut);
 
     if (!new_result) {
       // An outer fragmentainer break was inserted before this line.
@@ -860,6 +918,7 @@ const LayoutResult* ColumnLayoutAlgorithm::LayoutLine(
     LayoutUnit line_offset,
     LayoutUnit minimum_column_block_size,
     bool has_wrapped,
+    LayoutUnit block_start_annotation_space,
     MarginStrut* margin_strut) {
   LogicalSize column_size(ColumnInlineSize(), remaining_content_block_size_);
   if (!Style().HasAutoColumnHeight()) {
@@ -991,7 +1050,7 @@ const LayoutResult* ColumnLayoutAlgorithm::LayoutLine(
           GetConstraintSpace(), kFragmentColumn, column_size,
           ColumnPercentageResolutionSize(), balance_columns,
           min_break_appeal.value_or(kBreakAppealLastResort),
-          &container_builder_);
+          block_start_annotation_space, &container_builder_);
 
       FragmentGeometry fragment_geometry = CalculateInitialFragmentGeometry(
           child_space, Node(), GetBreakToken());
@@ -999,6 +1058,8 @@ const LayoutResult* ColumnLayoutAlgorithm::LayoutLine(
       LayoutAlgorithmParams params(Node(), fragment_geometry, child_space);
       params.fragmentation.break_token = column_break_token;
       params.fragmentation.column_spanner_path = spanner_path_;
+      params.fragmentation.fragmented_oof_container =
+          FragmentedOofContainerForColumns();
 
       BlockLayoutAlgorithm child_algorithm(params);
       child_algorithm.SetBoxType(PhysicalFragment::kColumnBox);
@@ -1120,7 +1181,7 @@ const LayoutResult* ColumnLayoutAlgorithm::LayoutLine(
             // ourselves recursively.
             return LayoutLine(next_column_token, line_offset,
                               minimum_column_block_size, has_wrapped,
-                              margin_strut);
+                              block_start_annotation_space, margin_strut);
           }
         }
       }
@@ -1479,7 +1540,7 @@ BreakStatus ColumnLayoutAlgorithm::LayoutSpanner(
   LogicalOffset offset(
       BorderScrollbarPadding().inline_start + margins.inline_start,
       block_offset);
-  container_builder_.AddResult(*result, offset);
+  container_builder_.AddResult(*result, offset, margins);
 
   // According to the spec, the first spanner that has a baseline contributes
   // with its baseline to the multicol container. This is in contrast to column

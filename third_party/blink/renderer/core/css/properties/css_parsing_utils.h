@@ -135,7 +135,7 @@ CSSPrimitiveValue* ConsumeInteger(
     CSSParserTokenStream&,
     const CSSParserContext&,
     CSSParserLocalContext&,
-    double minimum_value = -std::numeric_limits<double>::max(),
+    CSSPrimitiveValue::ValueRange = CSSPrimitiveValue::ValueRange::kInteger,
     const bool is_percentage_allowed = true);
 CSSPrimitiveValue* ConsumeIntegerOrNumberCalc(
     CSSParserTokenStream&,
@@ -237,7 +237,7 @@ CORE_EXPORT CSSURLPatternValue* ConsumeUrlPattern(CSSParserTokenStream&,
 
 // Parses a comma-separated list of param() functions for the
 // link-parameters property.
-// Grammar: param(<dashed-ident>, <declaration-value>?)#
+// Grammar: param(<dashed-ident>: <declaration-value>?)#
 // Returns a CSSValueList of CSSParamValuePair, or nullptr on failure.
 // Spec: https://drafts.csswg.org/css-link-params/
 CORE_EXPORT CSSValue* ConsumeLinkParameters(CSSParserTokenStream&,
@@ -404,9 +404,7 @@ bool IsContentPositionOrLeftOrRightKeyword(CSSValueID);
 CORE_EXPORT bool IsCSSWideKeyword(CSSValueID);
 CORE_EXPORT bool IsCSSWideKeyword(StringView);
 bool FontFamilyNeedsQuoting(const AtomicString&);
-bool IsRevertKeyword(StringView);
 bool IsDefaultKeyword(StringView);
-bool IsHashIdentifier(const CSSParserToken&);
 CORE_EXPORT bool IsDashedIdent(const CSSParserToken&);
 
 // https://drafts.csswg.org/css-mixins-1/#function-rule
@@ -426,9 +424,6 @@ CORE_EXPORT CSSValue* ConsumeCSSWideKeyword(CSSParserTokenStream&,
 // https://drafts.csswg.org/css-values-4/#identifier-value
 template <CSSValueID, CSSValueID...>
 bool IsCustomIdent(CSSValueID);
-
-// https://drafts.csswg.org/scroll-animations-1/#typedef-timeline-name
-bool IsTimelineName(const CSSParserToken&);
 
 // TODO(nrosenthal) add definition once the spec PR lands.
 // See https://github.com/w3c/csswg-drafts/pull/12359
@@ -460,9 +455,6 @@ CSSValue* ConsumeTimelineRangeName(CSSParserTokenStream&);
 CSSValue* ConsumeTimelineRangeNameAndPercent(CSSParserTokenStream&,
                                              const CSSParserContext&,
                                              CSSParserLocalContext&);
-CSSValue* ConsumeAnimationDelay(CSSParserTokenStream&,
-                                const CSSParserContext&,
-                                CSSParserLocalContext&);
 CSSValue* ConsumeAnimationRange(CSSParserTokenStream&,
                                 const CSSParserContext&,
                                 CSSParserLocalContext&,
@@ -579,11 +571,12 @@ CSSValue* ConsumeCornerShape(CSSParserTokenStream&,
                              const CSSParserContext&,
                              CSSParserLocalContext&);
 
-bool ConsumeCorner(CSSParserTokenStream&,
-                   const CSSParserContext&,
-                   CSSParserLocalContext&,
-                   CSSValue*& radius,
-                   CSSValue*& shape);
+// <length-percentage [0,inf]> [ / <length-percentage [0,inf]> ]? |
+// <length-percentage [0,inf]>{1,2}
+// https://drafts.csswg.org/css-borders-4/#typedef-border-radius
+CSSValue* ConsumeSingleCornerRadius(CSSParserTokenStream&,
+                                    const CSSParserContext&,
+                                    CSSParserLocalContext&);
 
 CSSValue* ConsumeGapDecorationPropertyList(CSSParserTokenStream&,
                                            const CSSParserContext&,

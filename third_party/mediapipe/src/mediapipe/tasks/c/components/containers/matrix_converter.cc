@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <cstring>
 
-#include "Eigen/Core"
+#include "Eigen/Core"  // from @eigen
 #include "mediapipe/tasks/c/components/containers/matrix.h"
 
 namespace mediapipe::tasks::c::components::containers {
 
-void CppConvertToMatrix(const Eigen::MatrixXf& in, ::Matrix* out) {
+void CppConvertToMatrix(const Eigen::MatrixXf& in, MpMatrix* out) {
   out->rows = in.rows();
   out->cols = in.cols();
   out->data = new float[out->rows * out->cols];
@@ -33,7 +33,7 @@ void CppConvertToMatrix(const Eigen::MatrixXf& in, ::Matrix* out) {
   memcpy(out->data, in.data(), sizeof(float) * out->rows * out->cols);
 }
 
-void CppCloseMatrix(::Matrix* m) {
+void CppCloseMatrix(MpMatrix* m) {
   if (m->data) {
     delete[] m->data;
     m->data = nullptr;

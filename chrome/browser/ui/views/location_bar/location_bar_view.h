@@ -56,6 +56,7 @@ class CommandUpdater;
 class ContentSettingBubbleModelDelegate;
 class OmniboxController;
 enum class OmniboxPart;
+class OmniboxPopupPresenterBase;
 class OmniboxPopupView;
 class OmniboxViewViews;
 class PermissionDashboardView;
@@ -256,6 +257,8 @@ class LocationBarView
 
   // OmniboxPopupPresenterDelegate:
   views::Widget* GetLocationBarWidget() override;
+  void OnPopupFirstVisuallyNonEmptyPaint() override;
+  void OnPopupWebUIContentsReleased() override;
   views::View* GetLocationBarFocusRestoreView() override;
   bool is_full_webui_omnibox() const override;
 
@@ -310,6 +313,12 @@ class LocationBarView
   }
 
   SkColor GetBackgroundColorForTesting() const { return background_color_; }
+
+  // Returns the presenter that shows the omnibox popup's WebUI in a widget, or
+  // null if the popup isn't shown by one (e.g. a native popup, or the WebUI
+  // omnibox hosted in the location bar).
+  // TODO(crbug.com/585197660): Remove; tests should use the popup host.
+  OmniboxPopupPresenterBase* GetOmniboxPopupPresenterForTesting();
 
  private:
   FRIEND_TEST_ALL_PREFIXES(SecurityIndicatorTest, CheckIndicatorText);
@@ -455,6 +464,8 @@ class LocationBarView
   void AnimationCanceled(const gfx::Animation* animation) override;
   void OnChildViewRemoved(View* observed_view, View* child) override;
 
+  void OnChangedImpl(bool suppress_animations);
+
   void OnTouchUiChanged();
 
   // Determines whether the location icon should be overridden while a chip is
@@ -480,7 +491,7 @@ class LocationBarView
   bool GetPopupMode() const;
 
   // Returns the `PageActionController` for the currently active tab, or nullptr
-  // if there is no valid active tab or the tab is in the process of being
+  // if there is no valid active tab or its `PageActionController` has been
   // destroyed.
   page_actions::PageActionController* GetPageActionController();
 
@@ -510,7 +521,12 @@ class LocationBarView
 
   // The view holding the regular results popup.
   std::unique_ptr<OmniboxPopupView> omnibox_popup_view_;
-  // The presenter controlling the showing of the AI mode popup.
+  // Non-owning pointer to the presenter owned by `omnibox_popup_view_`, if any.
+  // Declared after `omnibox_popup_view_` so it is destroyed first in reverse
+  // member order.
+  // TODO(crbug.com/585197660): Remove with
+  // GetOmniboxPopupPresenterForTesting().
+  raw_ptr<OmniboxPopupPresenterBase> omnibox_popup_presenter_ = nullptr;
 
   base::CallbackListSubscription popup_state_changed_subscription_;
 
@@ -572,6 +588,10 @@ class LocationBarView
   const bool is_full_webui_omnibox_;
 
   bool is_initialized_ = false;
+
+  // True while `Update()` is updating the omnibox view, used to suppress
+  // intermediate `OnChanged()` calls before the final `OnChangedImpl()` call.
+  bool in_update_ = false;
 
   SkColor background_color_ = gfx::kPlaceholderColor;
 

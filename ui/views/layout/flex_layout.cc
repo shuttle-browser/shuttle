@@ -15,6 +15,7 @@
 #include "base/check_op.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/memory/stack_allocated.h"
 #include "base/notimplemented.h"
 #include "base/numerics/safe_conversions.h"
 #include "ui/base/class_property.h"
@@ -111,16 +112,10 @@ constexpr LayoutAlignment FlexLayout::kDefaultCrossAxisAlignment;
 
 // Calculates and maintains 1D spacing between a sequence of child views.
 class FlexLayout::ChildViewSpacing {
- public:
-  // Given the indices of two child views, returns the amount of space that
-  // should be placed between them if they were adjacent. If the first index is
-  // absent, uses the left edge of the parent container. If the second index is
-  // absent, uses the right edge of the parent container.
-  using GetViewSpacingCallback =
-      base::RepeatingCallback<int(std::optional<size_t>,
-                                  std::optional<size_t>)>;
+  STACK_ALLOCATED();
 
-  explicit ChildViewSpacing(GetViewSpacingCallback get_view_spacing);
+ public:
+  ChildViewSpacing(const FlexLayout* layout, const FlexLayoutData* data);
   ChildViewSpacing(const ChildViewSpacing& other) = default;
   ChildViewSpacing& operator=(const ChildViewSpacing& other) = default;
 
@@ -158,7 +153,13 @@ class FlexLayout::ChildViewSpacing {
   // added. The view must not already be present.
   int GetAddDelta(size_t view_index) const;
 
-  GetViewSpacingCallback get_view_spacing_;
+  int GetViewSpacing(std::optional<size_t> child1_index,
+                     std::optional<size_t> child2_index) const {
+    return layout_->CalculateChildSpacing(*data_, child1_index, child2_index);
+  }
+
+  const FlexLayout* layout_;
+  const FlexLayoutData* data_;
   // Maps from view index to the leading spacing for that index.
   base::flat_map<size_t,
                  int,
@@ -169,10 +170,11 @@ class FlexLayout::ChildViewSpacing {
   int trailing_space_;
 };
 
-FlexLayout::ChildViewSpacing::ChildViewSpacing(
-    GetViewSpacingCallback get_view_spacing)
-    : get_view_spacing_(std::move(get_view_spacing)),
-      trailing_space_(get_view_spacing_.Run(std::nullopt, std::nullopt)) {}
+FlexLayout::ChildViewSpacing::ChildViewSpacing(const FlexLayout* layout,
+                                               const FlexLayoutData* data)
+    : layout_(layout),
+      data_(data),
+      trailing_space_(GetViewSpacing(std::nullopt, std::nullopt)) {}
 
 bool FlexLayout::ChildViewSpacing::HasViewIndex(size_t view_index) const {
   return leading_spacings_.find(view_index) != leading_spacings_.end();
@@ -205,13 +207,13 @@ SizeBound FlexLayout::ChildViewSpacing::GetMaxSize(
     size_t view_index,
     int current_size,
     const SizeBound& available_space) const {
-  DCHECK_GE(available_space, 0);
+  CHECK_GE(available_space, 0, base::NotFatalUntil::M163);
 
   if (HasViewIndex(view_index)) {
     return current_size + available_space;
   }
 
-  DCHECK_EQ(0, current_size);
+  CHECK_EQ(0, current_size, base::NotFatalUntil::M163);
   // Making the child visible may result in the addition of margin space, which
   // counts against the child view's flex space allocation.
   //
@@ -234,12 +236,12 @@ int FlexLayout::ChildViewSpacing::GetTotalSizeChangeForNewSize(
 void FlexLayout::ChildViewSpacing::AddViewIndex(size_t view_index,
                                                 int* new_leading,
                                                 int* new_trailing) {
-  DCHECK(!HasViewIndex(view_index));
+  CHECK(!HasViewIndex(view_index), base::NotFatalUntil::M163);
   std::optional<size_t> prev = GetPreviousViewIndex(view_index);
   std::optional<size_t> next = GetNextViewIndex(view_index);
 
-  const int leading_space = get_view_spacing_.Run(prev, view_index);
-  const int trailing_space = get_view_spacing_.Run(view_index, next);
+  const int leading_space = GetViewSpacing(prev, view_index);
+  const int trailing_space = GetViewSpacing(view_index, next);
   leading_spacings_[view_index] = leading_space;
   if (next) {
     leading_spacings_[*next] = trailing_space;
@@ -274,12 +276,12 @@ std::optional<size_t> FlexLayout::ChildViewSpacing::GetNextViewIndex(
 }
 
 int FlexLayout::ChildViewSpacing::GetAddDelta(size_t view_index) const {
-  DCHECK(!HasViewIndex(view_index));
+  CHECK(!HasViewIndex(view_index), base::NotFatalUntil::M163);
   std::optional<size_t> prev = GetPreviousViewIndex(view_index);
   std::optional<size_t> next = GetNextViewIndex(view_index);
   const int old_spacing = next ? GetLeadingSpace(*next) : GetTrailingInset();
-  const int new_spacing = get_view_spacing_.Run(prev, view_index) +
-                          get_view_spacing_.Run(view_index, next);
+  const int new_spacing =
+      GetViewSpacing(prev, view_index) + GetViewSpacing(view_index, next);
   return new_spacing - old_spacing;
 }
 
@@ -460,9 +462,7 @@ ProposedLayout FlexLayout::CalculateProposedLayout(
   InitializeChildData(bounds, data, order_to_view_index);
 
   // Do the initial layout update, calculating spacing between children.
-  ChildViewSpacing child_spacing(
-      base::BindRepeating(&FlexLayout::CalculateChildSpacing,
-                          base::Unretained(this), std::cref(data)));
+  ChildViewSpacing child_spacing(this, &data);
   UpdateLayoutFromChildren(bounds, data, child_spacing);
 
   // We now have a layout with all views at the absolute minimum size and with
@@ -605,9 +605,7 @@ int FlexLayout::CalculateMainAxisSpaceAvailableToView(
   // Target view must be a child and included in layout.
   CHECK(after_target_view);
 
-  ChildViewSpacing child_spacing(
-      base::BindRepeating(&FlexLayout::CalculateChildSpacing,
-                          base::Unretained(this), std::cref(data)));
+  ChildViewSpacing child_spacing(this, &data);
   UpdateLayoutFromChildren(bounds, data, child_spacing);
 
   // Subtract used size from available size, forcing return value to be at least
@@ -798,17 +796,18 @@ void FlexLayout::CalculateNonFlexAvailableSpace(
     FlexLayoutData& data) const {
   // Add all views which are participating in flex (and will have their
   // available space set later) to a lookup so we can skip them now.
-  std::set<size_t> all_flex_indices;
+  absl::InlinedVector<bool, 16> is_flex_child(data.child_data.size(), false);
   for (const auto& order_to_indices : flex_views) {
-    all_flex_indices.insert(order_to_indices.second.begin(),
-                            order_to_indices.second.end());
+    for (size_t index : order_to_indices.second) {
+      is_flex_child[index] = true;
+    }
   }
 
   // Work through the remaining views and set their available space. Since
   // non-flex views get their space first, these views will have access to the
   // entire budget of remaining space in the layout.
   for (size_t index = 0; index < data.child_data.size(); ++index) {
-    if (all_flex_indices.contains(index)) {
+    if (is_flex_child[index]) {
       continue;
     }
 
@@ -1168,7 +1167,7 @@ bool FlexLayout::ResolveFlexibleLengths(const NormalizedSizeBounds& bounds,
     SizeBound child_size = flex_child.flex_base_content_size.main();
 
     const int weight = flex_child.flex.weight();
-    DCHECK_GT(weight, 0);
+    CHECK_GT(weight, 0, base::NotFatalUntil::M163);
     const SizeBound extra_space =
         base::ClampFloor(temp_remaining_free_space.value() * weight /
                              static_cast<float>(flex_total) +

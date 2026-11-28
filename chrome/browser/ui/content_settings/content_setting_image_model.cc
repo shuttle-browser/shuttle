@@ -26,7 +26,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/blocked_content/framebust_block_tab_helper.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
-#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/content_settings/content_setting_bubble_model.h"
 #include "chrome/browser/ui/content_settings/content_setting_image_model_states.h"
 #include "chrome/browser/ui/layout_constants.h"
@@ -101,7 +101,7 @@ DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(ContentSettingImageModel,
                                       kClipboardRWElementId);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(ContentSettingImageModel,
                                       kStorageAccessElementId);
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(ContentSettingImageModel,
                                       kSmartCardIconElementId);
 #endif
@@ -134,7 +134,7 @@ constexpr auto kContentSettingImageOrder = std::to_array<ImageType>({
     ImageType::kClipboardReadWrite,
     ImageType::kNotifications,
     ImageType::kStorageAccess,
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
     ImageType::kSmartCard,
 #endif
 #if BUILDFLAG(IS_WIN)
@@ -179,7 +179,7 @@ constexpr ui::ElementIdentifier GetElementIdentifierForType(
       return ContentSettingImageModel::kStorageAccessElementId;
     case ImageType::kNotifications:
       return kNotificationContentSettingImageView;
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
     case ImageType::kSmartCard:
       return ContentSettingImageModel::kSmartCardIconElementId;
 #endif
@@ -322,7 +322,7 @@ class ContentSettingMediaImageModel : public ContentSettingImageModel {
   PageSpecificContentSettings::MicrophoneCameraState state_;
 };
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
 // Image model for displaying media icons in the location bar.
 class ContentSettingSmartCardImageModel
     : public ContentSettingSimpleImageModel {
@@ -357,7 +357,7 @@ class ContentSettingSmartCardImageModel
         delegate, page, ContentSettingsType::SMART_CARD_GUARD);
   }
 };
-#endif  // BUILDFLAG(IS_CHROMEOS)
+#endif  // BUILDFLAG(ENABLE_SMART_CARD)
 
 class ContentSettingSensorsImageModel : public ContentSettingSimpleImageModel {
  public:
@@ -608,7 +608,7 @@ void GetIconChromeRefresh(ContentSettingsType type,
                               ? vector_icons::kIframeIcon
                               : vector_icons::kIframeOldIcon);
       return;
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
     case ContentSettingsType::SMART_CARD_GUARD:
       // Indicator shows only when at least one connection is active, hence no
       // need for the off icon.
@@ -709,7 +709,7 @@ ContentSettingImageModel::CreateForContentType(ImageType image_type) {
       return std::make_unique<ContentSettingStorageAccessImageModel>();
     case ImageType::kNotifications:
       return std::make_unique<ContentSettingNotificationsImageModel>();
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
     case ImageType::kSmartCard:
       return std::make_unique<ContentSettingSmartCardImageModel>();
 #endif
@@ -732,11 +732,13 @@ void ContentSettingImageModel::Update(content::WebContents* contents) {
       ContentSettingImageModelStates::Get(contents)->SetAccessibilityNotified(
           image_type(), false);
     }
-    if (should_auto_open_bubble_) {
-      ContentSettingImageModelStates::Get(contents)->SetBubbleWasAutoOpened(
-          image_type(), false);
-    }
+    // Note: subclasses reset `should_auto_open_bubble_` at the start of
+    // UpdateAndGetVisibility(), so it can't be used to guard this reset.
+    ContentSettingImageModelStates::Get(contents)->SetBubbleWasAutoOpened(
+        image_type(), false);
     ContentSettingImageModelStates::Get(contents)->SetIconShownRecorded(
+        image_type(), false);
+    ContentSettingImageModelStates::Get(contents)->SetPromoWasShown(
         image_type(), false);
   }
 }
@@ -1173,7 +1175,9 @@ bool ContentSettingMediaImageModel::UpdateAndGetVisibility(
   }
 #endif  // BUILDFLAG(IS_MAC)
 
-  CHECK(IsMicAccessed() || IsCamAccessed(), base::NotFatalUntil::M162);
+  // TODO(crbug.com/580529330): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(IsMicAccessed() || IsCamAccessed());
 
   int id = IDS_CAMERA_BLOCKED;
   if (IsMicBlockedOnSiteLevel() || IsCameraBlockedOnSiteLevel()) {
@@ -1424,6 +1428,7 @@ ContentSettingNotificationsImageModel::ContentSettingNotificationsImageModel()
   SetIcon(ContentSettingsType::NOTIFICATIONS, /*blocked=*/false);
   set_tooltip(
       l10n_util::GetStringUTF16(IDS_NOTIFICATIONS_OFF_EXPLANATORY_TEXT));
+  set_accessibility_string_id(IDS_NOTIFICATIONS_OFF_EXPLANATORY_TEXT);
 }
 
 bool ContentSettingNotificationsImageModel::UpdateAndGetVisibility(
@@ -1524,6 +1529,8 @@ ContentSettingImageModel::ContentSettingImageModel(
       image_type_(image_type),
       image_type_should_notify_accessibility_(
           image_type_should_notify_accessibility) {}
+
+ContentSettingImageModel::~ContentSettingImageModel() = default;
 
 std::unique_ptr<ContentSettingBubbleModel>
 ContentSettingImageModel::CreateBubbleModel(

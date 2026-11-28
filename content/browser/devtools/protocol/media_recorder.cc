@@ -5,10 +5,14 @@
 #include "content/browser/devtools/protocol/media_recorder.h"
 
 #include "base/functional/bind.h"
+#include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/timer/timer.h"
+#include "base/uuid.h"
+#include "build/build_config.h"
 #include "components/viz/common/surfaces/frame_sink_id.h"
 #include "content/browser/devtools/devtools_stream_file.h"
+#include "content/browser/devtools/protocol/display_capture_launcher.h"
 #include "content/browser/media/capture/web_contents_video_capture_device.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/renderer_host/render_widget_host_impl.h"
@@ -16,6 +20,8 @@
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/public/browser/audio_service.h"
 #include "content/public/browser/child_process_host.h"
+#include "content/public/browser/desktop_media_id.h"
+#include "content/public/browser/media_stream_request.h"
 #include "content/public/browser/service_process_host.h"
 #include "content/public/browser/web_contents_media_capture_id.h"
 #include "media/audio/audio_input_device.h"
@@ -34,6 +40,8 @@
 namespace content::protocol {
 
 namespace {
+
+constexpr int kIdleKeepAliveIntervalMs = 1000;
 
 class DummyObserver final : public media::mojom::AudioInputStreamObserver {
  public:
@@ -168,7 +176,11 @@ class MediaRecorderVideoFrameReceiver : public media::VideoFrameReceiver {
   }
 
   void OnCaptureConfigurationChanged() override {}
-  void OnError(media::VideoCaptureError error) override {}
+  void OnError(media::VideoCaptureError error) override {
+    if (recorder_) {
+      recorder_->OnVideoCaptureError();
+    }
+  }
   void OnFrameDropped(media::VideoCaptureFrameDropReason reason) override {}
   void OnNewCaptureVersion(media::CaptureVersion capture_version) override {}
   void OnFrameWithEmptyRegionCapture() override {}
@@ -177,8 +189,13 @@ class MediaRecorderVideoFrameReceiver : public media::VideoFrameReceiver {
   void OnStartedUsingGpuDecode() override {}
   void OnStopped() override {}
 
+  base::WeakPtr<media::VideoFrameReceiver> GetWeakPtr() {
+    return weak_factory_.GetWeakPtr();
+  }
+
  private:
   base::WeakPtr<MediaRecorder> recorder_;
+  base::WeakPtrFactory<MediaRecorderVideoFrameReceiver> weak_factory_{this};
 };
 
 #if BUILDFLAG(ENABLE_LIBAOM)
@@ -233,11 +250,6 @@ Response MediaRecorder::Start(RenderFrameHostImpl* host,
   return Response::ServerError(
       "Video recording is not supported without AV1/libaom enabled.");
 #else
-  session_start_time_ = base::TimeTicks::Now();
-
-  max_width_ = max_width;
-  max_height_ = max_height;
-
   gfx::Size surface_size = gfx::Size();
   RenderWidgetHostViewBase* const view =
       static_cast<RenderWidgetHostViewBase*>(host->GetView());
@@ -246,30 +258,9 @@ Response MediaRecorder::Start(RenderFrameHostImpl* host,
     last_surface_size_ = surface_size;
   }
 
-  stream_file_ = DevToolsStreamFile::Create(io_context_, true /* binary */);
-  stream_ = stream_file_->handle();
-
-  mojo::Remote<
-      devtools_media_encoding_service::mojom::DevToolsMediaEncodingService>
-      remote = content::ServiceProcessHost::Launch<
-          devtools_media_encoding_service::mojom::DevToolsMediaEncodingService>(
-          ServiceProcessHost::Options()
-              .WithDisplayName("DevTools Media Encoding Service")
-#if BUILDFLAG(IS_MAC)
-              .WithChildFlags(ChildProcessHost::CHILD_RENDERER)
-#endif
-              .Pass());
-
   auto* web_contents = WebContentsImpl::FromRenderFrameHostImpl(host);
   bool has_audio = audio && web_contents != nullptr;
-
-  remote->StartRecording(client_receiver_.BindNewPipeAndPassRemote(), max_width,
-                         max_height, frame_rate, has_audio);
-  client_receiver_.set_disconnect_handler(
-      base::BindOnce(&MediaRecorder::OnClosed, base::Unretained(this)));
-  service_ = mojo::SharedRemote<
-      devtools_media_encoding_service::mojom::DevToolsMediaEncodingService>(
-      remote.Unbind());
+  StartEncodingService(max_width, max_height, frame_rate, has_audio);
 
   gfx::Size snapshot_size =
       DetermineSnapshotSize(surface_size, max_width_, max_height_);
@@ -282,8 +273,6 @@ Response MediaRecorder::Start(RenderFrameHostImpl* host,
 #else
   constexpr auto kScreencastPixelFormat = media::PIXEL_FORMAT_ARGB;
 #endif
-
-  constexpr int kIdleKeepAliveIntervalMs = 1000;
 
   content::WebContentsMediaCaptureId capture_id(
       host->GetProcess()->GetDeprecatedID(), host->GetRoutingID());
@@ -313,29 +302,218 @@ Response MediaRecorder::Start(RenderFrameHostImpl* host,
                                           weak_factory_.GetWeakPtr()));
 
   if (has_audio) {
-    audio_capturer_ = base::MakeRefCounted<media::AudioInputDevice>(
-        std::make_unique<LoopbackAudioInputIPC>(
-            web_contents->GetAudioGroupId()),
-        media::AudioInputDevice::Purpose::kLoopback,
-        media::AudioInputDevice::DeadStreamDetection::kDisabled);
-
-    media::AudioParameters audio_params(
-        media::AudioParameters::AUDIO_PCM_LOW_LATENCY,
-        media::ChannelLayoutConfig::Stereo(), 48000, 480);
-    audio_capturer_->Initialize(audio_params, this);
-    audio_capturer_->Start();
+    StartAudioCapture(web_contents);
   }
 
   return Response::Success();
 #endif
 }
 
+void MediaRecorder::StartDisplayCapture(
+    const DesktopMediaID& media_id,
+    WebContents* audio_source,
+    std::unique_ptr<MediaStreamUI> ui,
+    bool audio,
+    int max_width,
+    int max_height,
+    int frame_rate,
+    base::OnceCallback<void(Response)> callback) {
+#if !BUILDFLAG(ENABLE_LIBAOM)
+  std::move(callback).Run(Response::ServerError(
+      "Video recording is not supported without AV1/libaom enabled."));
+#elif BUILDFLAG(IS_ANDROID)
+  // On Android, the display capture device needs a MediaProjection that the
+  // user grants in a system dialog for each capture, and it fails without it.
+  // A CDP client cannot get that grant.
+  std::move(callback).Run(Response::ServerError(
+      "Recording a display surface is not supported on Android."));
+#else
+  const bool has_audio = audio && audio_source;
+  StartEncodingService(max_width, max_height, frame_rate, has_audio);
+
+  // Like getDisplayMedia() window capture: the frame size follows the size
+  // of the window within maxWidth x maxHeight.
+  media::VideoCaptureParams params;
+  params.requested_format = media::VideoCaptureFormat(
+      gfx::Size(max_width, max_height), frame_rate, media::PIXEL_FORMAT_ARGB);
+  params.resolution_change_policy =
+      media::ResolutionChangePolicy::ANY_WITHIN_LIMIT;
+  params.buffer_type = media::VideoCaptureBufferType::kSharedMemory;
+
+  auto receiver = std::make_unique<MediaRecorderVideoFrameReceiver>(
+      weak_factory_.GetWeakPtr());
+  display_capture_launcher_ = std::make_unique<DisplayCaptureLauncher>(
+      media_id.ToString(), params, receiver->GetWeakPtr());
+  display_capture_receiver_ = std::move(receiver);
+
+  // Show the screen sharing UI. Its Stop button stops the frames, but keeps
+  // the recording, so that Page.stopScreenRecording still returns the stream.
+  if (ui) {
+    media_stream_ui_ = std::move(ui);
+    // DLP and the capture indicator use the label as a key, so it must be
+    // unique, as in MediaStreamManager.
+    ui_label_ = base::Uuid::GenerateRandomV4().AsLowercaseString();
+    ui_media_id_ = media_id;
+    std::vector<DesktopMediaID> screen_capture_ids;
+    if (!ui_media_id_.is_null()) {
+      screen_capture_ids.push_back(ui_media_id_);
+    }
+    // The UI runs these callbacks from its own event handlers, for example
+    // when the user clicks Stop. Post them, so that the UI is not destroyed
+    // while it handles the event, as MediaStreamUIProxy does for
+    // getDisplayMedia().
+    media_stream_ui_->OnStarted(
+        base::BindPostTaskToCurrentDefault(base::BindRepeating(
+            &MediaRecorder::StopDisplayCapture, weak_factory_.GetWeakPtr())),
+        MediaStreamUI::SourceCallback(), ui_label_,
+        std::move(screen_capture_ids),
+        base::BindPostTaskToCurrentDefault(base::BindRepeating(
+            &MediaRecorder::OnStateChangeFromUI, weak_factory_.GetWeakPtr())));
+  }
+
+  video_timer_ = std::make_unique<base::RepeatingTimer>();
+  video_timer_->Start(FROM_HERE, base::Milliseconds(kIdleKeepAliveIntervalMs),
+                      base::BindRepeating(&MediaRecorder::RequestRefreshFrame,
+                                          weak_factory_.GetWeakPtr()));
+
+  if (has_audio) {
+    StartAudioCapture(audio_source);
+  }
+
+  // Answer after the first frame arrives in OnFrameFromVideoConsumer(), so
+  // that the initial state of the window is in the recording. The answer is
+  // posted, because the caller can destroy this object when it gets an error.
+  on_start_callback_ = base::BindPostTaskToCurrentDefault(std::move(callback));
+  // Answer anyway if the first frame does not arrive in time, for example for
+  // a window that sends no frames while it is hidden.
+  constexpr base::TimeDelta kFirstFrameTimeout = base::Seconds(5);
+  first_frame_timer_.Start(FROM_HERE, kFirstFrameTimeout,
+                           base::BindOnce(&MediaRecorder::AnswerPendingStart,
+                                          base::Unretained(this)));
+#endif  // BUILDFLAG(ENABLE_LIBAOM)
+}
+
+void MediaRecorder::OnVideoCaptureError() {
+  // Errors of the WebContents capture of Start() are ignored, as before.
+  if (!display_capture_launcher_) {
+    return;
+  }
+  FailPendingStart("Cannot start the browser window capture device.");
+  // The device failed, for example because the window was closed. Stop the
+  // capture and remove the UI. After the first frame, the recording stays
+  // active, so that Page.stopScreenRecording still returns the frames until
+  // this point. Before the first frame, the error answer usually makes the
+  // caller destroy the recorder.
+  StopDisplayCapture();
+}
+
+void MediaRecorder::AnswerPendingStart() {
+  first_frame_timer_.Stop();
+  if (on_start_callback_) {
+    std::move(on_start_callback_).Run(Response::Success());
+  }
+}
+
+void MediaRecorder::FailPendingStart(std::string_view message) {
+  first_frame_timer_.Stop();
+  if (on_start_callback_) {
+    std::move(on_start_callback_)
+        .Run(Response::ServerError(std::string(message)));
+  }
+}
+
+void MediaRecorder::StopDisplayCapture() {
+  FailPendingStart("Screen recording was stopped before the first frame.");
+  if (video_timer_) {
+    video_timer_->Stop();
+    video_timer_.reset();
+  }
+  display_capture_launcher_.reset();
+  display_capture_receiver_.reset();
+  if (audio_capturer_) {
+    audio_capturer_->Stop();
+    audio_capturer_ = nullptr;
+  }
+  ReleaseUI();
+}
+
+void MediaRecorder::OnStateChangeFromUI(
+    const DesktopMediaID& media_id,
+    blink::mojom::MediaStreamStateChange new_state) {
+  if (!display_capture_launcher_) {
+    return;
+  }
+  if (new_state == blink::mojom::MediaStreamStateChange::PAUSE) {
+    display_capture_launcher_->Suspend();
+    // A suspended device sends no frames, so do not wait for the first frame.
+    AnswerPendingStart();
+  } else {
+    display_capture_launcher_->Resume();
+  }
+}
+
+void MediaRecorder::ReleaseUI() {
+  if (!media_stream_ui_) {
+    return;
+  }
+  media_stream_ui_->OnDeviceStopped(ui_label_, ui_media_id_);
+  media_stream_ui_.reset();
+}
+
+void MediaRecorder::StartEncodingService(int max_width,
+                                         int max_height,
+                                         int frame_rate,
+                                         bool has_audio) {
+  session_start_time_ = base::TimeTicks::Now();
+  max_width_ = max_width;
+  max_height_ = max_height;
+
+  stream_file_ = DevToolsStreamFile::Create(io_context_, true /* binary */);
+  stream_ = stream_file_->handle();
+
+  mojo::Remote<
+      devtools_media_encoding_service::mojom::DevToolsMediaEncodingService>
+      remote = content::ServiceProcessHost::Launch<
+          devtools_media_encoding_service::mojom::DevToolsMediaEncodingService>(
+          ServiceProcessHost::Options()
+              .WithDisplayName("DevTools Media Encoding Service")
+#if BUILDFLAG(IS_MAC)
+              .WithChildFlags(ChildProcessHost::CHILD_RENDERER)
+#endif
+              .Pass());
+
+  remote->StartRecording(client_receiver_.BindNewPipeAndPassRemote(), max_width,
+                         max_height, frame_rate, has_audio);
+  client_receiver_.set_disconnect_handler(
+      base::BindOnce(&MediaRecorder::OnClosed, base::Unretained(this)));
+  service_ = mojo::SharedRemote<
+      devtools_media_encoding_service::mojom::DevToolsMediaEncodingService>(
+      remote.Unbind());
+}
+
+void MediaRecorder::StartAudioCapture(WebContents* audio_source) {
+  audio_capturer_ = base::MakeRefCounted<media::AudioInputDevice>(
+      std::make_unique<LoopbackAudioInputIPC>(audio_source->GetAudioGroupId()),
+      media::AudioInputDevice::Purpose::kLoopback,
+      media::AudioInputDevice::DeadStreamDetection::kDisabled);
+
+  media::AudioParameters audio_params(
+      media::AudioParameters::AUDIO_PCM_LOW_LATENCY,
+      media::ChannelLayoutConfig::Stereo(), 48000, 480);
+  audio_capturer_->Initialize(audio_params, this);
+  audio_capturer_->Start();
+}
+
 void MediaRecorder::RequestRefreshFrame() {
-  constexpr int kIdleKeepAliveIntervalMs = 1000;
-  if (video_capturer_ && (last_frame_receive_time_.is_null() ||
-                          base::TimeTicks::Now() - last_frame_receive_time_ >=
-                              base::Milliseconds(kIdleKeepAliveIntervalMs))) {
-    video_capturer_->RequestRefreshFrame();
+  if (last_frame_receive_time_.is_null() ||
+      base::TimeTicks::Now() - last_frame_receive_time_ >=
+          base::Milliseconds(kIdleKeepAliveIntervalMs)) {
+    if (video_capturer_) {
+      video_capturer_->RequestRefreshFrame();
+    }
+    if (display_capture_launcher_) {
+      display_capture_launcher_->RequestRefreshFrame();
+    }
   }
 }
 
@@ -445,6 +623,7 @@ void MediaRecorder::OnFrameFromVideoConsumer(
     frame->set_timestamp(last_frame_receive_time_ - session_start_time_);
   }
   service_->RecordVideoFrame(std::move(frame));
+  AnswerPendingStart();
 }
 
 void MediaRecorder::Capture(const media::AudioBus* audio_source,
@@ -472,6 +651,7 @@ void MediaRecorder::OnCaptureMuted(bool is_muted) {}
 
 void MediaRecorder::Stop(
     base::OnceCallback<void(std::string)> on_stop_callback) {
+  FailPendingStart("Screen recording was stopped before the first frame.");
   on_stop_callback_ = std::move(on_stop_callback);
   if (video_timer_) {
     video_timer_->Stop();
@@ -481,6 +661,9 @@ void MediaRecorder::Stop(
     video_capturer_->StopAndDeAllocate();
     video_capturer_.reset();
   }
+  display_capture_launcher_.reset();
+  display_capture_receiver_.reset();
+  ReleaseUI();
   if (audio_capturer_) {
     audio_capturer_->Stop();
     audio_capturer_ = nullptr;
@@ -517,6 +700,7 @@ void MediaRecorder::OnData(const std::vector<uint8_t>& data) {
 void MediaRecorder::OnClosed() {
   service_.reset();
   client_receiver_.reset();
+  FailPendingStart("Screen recording was stopped before the first frame.");
   if (on_stop_callback_) {
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(std::move(on_stop_callback_), stream_));

@@ -10,14 +10,10 @@
 #ifndef BASE_MEMORY_MEMORY_PRESSURE_LISTENER_H_
 #define BASE_MEMORY_MEMORY_PRESSURE_LISTENER_H_
 
-#include <memory>
-
 #include "base/base_export.h"
-#include "base/functional/callback_forward.h"
 #include "base/location.h"
 #include "base/memory/memory_pressure_level.h"
-#include "base/memory/scoped_refptr.h"
-#include "base/memory/weak_ptr.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory_coordinator/memory_limit.h"
 #include "base/observer_list_types.h"
 #include "base/sequence_checker.h"
@@ -27,7 +23,6 @@
 namespace base {
 
 class MemoryPressureListenerRegistry;
-class SingleThreadTaskRunner;
 
 enum class MemoryPressureListenerTag {
   // Commented out values are deprecated.
@@ -98,7 +93,7 @@ enum class MemoryPressureListenerTag {
   kRenderProcessHostImpl = 64,
   kBrowserChildProcessHostImpl = 65,
   kProgramCache = 66,
-  kBackForwardCacheImpl = 67,
+  // kBackForwardCacheImpl = 67,
   kGrShaderCache = 68,
   kMemoryPressureListenerPolicy = 69,
   kLongScreenshotsTabService = 70,
@@ -112,10 +107,6 @@ enum class MemoryPressureListenerTag {
 // will ensure that `OnMemoryPressure()` will no longer be invoked. The
 // implementation guarantees that the notification will always be received on
 // the thread that created the listener.
-//
-// If the registration can't be done on the main thread of the process, then
-// AsyncMemoryPressureListenerRegistration must be used, and notifications will
-// be asynchronous as well.
 //
 // Please see notes in MemoryPressureLevel enum below: some levels are
 // absolutely critical, and if not enough memory is returned to the system,
@@ -156,14 +147,6 @@ class BASE_EXPORT MemoryPressureListener : public CheckedObserver {
   static bool AreNotificationsSuppressed();
   static void SimulatePressureNotification(
       MemoryPressureLevel memory_pressure_level);
-  // Invokes `SimulatePressureNotification` asynchronously on the main thread,
-  // ensuring that any pending registration tasks have completed by the time it
-  // runs, then posts back `on_notification_sent_callback` to the calling
-  // sequence, allowing tests to ensure that the notification was received by
-  // the MemoryPressureListener under test.
-  static void SimulatePressureNotificationAsync(
-      MemoryPressureLevel memory_pressure_level,
-      OnceClosure on_notification_sent_callback);
 
   MemoryPressureLevel memory_pressure_level() const {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -185,7 +168,6 @@ class BASE_EXPORT MemoryPressureListener : public CheckedObserver {
 
  private:
   friend class MemoryPressureListenerRegistration;
-  friend class AsyncMemoryPressureListenerRegistration;
 
   // Sets the initial memory pressure level. Does not cause a
   // `OnMemoryPressure()` notification to avoid re-entrancy issues. Called
@@ -256,48 +238,6 @@ class BASE_EXPORT MemoryPressureListenerRegistration {
       GUARDED_BY_CONTEXT(thread_checker_);
 
   THREAD_CHECKER(thread_checker_);
-};
-
-// Used for listeners that can exists on sequences other than the main thread
-// and don't need to be called synchronously.
-class BASE_EXPORT AsyncMemoryPressureListenerRegistration {
- public:
-  AsyncMemoryPressureListenerRegistration(
-      const Location& creation_location,
-      MemoryPressureListenerTag tag,
-      MemoryPressureListener* memory_pressure_listener,
-      bool ignore_repeated_notifications = false);
-
-  AsyncMemoryPressureListenerRegistration(
-      const AsyncMemoryPressureListenerRegistration&) = delete;
-  AsyncMemoryPressureListenerRegistration& operator=(
-      const AsyncMemoryPressureListenerRegistration&) = delete;
-
-  ~AsyncMemoryPressureListenerRegistration();
-
- private:
-  class MainThread;
-
-  // Sets the current memory pressure level and invokes `OnMemoryPressure()`.
-  void UpdateMemoryPressureLevel(MemoryPressureLevel memory_pressure_level);
-
-  raw_ptr<MemoryPressureListener> memory_pressure_listener_
-      GUARDED_BY_CONTEXT(sequence_checker_);
-
-  // Handle to the main thread's task runner. This is cached because it might no
-  // longer be registered at the time this instance is destroyed.
-  scoped_refptr<SingleThreadTaskRunner> main_thread_task_runner_;
-
-  // Parts of this class that lives on the main thread.
-  std::unique_ptr<MainThread> main_thread_
-      GUARDED_BY_CONTEXT(sequence_checker_);
-
-  const Location creation_location_ GUARDED_BY_CONTEXT(sequence_checker_);
-
-  SEQUENCE_CHECKER(sequence_checker_);
-
-  WeakPtrFactory<AsyncMemoryPressureListenerRegistration> weak_ptr_factory_{
-      this};
 };
 
 }  // namespace base

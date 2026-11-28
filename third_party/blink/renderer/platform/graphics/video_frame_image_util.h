@@ -7,10 +7,17 @@
 
 #include <memory>
 
+#include "base/functional/function_ref.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/memory/weak_ptr.h"
+#include "cc/paint/paint_image.h"
+#include "cc/paint/paint_record.h"
+#include "components/viz/common/gpu/context_lost_observer.h"
 #include "components/viz/common/gpu/raster_context_provider.h"
 #include "components/viz/common/resources/shared_image_format.h"
+#include "gpu/command_buffer/client/shared_image_pool.h"
 #include "media/base/video_transformation.h"
+#include "third_party/blink/renderer/platform/graphics/canvas_resource.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_snapshot_info.h"
 #include "third_party/blink/renderer/platform/graphics/image_orientation.h"
 #include "third_party/blink/renderer/platform/platform_export.h"
@@ -32,12 +39,13 @@ class PaintFlags;
 }  // namespace cc
 
 namespace blink {
-class CanvasNon2DResourceProvider;
 class StaticBitmapImage;
+class WebGraphicsContext3DProviderWrapper;
 
 // Pool of accelerated SharedImages used to produce AcceleratedStaticBitmapImage
 // snapshots from media::VideoFrames.
-class PLATFORM_EXPORT VideoFrameAcceleratedSnapshotPool {
+class PLATFORM_EXPORT VideoFrameAcceleratedSnapshotPool
+    : public viz::ContextLostObserver {
  public:
   static std::unique_ptr<VideoFrameAcceleratedSnapshotPool> Create(
       const CanvasSnapshotInfo& info);
@@ -46,18 +54,49 @@ class PLATFORM_EXPORT VideoFrameAcceleratedSnapshotPool {
       delete;
   VideoFrameAcceleratedSnapshotPool& operator=(
       const VideoFrameAcceleratedSnapshotPool&) = delete;
-  ~VideoFrameAcceleratedSnapshotPool();
+  ~VideoFrameAcceleratedSnapshotPool() override;
 
   bool IsValid() const;
-  CanvasSnapshotInfo GetInfo() const;
+  gfx::Size Size() const { return info_.size; }
+  CanvasSnapshotInfo GetInfo() const { return info_; }
 
-  CanvasNon2DResourceProvider* provider() { return provider_.get(); }
+  scoped_refptr<StaticBitmapImage> DoExternalOverdrawAndSnapshot(
+      base::FunctionRef<void(cc::PaintCanvas&)> draw_callback);
 
  private:
-  explicit VideoFrameAcceleratedSnapshotPool(
-      std::unique_ptr<CanvasNon2DResourceProvider> provider);
+  static constexpr int kMaxRecycledCanvasResources = 3;
 
-  std::unique_ptr<CanvasNon2DResourceProvider> provider_;
+  VideoFrameAcceleratedSnapshotPool(
+      const CanvasSnapshotInfo& info,
+      base::WeakPtr<WebGraphicsContext3DProviderWrapper>
+          context_provider_wrapper);
+
+  static void OnResourceReleased(
+      base::WeakPtr<VideoFrameAcceleratedSnapshotPool> pool,
+      scoped_refptr<CanvasResourceSharedImage> resource,
+      const gpu::SyncToken& sync_token,
+      bool is_lost);
+
+  // viz::ContextLostObserver:
+  void OnContextLost() override;
+
+  void FlushRecording(cc::PaintRecord last_recording);
+  void EnsureResourceReadyForDraw();
+  bool ShouldReplaceTargetBuffer(cc::PaintImage::ContentId content_id);
+  scoped_refptr<CanvasResourceSharedImage> NewOrRecycledResource();
+  gpu::raster::RasterInterface* RasterInterface() const;
+
+  const CanvasSnapshotInfo info_;
+  base::WeakPtr<WebGraphicsContext3DProviderWrapper> context_provider_wrapper_;
+  scoped_refptr<viz::RasterContextProvider> raster_context_provider_;
+  std::unique_ptr<gpu::SharedImagePool<CanvasResourceSharedImage>> image_pool_;
+  scoped_refptr<CanvasResourceSharedImage> resource_;
+  cc::PaintImage::ContentId cached_content_id_ =
+      cc::PaintImage::kInvalidContentId;
+  bool is_cleared_ = false;
+
+  base::WeakPtrFactory<VideoFrameAcceleratedSnapshotPool> weak_ptr_factory_{
+      this};
 };
 
 // Converts a media orientation into a blink one or vice versa.

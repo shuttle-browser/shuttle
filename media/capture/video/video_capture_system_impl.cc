@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <utility>
 
+#include "base/containers/linear_find.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/trace_event/trace_event.h"
@@ -103,6 +104,11 @@ void VideoCaptureSystemImpl::GetDeviceInfosAsync(
   }
 }
 
+bool VideoCaptureSystemImpl::HasDeviceInfosWithCapabilities() const {
+  DCHECK(thread_checker_.CalledOnValidThread());
+  return devices_descriptors_cache_includes_capabilities_;
+}
+
 void VideoCaptureSystemImpl::StartDeviceEnumeration(
     mojom::VideoCaptureDeviceEnumerationMode enumeration_mode) {
   CHECK(!enumeration_mode_in_progress_);
@@ -131,14 +137,10 @@ VideoCaptureErrorOrDevice VideoCaptureSystemImpl::CreateDevice(
 const VideoCaptureDeviceInfo* VideoCaptureSystemImpl::LookupDeviceInfoFromId(
     const std::string& device_id) {
   DCHECK(thread_checker_.CalledOnValidThread());
-  auto iter = std::ranges::find(devices_descriptors_cache_, device_id,
-                                [](const VideoCaptureDeviceInfo& device_info) {
-                                  return device_info.descriptor.device_id;
-                                });
-  if (iter == devices_descriptors_cache_.end()) {
-    return nullptr;
-  }
-  return &(*iter);
+  return base::LinearFind(devices_descriptors_cache_, device_id,
+                          [](const VideoCaptureDeviceInfo& device_info) {
+                            return device_info.descriptor.device_id;
+                          });
 }
 
 void VideoCaptureSystemImpl::DevicesInfoReady(
@@ -169,6 +171,9 @@ void VideoCaptureSystemImpl::DevicesInfoReady(
   }
 
   devices_descriptors_cache_ = std::move(devices_info);
+  devices_descriptors_cache_includes_capabilities_ =
+      enumeration_mode ==
+      mojom::VideoCaptureDeviceEnumerationMode::kDevicesWithCapabilities;
 
   // Move all requests that can use these results to the ready queue.
   DeviceEnumQueue ready_requests;

@@ -17,6 +17,7 @@
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/search_engines/ui_thread_search_terms_data.h"
 #include "chrome/common/url_constants.h"
+#include "chrome/common/webui_url_constants.h"
 #include "components/google/core/common/google_util.h"
 #include "components/search/ntp_features.h"
 #include "components/search/search.h"
@@ -28,13 +29,14 @@
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/security_principal.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/common/url_constants.h"
 #include "ui/webui/buildflags.h"
 #include "url/gurl.h"
+#include "url/origin.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/device_info.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
-#include "chrome/common/webui_url_constants.h"
 #endif
 
 namespace search {
@@ -42,6 +44,54 @@ namespace search {
 bool DefaultSearchProviderIsGoogle(Profile* profile) {
   return DefaultSearchProviderIsGoogle(
       TemplateURLServiceFactory::GetForProfile(profile));
+}
+
+bool IsNewTabOrigin(const GURL& url) {
+  return url.is_valid() && url.SchemeIs(content::kChromeUIScheme) &&
+         url.host() == chrome::kChromeUINewTabHost;
+}
+
+bool IsNewTabOrigin(const url::Origin& origin) {
+  // Explicitly guard against opaque origins (even those derived from an NTP
+  // precursor), which security callers rely on.
+  return !origin.opaque() && origin.scheme() == content::kChromeUIScheme &&
+         origin.host() == chrome::kChromeUINewTabHost;
+}
+
+bool IsNewTabSecurityPrincipal(
+    const content::SecurityPrincipal& security_principal) {
+  return security_principal.SchemeIs(content::kChromeUIScheme) &&
+         security_principal.GetHost() == chrome::kChromeUINewTabHost;
+}
+
+// Shuttle: the WebUI New Tab Page (chrome://new-tab-page and
+// chrome://new-tab-page-third-party) is not part of this build; only the
+// blank chrome://newtab exists, so these predicates never match.
+bool IsNewTabPageOrigin(const GURL& url) {
+  return false;
+}
+
+bool IsNewTabPageOrigin(const url::Origin& origin) {
+  return false;
+}
+
+bool IsNewTabPageSecurityPrincipal(
+    const content::SecurityPrincipal& security_principal) {
+  return false;
+}
+
+bool IsThirdPartyNewTabPageOrigin(const GURL& url) {
+  return false;
+}
+
+bool IsThirdPartyNewTabPageSecurityPrincipal(
+    const content::SecurityPrincipal& security_principal) {
+  return false;
+}
+
+bool IsWebUINewTabPageOrigin(const GURL& url) {
+  return IsNewTabOrigin(url) || IsNewTabPageOrigin(url) ||
+         IsThirdPartyNewTabPageOrigin(url);
 }
 
 bool IsNTPOrRelatedURL(const GURL& url, Profile* profile) {
@@ -52,8 +102,7 @@ bool IsNTPOrRelatedURL(const GURL& url, Profile* profile) {
 bool IsNTPURL(const GURL& url) {
 #if BUILDFLAG(IS_ANDROID)
   if (IsWebUiNtpEnabledForDesktopAndroid()) {
-    if (MatchesOrigin(url, chrome::ChromeUINewTabPageURLAsGURL()) ||
-        MatchesOrigin(url, GURL(chrome::kChromeUINewTabPageThirdPartyURL))) {
+    if (IsNewTabPageOrigin(url) || IsThirdPartyNewTabPageOrigin(url)) {
       return true;
     }
   }

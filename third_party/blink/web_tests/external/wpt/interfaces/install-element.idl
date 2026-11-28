@@ -4,8 +4,8 @@
 // Source: Web Install (https://wicg.github.io/install-element/)
 
 partial interface Navigator {
-  Promise<WebInstallResult> install();
-  Promise<WebInstallResult> install(InstallParams options);
+  [SecureContext] Promise<WebInstallResult> install();
+  [SecureContext] Promise<WebInstallResult> install(InstallParams options);
 };
 
 dictionary InstallParams {
@@ -19,12 +19,17 @@ dictionary WebInstallResult {};
 interface HTMLInstallElement : HTMLElement {
   [HTMLConstructor] constructor();
 
-  [CEReactions] attribute USVString? manifest;
-  [CEReactions] attribute USVString? manifestId;
-  attribute EventHandler oninstallresult;
+  [CEReactions, ReflectURL] attribute USVString manifest;
+  [CEReactions, ReflectURL] attribute USVString manifestId;
+
+  readonly attribute boolean isValid;
+  readonly attribute DOMString invalidReason;
+  attribute EventHandler onvalidationstatuschange;
 };
 
-HTMLInstallElement includes ActivationBlockersMixin;
+partial interface mixin GlobalEventHandlers {
+  attribute EventHandler oninstallresult;
+};
 
 enum InstallResult {
   "success",

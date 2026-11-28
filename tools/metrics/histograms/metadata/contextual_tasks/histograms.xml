@@ -23,6 +23,34 @@ chromium-metrics-reviews@google.com.
 
 <histograms>
 
+<variants name="AbaSearchJourneyCueInteraction">
+  <variant name="Clicked"
+      summary="clicked to restore the journey in the side panel"/>
+  <variant name="Dismissed" summary="dismissed from its menu"/>
+  <variant name="Eligible"
+      summary="eligible on the first qualifying return to the source tab"/>
+  <variant name="SettingsOpened"
+      summary="used to open the suggestions settings from its menu"/>
+  <variant name="Shown" summary="shown on the source tab"/>
+</variants>
+
+<variants name="AbaSearchJourneyType">
+  <variant name="ContextMenuSearch"
+      summary="journeys whose query matched text selected for a context-menu
+               search on the source tab"/>
+  <variant name="CopyMatch"
+      summary="journeys whose query matched text copied or selected for a
+               context-menu search on the source tab"/>
+  <variant name="EduConceptual"
+      summary="journeys labeled EduConceptual by the search results page"/>
+  <variant name="EduHomework"
+      summary="journeys labeled EduHomework by the search results page"/>
+  <variant name="HowToWebApp"
+      summary="journeys labeled HowToWebApp by the search results page"/>
+  <variant name="NoQueryHint"
+      summary="journeys without a label from the search results page"/>
+</variants>
+
 <histogram name="ContextualTasks.ActiveTab.UserAction.LinkClicked"
     enum="Boolean" expires_after="2027-03-07">
   <owner>sophiechang@chromium.org</owner>
@@ -151,6 +179,22 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram
+    name="ContextualTasks.Composebox.UserAction.LensButtonClicked.PageState"
+    enum="ContextualTasksPageState" expires_after="2027-06-18">
+  <owner>hujasonx@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the user clicks the Lens button inside the contextual tasks
+    composebox embedded in the side panel. Records whether the AI Mode page was
+    in the zero state (no query submitted in the current thread yet) or
+    mid-thread at the time of the click. Records Unknown if the page had not yet
+    reported its state since it loaded or since the input was last cleared (e.g.
+    on a task change). Recorded on every click, including clicks that close a
+    Lens overlay that was previously opened from the composebox.
+  </summary>
+</histogram>
+
 <histogram name="ContextualTasks.Context.CandidateTabHasEmbeddings"
     enum="Boolean" expires_after="2027-04-18">
   <owner>sophiechang@chromium.org</owner>
@@ -206,7 +250,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualTasks.Context.ExplicitTabsCount" units="count"
-    expires_after="2027-01-24">
+    expires_after="2027-05-02">
   <owner>sophiechang@chromium.org</owner>
   <owner>abhayprakash@google.com</owner>
   <summary>
@@ -229,7 +273,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualTasks.Context.QueryEmbeddingLatency" units="ms"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>sophiechang@chromium.org</owner>
   <owner>abhayprakash@google.com</owner>
   <summary>
@@ -303,7 +347,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualTasks.Context.TabExcessCount" units="count"
-    expires_after="2027-01-17">
+    expires_after="2027-05-02">
   <owner>sophiechang@chromium.org</owner>
   <owner>abhayprakash@google.com</owner>
   <summary>
@@ -315,7 +359,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualTasks.Context.TabOverlapCount" units="count"
-    expires_after="2027-01-17">
+    expires_after="2027-05-02">
   <owner>sophiechang@chromium.org</owner>
   <owner>abhayprakash@google.com</owner>
   <summary>
@@ -327,7 +371,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContextualTasks.Context.TabOverlapPercentage" units="%"
-    expires_after="2027-01-17">
+    expires_after="2027-05-02">
   <owner>sophiechang@chromium.org</owner>
   <owner>abhayprakash@google.com</owner>
   <summary>
@@ -544,7 +588,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="ContextualTasks.HistoryNavigation.UserAction.NavigatedInFullTab"
-    enum="Boolean" expires_after="2026-12-22">
+    enum="Boolean" expires_after="2027-12-22">
   <owner>hujasonx@google.com</owner>
   <owner>chrome-contextual-tasks-eng@google.com</owner>
   <summary>
@@ -791,6 +835,47 @@ chromium-metrics-reviews@google.com.
   </token>
 </histogram>
 
+<histogram name="ContextualTasks.OnboardingTooltip.{Interaction}"
+    enum="Boolean" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the contextual tasks onboarding tooltip, which explains that
+    the active tab is auto-suggested as context in the composebox, is
+    {Interaction}. Recorded for both the native bubble and the WebUI tooltip.
+    Always recorded as true.
+  </summary>
+  <token key="Interaction">
+    <variant name="Accepted"
+        summary="accepted by the user via its accept button, the only way to
+                 explicitly dismiss it"/>
+    <variant name="Shown"
+        summary="shown for at least the impression delay, i.e. when it counts
+                 towards the session impression cap, or accepted before the
+                 delay elapsed"/>
+  </token>
+</histogram>
+
+<histogram
+    name="ContextualTasks.PageContextIneligible.{ContextualTasksUiSurface}"
+    enum="Boolean" expires_after="2027-06-18">
+  <owner>mercerd@chromium.org</owner>
+  <owner>hujasonx@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded each time an attached tab's page context is determined to be
+    ineligible (for example, on a CSE-protected page) during query submission
+    contextualization on the {ContextualTasksUiSurface} surface. Emitted once
+    per ineligible tab encountered while a query submission is pending. Always
+    recorded as true.
+  </summary>
+  <token key="ContextualTasksUiSurface">
+    <variant name="Panel"
+        summary="Contextual Tasks side panel (active and open)"/>
+    <variant name="Tab" summary="full-tab AI Mode"/>
+  </token>
+</histogram>
+
 <histogram
     name="ContextualTasks.PermanentToolbarButton.UserAction.OpenSidePanel.ThreadAction"
     enum="ContextualTasksPermanentToolbarButtonThreadAction"
@@ -802,6 +887,49 @@ chromium-metrics-reviews@google.com.
     toolbar button to open the side panel under Pinning v2. Records whether
     clicking the button continues an existing thread associated with the active
     tab or starts a new thread.
+  </summary>
+</histogram>
+
+<histogram
+    name="ContextualTasks.PermanentToolbarButton.UserAction.RemoveByContextMenu"
+    enum="Boolean" expires_after="2027-04-15">
+  <owner>dianaou@chromium.org</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the user selects the &quot;Close/Remove&quot; item in the
+    permanently pinned contextual tasks toolbar button's context menu to remove
+    the current task. Only shown when the
+    ContextualTasksPinnedButtonContextMenuCloseSidePanel param is enabled.
+    Always recorded as true. See
+    ContextualTasks.EphemeralToolbarButton.UserAction.RemoveByContextMenu for
+    the unpinned button.
+  </summary>
+</histogram>
+
+<histogram name="ContextualTasks.PermissionChip.Click"
+    enum="ContextualTasksPermissionChipType" expires_after="2027-04-15">
+  <owner>hujasonx@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the user clicks on a permission request chip or activity
+    indicator chip in the Contextual Tasks side panel toolbar (and the click is
+    accepted as current). Records the type of permission chip clicked.
+  </summary>
+</histogram>
+
+<histogram name="ContextualTasks.PermissionChip.Impression"
+    enum="ContextualTasksPermissionChipType" expires_after="2027-04-15">
+  <owner>hujasonx@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when a coalesced permission dashboard state push for an open
+    Contextual Tasks side panel has a newly visible permission request chip or
+    activity indicator chip (or changes its displayed chip type). State updates
+    within the same task turn are coalesced (so a chip shown and hidden between
+    two pushes is not recorded), and impression tracking resets when switching
+    the active task WebContents or when the side panel is closed (so a chip
+    visible on the newly active task is recorded). Records the type of
+    permission chip shown.
   </summary>
 </histogram>
 
@@ -842,6 +970,123 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram
+    name="ContextualTasks.SearchJourney.Cue.{Interaction}.ContextMenuSearch"
+    enum="Boolean" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the ABA search journey contextual cue is {Interaction}.
+    Records whether the journey's search query matched text selected for a
+    context-menu search on the source tab.
+  </summary>
+  <token key="Interaction" variants="AbaSearchJourneyCueInteraction"/>
+</histogram>
+
+<histogram name="ContextualTasks.SearchJourney.Cue.{Interaction}.CopyMatch"
+    enum="Boolean" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the ABA search journey contextual cue is {Interaction}.
+    Records whether the journey's search query matched text copied or selected
+    for a context-menu search on the source tab.
+  </summary>
+  <token key="Interaction" variants="AbaSearchJourneyCueInteraction"/>
+</histogram>
+
+<histogram name="ContextualTasks.SearchJourney.Cue.{Interaction}.QueryHint"
+    enum="AimPromoQueryHint" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the ABA search journey contextual cue is {Interaction}, once
+    for each AimPromoQueryHint registered by the search results page for the
+    journey, or once as None if the search results page registered no hints.
+  </summary>
+  <token key="Interaction" variants="AbaSearchJourneyCueInteraction"/>
+</histogram>
+
+<histogram
+    name="ContextualTasks.SearchJourney.Cue.{Interaction}.SearchDwellTime"
+    units="ms" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the ABA search journey contextual cue is {Interaction}.
+    Measures the time elapsed since the search navigation committed in the
+    search tab.
+  </summary>
+  <token key="Interaction" variants="AbaSearchJourneyCueInteraction"/>
+</histogram>
+
+<histogram
+    name="ContextualTasks.SearchJourney.Cue.{Interaction}.SearchTabClosed"
+    enum="Boolean" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the ABA search journey contextual cue is {Interaction}.
+    Records whether the search tab had been closed by that time.
+  </summary>
+  <token key="Interaction" variants="AbaSearchJourneyCueInteraction"/>
+</histogram>
+
+<histogram name="ContextualTasks.SearchJourney.Cue.{Interaction}.WordCount"
+    units="words" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the ABA search journey contextual cue is {Interaction}.
+    Records the number of whitespace-separated words in the journey's search
+    query.
+  </summary>
+  <token key="Interaction" variants="AbaSearchJourneyCueInteraction"/>
+</histogram>
+
+<histogram name="ContextualTasks.SearchJourney.CueOutcome"
+    enum="SearchJourneyCueOutcome" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded once when an ABA search journey ends, if the journey's contextual
+    cue was eligible to show on the first qualifying return to the source tab.
+    Records whether the cue showed, whether it first showed as the expanded
+    anchored message or the collapsed chip, and whether the user clicked it to
+    restore the journey in the side panel.
+  </summary>
+</histogram>
+
+<histogram name="ContextualTasks.SearchJourney.CueOutcome.{JourneyType}"
+    enum="SearchJourneyCueOutcome" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded once when an ABA search journey ends, for {JourneyType}, if the
+    journey's contextual cue was eligible to show on the first qualifying return
+    to the source tab. Records whether the cue showed, whether it first showed
+    as the expanded anchored message or the collapsed chip, and whether the user
+    clicked it to restore the journey in the side panel. A journey labeled with
+    several hints is recorded once for each.
+  </summary>
+  <token key="JourneyType" variants="AbaSearchJourneyType"/>
+</histogram>
+
+<histogram name="ContextualTasks.SearchJourney.EndReason"
+    enum="SearchJourneyEndReason" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded once when an armed ABA search journey ends. Records why it ended:
+    it was restored in the side panel; it expired; the user returned to the
+    source tab on a different page; the source tab was closed or discarded
+    (including when its window closed); the search tab committed a different
+    search, or a new journey started for the source tab; the user switched to
+    another tab; or all journeys were cleared, usually because the default
+    search provider changed.
+  </summary>
+</histogram>
+
 <histogram name="ContextualTasks.Session.Completed" enum="Boolean"
     expires_after="2027-03-07">
   <owner>sophiechang@chromium.org</owner>
@@ -852,6 +1097,17 @@ chromium-metrics-reviews@google.com.
     the user, the window housing the side panel is closed, or the Chrome session
     has ended. Note that a cobrowsing session is only considered to have started
     if a user enters a query via the side panel. Always recorded as true.
+  </summary>
+</histogram>
+
+<histogram name="ContextualTasks.Session.Duration.AbaOnRamp" units="ms"
+    expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when a cobrowsing session opened via the ABA search journey
+    contextual cue is closed or ended. Measures the time elapsed from when the
+    side panel was opened until it was closed.
   </summary>
 </histogram>
 
@@ -903,6 +1159,21 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="ContextualTasks.Session.QuerySubmitCount.AbaOnRamp"
+    units="queries" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when a contextual tasks side panel session opened via the ABA
+    search journey contextual cue ends (when the side panel is closed, its
+    associated tabs are closed or expire from the cache, or the browser window
+    is closed). Records the number of queries the user submitted from the side
+    panel composebox during that open session. The restored AI Overview turn
+    isn't a submitted query, so 0 means the side panel was closed without a
+    follow-up query.
+  </summary>
+</histogram>
+
 <histogram name="ContextualTasks.SidePanel.TimeToFirstContentfulPaint"
     units="ms" expires_after="2027-04-11">
   <owner>hujasonx@google.com</owner>
@@ -925,6 +1196,17 @@ chromium-metrics-reviews@google.com.
     and bidirectional handshake acknowledgment (OnHandshakeComplete) after being
     opened. Measures the elapsed time from the initial side panel Show() request
     until the frontend application is initialized and connected.
+  </summary>
+</histogram>
+
+<histogram name="ContextualTasks.SidePanel.UserAction.Close.AbaOnRamp"
+    enum="Boolean" expires_after="2027-06-18">
+  <owner>juanmojica@google.com</owner>
+  <owner>chrome-contextual-tasks-eng@google.com</owner>
+  <summary>
+    Recorded when the user clicks the side panel close button, for sessions that
+    were entered via the ABA search journey contextual cue. Always recorded as
+    true.
   </summary>
 </histogram>
 
@@ -1316,6 +1598,9 @@ chromium-metrics-reviews@google.com.
     <variant name=".OpenNewThread" summary="The user opened a new thread."/>
     <variant name=".OpenOverflowMenu"
         summary="The user opened the overflow menu."/>
+    <variant name=".OpenPageInfo"
+        summary="The user clicked the logo button to open the page info
+                 bubble."/>
     <variant name=".OpenSourcesMenu"
         summary="The user opened the sources menu."/>
     <variant name=".OpenThreadHistory"

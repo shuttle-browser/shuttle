@@ -38,6 +38,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/metrics/histogram_macros.h"
+#include "base/no_destructor.h"
 #include "base/notimplemented.h"
 #include "base/numerics/checked_math.h"
 #include "base/numerics/safe_conversions.h"
@@ -226,6 +227,25 @@ class DisabledAccelerationCounterSupplement final
   unsigned acceleration_disabled_count_ = 0;
   bool acceleration_disabled_ = false;
 };
+
+bool CanvasMatches(
+    HTMLCanvasElement& canvas,
+    const V8UnionElementOrElementImage* element_or_element_image) {
+  if (element_or_element_image->IsElement()) {
+    return element_or_element_image->GetAsElement()->CanvasForDrawing() ==
+           &canvas;
+  } else if (element_or_element_image->IsElementImage()) {
+    auto* element_image = element_or_element_image->GetAsElementImage();
+    if (element_image->GetCanvasNodeId() != canvas.GetDomNodeId()) {
+      return false;
+    }
+    if (Element* element = DynamicTo<Element>(
+            DOMNodeIds::NodeForId(element_image->GetNodeId()))) {
+      return element->CanvasForDrawing() == &canvas;
+    }
+  }
+  return false;
+}
 
 // static
 const char DisabledAccelerationCounterSupplement::kSupplementName[] =
@@ -726,6 +746,7 @@ void HTMLCanvasElement::PostFinalizeFrame(FlushReason reason) {
       dirty_rect_.Intersect(src_rect);
       frame_dispatcher_->DispatchFrame(std::move(exported_resource),
                                        dirty_rect_, IsOpaque());
+      NotifyOutOfBandFrame();
       dirty_rect_ = gfx::Rect();
     }
   }
@@ -1073,23 +1094,11 @@ void HTMLCanvasElement::updateElementGeometry(
     const V8UnionElementOrElementImage* element_or_element_image,
     const UpdateElementGeometryOptions* options,
     ExceptionState& exception_state) {
-  Element* element = nullptr;
-  if (element_or_element_image->IsElement()) {
-    element = element_or_element_image->GetAsElement();
-  } else if (element_or_element_image->IsElementImage()) {
-    element = DynamicTo<Element>(DOMNodeIds::NodeForId(
-        element_or_element_image->GetAsElementImage()->GetNodeId()));
-    if (!element) {
-      exception_state.ThrowDOMException(
-          DOMExceptionCode::kInvalidStateError,
-          "Could not find live Element associated with the given "
-          "ElementImage.");
-      return;
-    }
-  }
-
-  if (!VerifyDrawElementImageEligibility(element, "updateElementGeometry",
-                                         exception_state)) {
+  if (!CanvasMatches(*this, element_or_element_image)) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kInvalidStateError,
+        "updateElementGeometry can only be called on an element's nearest "
+        "ancestor <canvas>.");
     return;
   }
 
@@ -1122,12 +1131,27 @@ void HTMLCanvasElement::updateElementGeometry(
     }
   }
 
-  UpdateDrawnElementGeometry(*element, transform_ptr, clip_ptr,
-                             !options->preserveHitTestOrder());
+  if (element_or_element_image->IsElement()) {
+    UpdateDrawnElementGeometry(*element_or_element_image->GetAsElement(),
+                               transform_ptr, clip_ptr,
+                               !options->preserveHitTestOrder());
+  } else if (element_or_element_image->IsElementImage()) {
+    UpdateDrawnElementGeometry(*element_or_element_image->GetAsElementImage(),
+                               transform_ptr, clip_ptr,
+                               !options->preserveHitTestOrder());
+  }
 }
 
 void HTMLCanvasElement::clearElementGeometry(
-    const V8UnionElementOrElementImage* element_or_element_image) {
+    const V8UnionElementOrElementImage* element_or_element_image,
+    ExceptionState& exception_state) {
+  if (!CanvasMatches(*this, element_or_element_image)) {
+    exception_state.ThrowDOMException(
+        DOMExceptionCode::kInvalidStateError,
+        "clearElementGeometry can only be called on an element's nearest "
+        "ancestor <canvas>.");
+    return;
+  }
   if (element_or_element_image->IsElement()) {
     ClearDrawnElementGeometry(*element_or_element_image->GetAsElement());
   } else if (element_or_element_image->IsElementImage()) {
@@ -1147,6 +1171,16 @@ bool HTMLCanvasElement::PaintsIntoCanvasBuffer() const {
     return false;
 
   return true;
+}
+
+void HTMLCanvasElement::NotifyOutOfBandFrame() {
+  cc::Layer* cc_layer = ContentsCcLayer();
+  if (!cc_layer) {
+    return;
+  }
+  if (cc::LayerTreeHost* host = cc_layer->layer_tree_host()) {
+    host->NotifyOutOfBandFrame();
+  }
 }
 
 void HTMLCanvasElement::NotifyListenersCanvasChanged() {
@@ -1227,15 +1261,16 @@ void HTMLCanvasElement::NotifyListenersCanvasChanged() {
 std::pair<blink::Image*, float> HTMLCanvasElement::BrokenCanvas(
     float device_scale_factor) {
   if (device_scale_factor >= 2) {
-    DEFINE_STATIC_REF(blink::Image, broken_canvas_hi_res,
-                      (blink::Image::LoadPlatformResource(IDR_BROKENCANVAS,
-                                                          ui::k200Percent)));
-    return std::make_pair(broken_canvas_hi_res, 2);
+    static const base::NoDestructor<scoped_refptr<blink::Image>>
+        broken_canvas_hi_res(blink::Image::LoadPlatformResource(
+            IDR_BROKENCANVAS, ui::k200Percent));
+    return std::make_pair(broken_canvas_hi_res->get(), 2);
   }
 
-  DEFINE_STATIC_REF(blink::Image, broken_canvas_lo_res,
-                    (blink::Image::LoadPlatformResource(IDR_BROKENCANVAS)));
-  return std::make_pair(broken_canvas_lo_res, 1);
+  static const base::NoDestructor<scoped_refptr<blink::Image>>
+      broken_canvas_lo_res(
+          blink::Image::LoadPlatformResource(IDR_BROKENCANVAS));
+  return std::make_pair(broken_canvas_lo_res->get(), 1);
 }
 
 bool HTMLCanvasElement::LowLatencyEnabled() const {
@@ -1296,6 +1331,7 @@ void HTMLCanvasElement::Paint(GraphicsContext& context,
         OffscreenCanvasFrame()->Bitmap()->MakeUnaccelerated();
     if (!image_for_printing)
       return;
+    image_for_printing->SetOriginClean(OriginClean());
     context.DrawImage(*image_for_printing, Image::kSyncDecode,
                       ImageAutoDarkMode::Disabled(), ReportPaintTiming::kReport,
                       gfx::RectF(ToPixelSnappedRect(r)));
@@ -1334,11 +1370,15 @@ void HTMLCanvasElement::PaintInternal(GraphicsContext& context,
         RenderingContext()->GetLastRecording();
     if (last_recording.has_value() &&
         filter_quality_ != cc::PaintFlags::FilterQuality::kNone) {
+      cc::PaintRecord record = *last_recording;
+      if (!OriginClean()) {
+        record.SetIsReadBackDisallowed();
+      }
       context.Canvas()->save();
       context.Canvas()->translate(r.X(), r.Y());
       context.Canvas()->scale(r.Width() / Size().width(),
                               r.Height() / Size().height());
-      context.Canvas()->drawPicture(*last_recording);
+      context.Canvas()->drawPicture(std::move(record));
       context.Canvas()->restore();
       UMA_HISTOGRAM_BOOLEAN("Blink.Canvas.2DPrintingAsVector", true);
       return;
@@ -1359,6 +1399,7 @@ void HTMLCanvasElement::PaintInternal(GraphicsContext& context,
 
     // GraphicsContext cannot handle gpu resource serialization.
     snapshot = snapshot->MakeUnaccelerated();
+    snapshot->SetOriginClean(OriginClean());
     DCHECK(!snapshot->IsTextureBacked());
     context.DrawImage(*snapshot, Image::kSyncDecode,
                       ImageAutoDarkMode::Disabled(), ReportPaintTiming::kReport,
@@ -2057,6 +2098,7 @@ void HTMLCanvasElement::SetOffscreenCanvasResource(
     scoped_refptr<ExportedCanvasResource>&& image) {
   OffscreenCanvasPlaceholder::SetOffscreenCanvasResource(std::move(image));
   SetSize(OffscreenCanvasFrame()->Size());
+  NotifyOutOfBandFrame();
   NotifyListenersCanvasChanged();
 
   if (accessibility_manager_ &&

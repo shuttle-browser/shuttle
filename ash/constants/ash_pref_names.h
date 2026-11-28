@@ -419,10 +419,14 @@ inline constexpr char kLoginDisplayPasswordButtonEnabled[] =
 inline constexpr char kLoginExtensionApiCanLockManagedGuestSession[] =
     "extensions_api.login.can_lock_managed_guest_session";
 
-// Boolean pref indicating whether the user has enabled Suggested Content in
-// OS settings > Privacy > "Suggest new content to explore".
-inline constexpr char kSuggestedContentEnabled[] =
-    "settings.suggested_content_enabled";
+// A string pref stored in local state. Set and read by extensions using the
+// chrome.login API.
+inline constexpr char kLoginExtensionApiDataForNextLoginAttempt[] =
+    "extensions_api.login.data_for_next_login_attempt";
+
+// A dictionary pref of the echo offer check flag. It sets offer info when
+// an offer is checked.
+inline constexpr char kEchoCheckedOffers[] = "EchoCheckedOffers";
 
 // Boolean value indicating the user has hidden the launcher continue section
 // (usually because they want more visual space available for apps).
@@ -1142,6 +1146,18 @@ inline constexpr char kSecondaryDisplays[] =
 // managed guest session should be stored in local state.
 inline constexpr char kAllowMGSToStoreDisplayProperties[] =
     "settings.display.allow_mgs_to_store";
+// A boolean pref. If set to true, the Unified Desktop feature is made
+// available and turned on by default, which allows applications to span
+// multiple screens. Users may turn the feature off and on in the settings
+// while this is set to true.
+inline constexpr char kUnifiedDesktopEnabledByDefault[] =
+    "settings.display.unified_desktop_enabled_by_default";
+// A boolean pref. If set to true, the Exclude Display in Mirror Mode feature
+// is made available to the user, which allows a display to be excluded in
+// mirror mode. Users may turn the feature off and on in the settings while
+// this is set to true.
+inline constexpr char kAllowExcludeDisplayInMirrorMode[] =
+    "settings.display.allow_exclude_display_in_mirror_mode";
 
 // A list of all displays used by the user and reported to popularity metrics.
 const char kDisplayPopularityUserReportedDisplays[] =
@@ -2909,6 +2925,20 @@ inline constexpr char kSessionWaitForInitialUserActivity[] =
 inline constexpr char kShowSyncSettingsOnSessionStart[] =
     "start_sync_settings_on_session_start";
 
+// A boolean pref that when set to true, prevents the browser window from
+// launching at the start of the session.
+inline constexpr char kStartupBrowserWindowLaunchSuppressed[] =
+    "startup_browser_window_launch_suppressed";
+
+// Boolean pref indicating whether someone can cast to the device.
+inline constexpr char kCastReceiverEnabled[] = "cast_receiver.enabled";
+
+// List pref containing extension IDs that are exempt from the restricted
+// managed guest session clean-up procedure.
+inline constexpr char
+    kRestrictedManagedGuestSessionExtensionCleanupExemptList[] =
+        "restricted_managed_guest_session_extension_cleanup_exempt_list";
+
 //-----------------------------------------------------------------------------
 // Login screen related Prefs
 //-----------------------------------------------------------------------------
@@ -3550,6 +3580,10 @@ inline constexpr char kConsumerAutoUpdateToggle[] =
 inline constexpr char kReleaseNotesSuggestionChipTimesLeftToShow[] =
     "times_left_to_show_release_notes_suggestion_chip";
 
+// A string pref that contains version where "What's new" promo was shown.
+inline constexpr char kChromeOSReleaseNotesVersion[] =
+    "settings.release_notes.version";
+
 //-----------------------------------------------------------------------------
 // HATS related Prefs
 //-----------------------------------------------------------------------------
@@ -3695,6 +3729,13 @@ inline constexpr char kDocumentScanAPITrustedExtensions[] =
 inline constexpr char kDeletePrintJobHistoryAllowed[] =
     "printing.delete_print_job_history_allowed";
 
+// The list of extensions allowed to skip print job confirmation dialog when
+// they use the chrome.printing.submitJob() function. Note that this used to be
+// `kPrintingAPIExtensionsWhitelist`, hence the difference between the variable
+// name and the string value.
+inline constexpr char kPrintingAPIExtensionsAllowlist[] =
+    "printing.printing_api_extensions_whitelist";
+
 // A pref holding the list of allowed printing color mode as a bitmask composed
 // of |printing::ColorModeRestriction| values. 0 is no restriction.
 inline constexpr char kPrintingAllowedColorModes[] =
@@ -3808,6 +3849,31 @@ inline constexpr char kHasResetFirst7DaysSettingsUsedCount[] =
 //      has been used by the user during the device's lifetime.
 inline constexpr char kTotalUniqueOsSettingsChanged[] =
     "settings.total_unique_os_settings_changed";
+
+//-----------------------------------------------------------------------------
+// Text-to-speech related Prefs
+//-----------------------------------------------------------------------------
+
+// Dictionary preference that maps language to default voice name preferences
+// for the users's text-to-speech settings. For example, this might map
+// 'en-US' to 'Chrome OS US English'.
+inline constexpr char kTextToSpeechLangToVoiceName[] =
+    "settings.tts.lang_to_voice_name";
+
+// Double preference that controls the default text-to-speech voice rate,
+// where 1.0 is an unchanged rate, and for example, 0.5 is half as fast,
+// and 2.0 is twice as fast.
+inline constexpr char kTextToSpeechRate[] = "settings.tts.speech_rate";
+
+// Double preference that controls the default text-to-speech voice pitch,
+// where 1.0 is unchanged, and for example 0.5 is lower, and 2.0 is
+// higher-pitched.
+inline constexpr char kTextToSpeechPitch[] = "settings.tts.speech_pitch";
+
+// Double preference that controls the default text-to-speech voice volume
+// relative to the system volume, where lower than 1.0 is quieter than the
+// system volume, and higher than 1.0 is louder.
+inline constexpr char kTextToSpeechVolume[] = "settings.tts.speech_volume";
 
 //-----------------------------------------------------------------------------
 // Enrollment related Prefs
@@ -4031,6 +4097,21 @@ inline constexpr char kNoteTakingAppId[] = "settings.note_taking_app_id";
 
 // Boolean pref to control whether to enable Lens integration with media app
 inline constexpr char kMediaAppLensEnabled[] = "media_app.enable_lens";
+
+// A boolean specifying whether the Desk API is enabled for third party web
+// applications. If set to true, the Desk API bridge component extension will be
+// installed.
+inline constexpr char kDeskAPIThirdPartyAccessEnabled[] =
+    "desk_api.third_party_access_enabled";
+
+// A list of third party web application domains allowed to use the Desk API.
+inline constexpr char kDeskAPIThirdPartyAllowlist[] =
+    "desk_api.third_party_allowlist";
+
+// A boolean specifying whether the insights extension is enabled. If set to
+// true, the CCaaS Chrome component extension will be installed.
+inline constexpr char kInsightsExtensionEnabled[] =
+    "insights_extension_enabled";
 
 // NOTE: New prefs should start with the "ash." prefix. Existing prefs moved
 // into this file should not be renamed, since they may be synced.

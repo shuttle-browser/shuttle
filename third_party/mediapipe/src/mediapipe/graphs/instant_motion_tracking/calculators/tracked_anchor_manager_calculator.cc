@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/graphs/instant_motion_tracking/calculators/transformations.h"
 #include "mediapipe/util/tracking/box_tracker.pb.h"
 
@@ -105,7 +105,7 @@ absl::Status TrackedAnchorManagerCalculator::Process(CalculatorContext* cc) {
   const int sticker_sentinel = cc->Inputs().Tag(kSentinelTag).Get<int>();
   std::vector<Anchor> current_anchor_data =
       cc->Inputs().Tag(kAnchorsTag).Get<std::vector<Anchor>>();
-  auto pos_boxes = absl::make_unique<mediapipe::TimedBoxProtoList>();
+  auto pos_boxes = std::make_unique<mediapipe::TimedBoxProtoList>();
   std::vector<Anchor> tracked_scaled_anchor_data;
 
   // Delete any boxes being tracked without an associated anchor

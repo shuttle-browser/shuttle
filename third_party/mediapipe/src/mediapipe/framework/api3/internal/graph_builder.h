@@ -25,21 +25,20 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/btree_map.h"
-#include "absl/log/absl_check.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "absl/container/btree_map.h"   // from @com_google_absl
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
 #include "google/protobuf/message_lite.h"
 #include "mediapipe/framework/calculator_base.h"
 #include "mediapipe/framework/calculator_contract.h"
 #include "mediapipe/framework/mediapipe_options.pb.h"
 #include "mediapipe/framework/port/any_proto.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_builder.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/stream_handler.pb.h"
 #include "mediapipe/framework/tool/type_util.h"
 
@@ -82,7 +81,7 @@ class TagIndexMap {
         // populated yet.
         RET_CHECK(item != nullptr) << absl::StrCat(
             "Missing port for tag: \"", loc.tag, "\", index: ", loc.index, ".");
-        MP_RETURN_IF_ERROR(fun(loc, *item));
+        ABSL_RETURN_IF_ERROR(fun(loc, *item));
       }
     }
     return absl::OkStatus();
@@ -335,6 +334,9 @@ class NodeBuilder {
   // `CalculatorGraphConfig::Node::source_layer`.
   void SetSourceLayer(int source_layer) { source_layer_ = source_layer; }
 
+  // Sets name corresponding to `CalculatorGraphConfig::Node::name`.
+  void SetName(absl::string_view name) { name_ = std::string(name); }
+
  protected:
   // GetOptionsInternal resolutes the overload greedily, which finds the first
   // match then succeed (template specialization tries all matches, thus could
@@ -358,6 +360,7 @@ class NodeBuilder {
   }
 
   std::string type_;
+  std::string name_;
   TagIndexMap<Destination> in_streams_;
   TagIndexMap<Source> out_streams_;
   TagIndexMap<SideDestination> in_sides_;
@@ -527,22 +530,22 @@ class GraphBuilder {
       }
     }
 
-    MP_RETURN_IF_ERROR(FixUnnamedConnections());
-    MP_RETURN_IF_ERROR(UpdateBoundaryConfig(&config));
+    ABSL_RETURN_IF_ERROR(FixUnnamedConnections());
+    ABSL_RETURN_IF_ERROR(UpdateBoundaryConfig(&config));
     for (const std::unique_ptr<NodeBuilder>& node : nodes_) {
       auto* out_node = config.add_node();
-      MP_RETURN_IF_ERROR(UpdateNodeConfig(*node, out_node));
+      ABSL_RETURN_IF_ERROR(UpdateNodeConfig(*node, out_node));
     }
     for (const std::unique_ptr<PacketGeneratorBuilder>& node : packet_gens_) {
       auto* out_node = config.add_packet_generator();
-      MP_RETURN_IF_ERROR(UpdateNodeConfig(*node, out_node));
+      ABSL_RETURN_IF_ERROR(UpdateNodeConfig(*node, out_node));
     }
     return config;
   }
 
  private:
   absl::Status FixUnnamedConnections(NodeBuilder* node, int* unnamed_count) {
-    MP_RETURN_IF_ERROR(node->out_streams_.Visit(
+    ABSL_RETURN_IF_ERROR(node->out_streams_.Visit(
         [&](const TagIndexLocation& loc, Source& source) -> absl::Status {
           if (source.name.empty()) {
             source.name = absl::StrCat("__stream_", (*unnamed_count)++);
@@ -550,7 +553,7 @@ class GraphBuilder {
           return absl::OkStatus();
         }));
 
-    MP_RETURN_IF_ERROR(node->out_sides_.Visit(
+    ABSL_RETURN_IF_ERROR(node->out_sides_.Visit(
         [&](const TagIndexLocation& loc, SideSource& source) -> absl::Status {
           if (source.name.empty()) {
             source.name = absl::StrCat("__side_packet_", (*unnamed_count)++);
@@ -562,12 +565,13 @@ class GraphBuilder {
 
   absl::Status FixUnnamedConnections() {
     int unnamed_count = 0;
-    MP_RETURN_IF_ERROR(FixUnnamedConnections(&graph_boundary_, &unnamed_count));
+    ABSL_RETURN_IF_ERROR(
+        FixUnnamedConnections(&graph_boundary_, &unnamed_count));
     for (std::unique_ptr<NodeBuilder>& node : nodes_) {
-      MP_RETURN_IF_ERROR(FixUnnamedConnections(node.get(), &unnamed_count));
+      ABSL_RETURN_IF_ERROR(FixUnnamedConnections(node.get(), &unnamed_count));
     }
     for (std::unique_ptr<PacketGeneratorBuilder>& node : packet_gens_) {
-      MP_RETURN_IF_ERROR(node->out_sides_.Visit(
+      ABSL_RETURN_IF_ERROR(node->out_sides_.Visit(
           [&](const TagIndexLocation& loc, SideSource& source) -> absl::Status {
             if (source.name.empty()) {
               source.name = absl::StrCat("__side_packet_", unnamed_count++);
@@ -604,7 +608,10 @@ class GraphBuilder {
   absl::Status UpdateNodeConfig(const NodeBuilder& node,
                                 CalculatorGraphConfig::Node* config) {
     config->set_calculator(node.type_);
-    MP_RETURN_IF_ERROR(node.in_streams_.Visit(
+    if (!node.name_.empty()) {
+      config->set_name(node.name_);
+    }
+    ABSL_RETURN_IF_ERROR(node.in_streams_.Visit(
         [&](const TagIndexLocation& loc,
             const Destination& endpoint) -> absl::Status {
           RET_CHECK(endpoint.source != nullptr)
@@ -619,13 +626,13 @@ class GraphBuilder {
           }
           return absl::OkStatus();
         }));
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         node.out_streams_.Visit([&](const TagIndexLocation& loc,
                                     const Source& endpoint) -> absl::Status {
           config->add_output_stream(TaggedName(loc, endpoint.name));
           return absl::OkStatus();
         }));
-    MP_RETURN_IF_ERROR(node.in_sides_.Visit(
+    ABSL_RETURN_IF_ERROR(node.in_sides_.Visit(
         [&](const TagIndexLocation& loc,
             const SideDestination& endpoint) -> absl::Status {
           RET_CHECK(endpoint.source != nullptr)
@@ -635,7 +642,7 @@ class GraphBuilder {
           config->add_input_side_packet(TaggedName(loc, endpoint.source->name));
           return absl::OkStatus();
         }));
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         node.out_sides_.Visit([&](const TagIndexLocation& loc,
                                   const SideSource& endpoint) -> absl::Status {
           config->add_output_side_packet(TaggedName(loc, endpoint.name));
@@ -675,7 +682,7 @@ class GraphBuilder {
   absl::Status UpdateNodeConfig(const PacketGeneratorBuilder& node,
                                 PacketGeneratorConfig* config) {
     config->set_packet_generator(node.type_);
-    MP_RETURN_IF_ERROR(node.in_sides_.Visit(
+    ABSL_RETURN_IF_ERROR(node.in_sides_.Visit(
         [&](const TagIndexLocation& loc,
             const SideDestination& endpoint) -> absl::Status {
           RET_CHECK(endpoint.source != nullptr)
@@ -686,7 +693,7 @@ class GraphBuilder {
           config->add_input_side_packet(TaggedName(loc, endpoint.source->name));
           return absl::OkStatus();
         }));
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         node.out_sides_.Visit([&](const TagIndexLocation& loc,
                                   const SideSource& endpoint) -> absl::Status {
           config->add_output_side_packet(TaggedName(loc, endpoint.name));
@@ -700,7 +707,7 @@ class GraphBuilder {
 
   // For special boundary node.
   absl::Status UpdateBoundaryConfig(CalculatorGraphConfig* config) {
-    MP_RETURN_IF_ERROR(graph_boundary_.in_streams_.Visit(
+    ABSL_RETURN_IF_ERROR(graph_boundary_.in_streams_.Visit(
         [&](const TagIndexLocation& loc,
             const Destination& endpoint) -> absl::Status {
           RET_CHECK(endpoint.source != nullptr)
@@ -714,13 +721,13 @@ class GraphBuilder {
 
           return absl::OkStatus();
         }));
-    MP_RETURN_IF_ERROR(graph_boundary_.out_streams_.Visit(
+    ABSL_RETURN_IF_ERROR(graph_boundary_.out_streams_.Visit(
         [&](const TagIndexLocation& loc,
             const Source& endpoint) -> absl::Status {
           config->add_input_stream(TaggedName(loc, endpoint.name));
           return absl::OkStatus();
         }));
-    MP_RETURN_IF_ERROR(graph_boundary_.in_sides_.Visit(
+    ABSL_RETURN_IF_ERROR(graph_boundary_.in_sides_.Visit(
         [&](const TagIndexLocation& loc,
             const SideDestination& endpoint) -> absl::Status {
           RET_CHECK(endpoint.source != nullptr)
@@ -733,7 +740,7 @@ class GraphBuilder {
               TaggedName(loc, endpoint.source->name));
           return absl::OkStatus();
         }));
-    MP_RETURN_IF_ERROR(graph_boundary_.out_sides_.Visit(
+    ABSL_RETURN_IF_ERROR(graph_boundary_.out_sides_.Visit(
         [&](const TagIndexLocation& loc,
             const SideSource& endpoint) -> absl::Status {
           config->add_input_side_packet(TaggedName(loc, endpoint.name));

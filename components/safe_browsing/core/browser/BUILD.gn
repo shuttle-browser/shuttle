@@ -8,23 +8,23 @@ source_set("browser") {
     "client_side_detection_host_base.h",
     "credit_card_form_event.cc",
     "credit_card_form_event.h",
-    "database_manager_mechanism.cc",
-    "database_manager_mechanism.h",
-    "hash_realtime_mechanism.cc",
-    "hash_realtime_mechanism.h",
-    "ping_manager.cc",
-    "ping_manager.h",
+    "ping_manager/ping_manager.cc",
+    "ping_manager/ping_manager.h",
     "safe_browsing_hats_delegate.cc",
     "safe_browsing_hats_delegate.h",
-    "safe_browsing_lookup_mechanism.cc",
-    "safe_browsing_lookup_mechanism.h",
-    "safe_browsing_lookup_mechanism_runner.cc",
-    "safe_browsing_lookup_mechanism_runner.h",
-    "safe_browsing_url_checker_impl.cc",
-    "safe_browsing_url_checker_impl.h",
-    "url_checker_delegate.h",
-    "url_realtime_mechanism.cc",
-    "url_realtime_mechanism.h",
+    "url_checker/database_manager_mechanism.cc",
+    "url_checker/database_manager_mechanism.h",
+    "url_checker/hash_realtime_mechanism.cc",
+    "url_checker/hash_realtime_mechanism.h",
+    "url_checker/safe_browsing_lookup_mechanism.cc",
+    "url_checker/safe_browsing_lookup_mechanism.h",
+    "url_checker/safe_browsing_lookup_mechanism_runner.cc",
+    "url_checker/safe_browsing_lookup_mechanism_runner.h",
+    "url_checker/safe_browsing_url_checker_impl.cc",
+    "url_checker/safe_browsing_url_checker_impl.h",
+    "url_checker/url_checker_delegate.h",
+    "url_checker/url_realtime_mechanism.cc",
+    "url_checker/url_realtime_mechanism.h",
     "user_population.cc",
     "user_population.h",
   ]
@@ -72,6 +72,7 @@ source_set("browser") {
     "//net:extras",
     "//services/network/public/cpp",
     "//services/network/public/mojom",
+    "//ui/gfx",
     "//url",
   ]
 }
@@ -82,10 +83,12 @@ source_set("client_side_detection_service_base") {
     "client_side_detection_feature_cache_base.h",
     "client_side_detection_service_base.cc",
     "client_side_detection_service_base.h",
-    "csd_model_type.h",
   ]
 
-  public_deps = [ "//components/safe_browsing/core/common/fbs:client_model" ]
+  public_deps = [
+    "//components/safe_browsing/core/browser/client_side_detection:client_side_phishing_model",
+    "//components/safe_browsing/core/common/fbs:client_model",
+  ]
 
   deps = [
     "//base",
@@ -101,8 +104,6 @@ source_set("client_side_detection_service_base") {
     "//net",
     "//services/network/public/cpp",
     "//services/network/public/mojom",
-    "//third_party/tflite_support",
-    "//third_party/tflite_support:tflite_support_proto",
     "//url",
   ]
 }
@@ -151,17 +152,10 @@ source_set("token_fetcher") {
   deps = [ "//base" ]
 }
 
-source_set("download_check_result") {
-  sources = [
-    "download_check_result.cc",
-    "download_check_result.h",
-  ]
-}
-
 source_set("referring_app_info") {
   sources = [
-    "referring_app_info.cc",
-    "referring_app_info.h",
+    "referring_app_info/referring_app_info.cc",
+    "referring_app_info/referring_app_info.h",
   ]
   deps = [
     "//components/safe_browsing/core/browser/utils",
@@ -185,8 +179,8 @@ source_set("intelligent_scan_delegate") {
 
 source_set("safe_browsing_metrics_collector") {
   sources = [
-    "safe_browsing_metrics_collector.cc",
-    "safe_browsing_metrics_collector.h",
+    "metrics_collector/safe_browsing_metrics_collector.cc",
+    "metrics_collector/safe_browsing_metrics_collector.h",
   ]
 
   deps = [
@@ -208,6 +202,7 @@ source_set("suspicious_site_warning_allowlist") {
     "//base",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/common",
+    "//components/history/core/browser",
     "//url",
   ]
 }

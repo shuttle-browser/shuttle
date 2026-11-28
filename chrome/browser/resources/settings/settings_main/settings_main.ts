@@ -89,6 +89,7 @@ export class SettingsMainElement extends SettingsMainElementBase {
       inSearchMode_: {type: Boolean},
       showNoResultsFound_: {type: Boolean},
       showResetProfileBanner_: {type: Boolean},
+      settingsRefresh2026Enabled_: {type: Boolean},
       toolbarSpinnerActive: {
         type: Boolean,
         notify: true,
@@ -97,12 +98,14 @@ export class SettingsMainElement extends SettingsMainElementBase {
   }
 
   protected accessor pageVisibility_: PageVisibility = pageVisibility || {};
-  protected accessor lastRoute_: Route|null = null;
+  private accessor lastRoute_: Route|null = null;
   protected accessor routes_: SettingsRoutes = routes;
   protected accessor inSearchMode_: boolean = false;
   protected accessor showNoResultsFound_: boolean = false;
   protected accessor showResetProfileBanner_: boolean =
       loadTimeData.getBoolean('showResetProfileBanner');
+  protected accessor settingsRefresh2026Enabled_: boolean =
+      loadTimeData.getString('settingsRefresh2026') !== '';
   accessor toolbarSpinnerActive: boolean = false;
 
   private eventTracker_: EventTracker = new EventTracker();

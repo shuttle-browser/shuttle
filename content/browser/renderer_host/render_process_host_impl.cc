@@ -33,6 +33,7 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/i18n/language_tag.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
@@ -122,6 +123,7 @@
 #include "content/browser/push_messaging/push_messaging_manager.h"
 #include "content/browser/quota/quota_context.h"
 #include "content/browser/renderer_host/embedded_frame_sink_provider_impl.h"
+#include "content/browser/renderer_host/frame_tree.h"
 #include "content/browser/renderer_host/media/media_stream_track_metrics_host.h"
 #include "content/browser/renderer_host/recently_destroyed_hosts.h"
 #include "content/browser/renderer_host/render_frame_host_delegate.h"
@@ -326,9 +328,6 @@ const char kSiteProcessMapKeyName[] = "content_site_process_map";
 const void* const kProcessPerSiteUmaLoggedKey = &kProcessPerSiteUmaLoggedKey;
 const void* const kSubframeProcessReuseOverLimitUmaLoggedKey =
     &kSubframeProcessReuseOverLimitUmaLoggedKey;
-
-RenderProcessHost::AnalyzeHungRendererFunction g_analyze_hung_renderer =
-    nullptr;
 
 // Memory threshold for subframe process reuse, in bytes. A process may be
 // reused for another subframe only if the process's memory footprint stays
@@ -947,6 +946,19 @@ class SiteProcessCountTracker : public base::SupportsUserData::Data,
         ProcessReusePolicy::kReusePrerenderingProcessForMainFrame) {
       if (!host->IsOnlyHostingPrerenderedFramesOrEmpty()) {
         return false;
+      }
+      if (base::FeatureList::IsEnabled(
+              features::kPreferWarmRendererProcessAvoidPrewarmContention)) {
+        // Once a navigation commits (`DidCommitNavigation`), the process moves
+        // from `kPendingSiteProcessCountTrackerKey` into
+        // `kCommittedSiteProcessCountTrackerKey`, while the page continues
+        // parsing HTML, running scripts, and loading subresources until
+        // `DidStopLoading()`. `HasLoadingFrames()` filters out processes in
+        // `kCommittedSiteProcessCountTrackerKey` during this post-commit
+        // loading phase.
+        if (!host->IsReady() || host->HasLoadingFrames()) {
+          return false;
+        }
       }
     }
 
@@ -2290,6 +2302,7 @@ void RenderProcessHostImpl::InitializeChannelProxy() {
   // See OnProcessLaunched() for some additional details of this somewhat
   // surprising behavior.
   renderer_interface_.reset();
+  renderer_variations_configuration_.reset();
   channel_->GetRemoteAssociatedInterface(&renderer_interface_);
 
   if (ShouldPauseChannelUntilProcessLaunched()) {
@@ -2333,6 +2346,7 @@ void RenderProcessHostImpl::InitializeSharedMemoryRegionsOnceChannelIsUp() {
 }
 
 void RenderProcessHostImpl::ResetChannelProxy() {
+  renderer_variations_configuration_.reset();
   if (!channel_)
     return;
 
@@ -2438,7 +2452,8 @@ void RenderProcessHostImpl::BindFileSystemAccessManager(
                             // URL for workers instead of the origin as source
                             // url. This URL will be used for SafeBrowsing
                             // checks and for the Quarantine Service.
-                            storage_key.origin().GetURL(), GetDeprecatedID()),
+                            storage_key.origin().GetURL(), GetDeprecatedID(),
+                            storage_key.IsThirdPartyContext()),
                         std::move(receiver));
 }
 
@@ -2466,7 +2481,8 @@ void RenderProcessHostImpl::GetSandboxedFileSystemForBucket(
           // URL for workers instead of the origin as source url.
           // This URL will be used for SafeBrowsing checks and for
           // the Quarantine Service.
-          bucket.storage_key.origin().GetURL(), GetDeprecatedID()),
+          bucket.storage_key.origin().GetURL(), GetDeprecatedID(),
+          bucket.storage_key.IsThirdPartyContext()),
       bucket, directory_path_components, std::move(callback));
 }
 
@@ -3216,6 +3232,17 @@ mojom::Renderer* RenderProcessHostImpl::GetRendererInterface() {
   return renderer_interface_.get();
 }
 
+mojom::RendererVariationsConfiguration*
+RenderProcessHostImpl::GetRendererVariationsConfiguration() {
+  if (!channel_) {
+    return nullptr;
+  }
+  if (!renderer_variations_configuration_.is_bound()) {
+    channel_->GetRemoteAssociatedInterface(&renderer_variations_configuration_);
+  }
+  return renderer_variations_configuration_.get();
+}
+
 blink::mojom::CallStackGenerator*
 RenderProcessHostImpl::GetJavaScriptCallStackGeneratorInterface() {
   if (!javascript_call_stack_generator_interface_.is_bound()) {
@@ -3638,13 +3665,11 @@ bool RenderProcessHostImpl::IsSpare() const {
       SpareRenderProcessHostManagerImpl::Get().GetSpares(), this);
 }
 
-void RenderProcessHostImpl::SetProcessLock(
-    const IsolationContext& isolation_context,
-    const ProcessLock& process_lock) {
+void RenderProcessHostImpl::SetProcessLock(const ProcessLock& process_lock) {
   TRACE_EVENT_BEGIN("shutdown", "Lock process", tracing_track_,
                     ChromeTrackEvent::kRenderProcessHost, *this);
-  ChildProcessSecurityPolicyImpl::GetInstance()->LockProcess(
-      isolation_context, GetID(), process_lock);
+  ChildProcessSecurityPolicyImpl::GetInstance()->LockProcess(GetID(),
+                                                             process_lock);
 
   // Note that SetProcessLock is only called on ProcessLock state transitions.
   // (e.g. invalid -> allows_any_site and allows_any_site -> locked_to_site).
@@ -3839,9 +3864,9 @@ void RenderProcessHostImpl::AppendRendererCommandLine(
   PropagateBrowserCommandLineToRenderer(browser_command_line, command_line);
 
   // Pass on the browser locale.
-  const std::string locale =
+  const base::i18n::LanguageTag locale =
       GetContentClient()->browser()->GetApplicationLocale();
-  command_line->AppendSwitchASCII(switches::kLang, locale);
+  command_line->AppendSwitchASCII(switches::kLang, locale.tag_string());
 
   // A non-empty RendererCmdPrefix implies that Zygote is disabled.
   if (!base::CommandLine::ForCurrentProcess()
@@ -5212,10 +5237,25 @@ bool RenderProcessHostImpl::HasWarmLockedProcess(
   }
 
   // Identify all process trackers to query for a reusable locked process.
+  // Note: `kPendingSiteProcessCountTrackerKey` only tracks uncommitted
+  // `NavigationRequest`s before `DidCommitNavigation` (cleared in
+  // `~NavigationRequest() -> ResetExpectedProcess()`). When
+  // `kPreferWarmRendererProcessAvoidPrewarmContention` is enabled for
+  // `kReusePrerenderingProcessForMainFrame`, we skip
+  // `kPendingSiteProcessCountTrackerKey` because uncommitted navigations have
+  // not finished loading, and additionally check `HasLoadingFrames()` in
+  // `IsEligibleForProcessReuse()` for processes in
+  // `kCommittedSiteProcessCountTrackerKey` whose main frame has committed
+  // (`DidCommitNavigation`) but has not yet reached `DidStopLoading()`.
   std::vector<const void*> tracker_keys = {
       kCommittedSiteProcessCountTrackerKey,
-      kPendingSiteProcessCountTrackerKey,
   };
+  if (process_reuse_policy !=
+          ProcessReusePolicy::kReusePrerenderingProcessForMainFrame ||
+      !base::FeatureList::IsEnabled(
+          features::kPreferWarmRendererProcessAvoidPrewarmContention)) {
+    tracker_keys.push_back(kPendingSiteProcessCountTrackerKey);
+  }
 
   if (RenderProcessHostImpl::ShouldDelayProcessShutdown()) {
     tracker_keys.push_back(kDelayedShutdownSiteProcessCountTrackerKey);
@@ -5256,9 +5296,9 @@ void RenderProcessHost::SetRunRendererInProcess(bool value) {
     if (!command_line->HasSwitch(switches::kLang)) {
       // Modify the current process' command line to include the browser
       // locale, as the renderer expects this flag to be set.
-      const std::string locale =
+      const base::i18n::LanguageTag locale =
           GetContentClient()->browser()->GetApplicationLocale();
-      command_line->AppendSwitchASCII(switches::kLang, locale);
+      command_line->AppendSwitchASCII(switches::kLang, locale.tag_string());
     }
     // TODO(piman): we should really send configuration through bools rather
     // than by parsing strings, i.e. sending an IPC rather than command line
@@ -5728,12 +5768,6 @@ ChildProcessTerminationInfo RenderProcessHostImpl::GetChildTerminationInfo(
     // RenderProcessExited with status TERMINATION_STATUS_STILL_RUNNING,
     // since this will break WebContentsImpl logic.
     info.status = base::TERMINATION_STATUS_PROCESS_CRASHED;
-
-    // TODO(siggi): Remove this once https://crbug.com/806661 is resolved.
-#if BUILDFLAG(IS_WIN)
-    if (info.exit_code == WAIT_TIMEOUT && g_analyze_hung_renderer)
-      g_analyze_hung_renderer(child_process_launcher_->GetProcess());
-#endif
   }
 
 #if BUILDFLAG(IS_ANDROID)
@@ -5893,12 +5927,6 @@ void RenderProcessHost::PostTaskWhenProcessIsReady(base::OnceClosure task) {
   CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M152);
   CHECK(!task.is_null(), base::NotFatalUntil::M152);
   new RenderProcessHostIsReadyObserver(this, std::move(task));
-}
-
-// static
-void RenderProcessHost::SetHungRendererAnalysisFunction(
-    AnalyzeHungRendererFunction analyze_hung_renderer) {
-  g_analyze_hung_renderer = analyze_hung_renderer;
 }
 
 void RenderProcessHostImpl::SuddenTerminationAllowedChanged(bool allowed) {
@@ -6389,14 +6417,21 @@ RenderProcessHostImpl::FindReusableProcessHostForSiteInstance(
   std::vector<RenderProcessHost*> eligible_background_hosts;
 
   // First, add the RenderProcessHosts expecting a navigation to |site_url| to
-  // the list of eligible RenderProcessHosts.
-  SiteProcessCountTracker* pending_tracker =
-      static_cast<SiteProcessCountTracker*>(
-          browser_context->GetUserData(kPendingSiteProcessCountTrackerKey));
-  if (pending_tracker) {
-    pending_tracker->FindRenderProcessesForSiteInstance(
-        site_instance, process_reuse_policy, &eligible_foreground_hosts,
-        &eligible_background_hosts);
+  // the list of eligible RenderProcessHosts. Skip pending (uncommitted)
+  // navigations for `kReusePrerenderingProcessForMainFrame` when avoiding
+  // prewarm contention, matching `HasWarmLockedProcess()`.
+  if (process_reuse_policy !=
+          ProcessReusePolicy::kReusePrerenderingProcessForMainFrame ||
+      !base::FeatureList::IsEnabled(
+          features::kPreferWarmRendererProcessAvoidPrewarmContention)) {
+    SiteProcessCountTracker* pending_tracker =
+        static_cast<SiteProcessCountTracker*>(
+            browser_context->GetUserData(kPendingSiteProcessCountTrackerKey));
+    if (pending_tracker) {
+      pending_tracker->FindRenderProcessesForSiteInstance(
+          site_instance, process_reuse_policy, &eligible_foreground_hosts,
+          &eligible_background_hosts);
+    }
   }
 
   if (eligible_foreground_hosts.empty()) {
@@ -6594,6 +6629,18 @@ void RenderProcessHostImpl::GetBoundInterfacesForTesting(
 bool RenderProcessHostImpl::IsOnlyHostingPrerenderedFramesOrEmpty() {
   return prerendering_frame_host_id_set_.size() ==
          render_frame_host_id_set_.size();
+}
+
+bool RenderProcessHostImpl::HasLoadingFrames() const {
+  for (const auto& rfh_id : render_frame_host_id_set_) {
+    RenderFrameHostImpl* rfh = RenderFrameHostImpl::FromID(rfh_id);
+    if (rfh && ((rfh->IsOutermostMainFrame() &&
+                 !rfh->has_committed_any_navigation()) ||
+                rfh->is_loading())) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace content

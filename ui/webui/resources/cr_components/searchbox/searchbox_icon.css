@@ -15,7 +15,14 @@
   display: flex;
   flex-shrink: 0;
   justify-content: center;
+  user-select: none;
   width: var(--cr-searchbox-icon-container-size, 32px);
+}
+
+#image,
+#iconImg,
+#faviconImage {
+  -webkit-user-drag: none;
 }
 
 :host(:not([is-lens-searchbox_])) {
@@ -102,6 +109,18 @@
   background-color: var(--color-searchbox-google-g-background);
   height: var(--cr-searchbox-icon-size-in-searchbox);
   width: var(--cr-searchbox-icon-size-in-searchbox);
+}
+
+/* In dark mode, TopChrome searchbox uses a monochrome Google G mask colored
+   white. */
+:host([in-searchbox][mask-image*='google_g_cr23.svg']) #icon {
+  background-color: var(--color-searchbox-google-g-background, #fff);
+}
+
+@media (forced-colors: active) {
+  :host([in-searchbox][mask-image*='google_g_cr23.svg']) #icon {
+    background-color: ButtonText;
+  }
 }
 
 :host([in-searchbox][favicon-image_*='//resources/cr_components/omnibox/icons/google_g.svg']) #faviconImage {

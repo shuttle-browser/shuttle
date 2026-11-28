@@ -5,12 +5,16 @@
 #include "chrome/browser/ui/views/tabs/shared/new_tab_button.h"
 
 #include "base/feature_list.h"
+#include "base/metrics/user_metrics.h"
+#include "base/metrics/user_metrics_action.h"
 #include "build/build_config.h"
+#include "chrome/browser/shuttle/shuttle_service.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/tabs/shared/new_tab_button_menu_model.h"
 #include "ui/actions/actions.h"
@@ -116,10 +120,12 @@ void NewTabButton::SetMiddleClickCallbackForTesting(
 }
 
 void NewTabButton::NotifyClick(const ui::Event& event) {
+  base::RecordAction(base::UserMetricsAction("NewTab_Button"));
 #if BUILDFLAG(IS_LINUX)
   if (event.IsMouseEvent()) {
     const ui::MouseEvent& mouse = static_cast<const ui::MouseEvent&>(event);
     if (mouse.IsOnlyMiddleMouseButton()) {
+      NotifyWillInvokeAction();
       views::InkDrop::Get(this)->AnimateToState(
           views::InkDropState::ACTION_TRIGGERED,
           ui::LocatedEvent::FromIfValid(&event));
@@ -132,6 +138,22 @@ void NewTabButton::NotifyClick(const ui::Event& event) {
     }
   }
 #endif
+  // Shuttle: "+", pressed while an agent's tab is shown, adds a tab to that
+  // agent (its right-click menu picks any agent). Only this button:
+  // kActionNewTab also runs for Cmd/Ctrl+T and the menus' "New tab", which
+  // stay a plain user tab. The classic tab strip's "+" has its own path
+  // (BrowserTabStripController::CreateNewTab).
+  if (auto* agents = shuttle::ShuttleService::Get(browser_->GetProfile())) {
+    const std::string agent_id = agents->AgentOfTab(
+        browser_->GetTabStripModel()->GetActiveWebContents());
+    if (!agent_id.empty() &&
+        agents->OpenNewTabInAgent(agent_id, {.browser = browser_})) {
+      views::InkDrop::Get(this)->AnimateToState(
+          views::InkDropState::ACTION_TRIGGERED,
+          ui::LocatedEvent::FromIfValid(&event));
+      return;
+    }
+  }
   TabStripFlatEdgeButton::NotifyClick(event);
 }
 

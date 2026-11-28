@@ -36,6 +36,7 @@
 #include "base/debug/dump_without_crashing.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/public/common/input/web_mouse_wheel_event.h"
 #include "third_party/blink/public/mojom/frame/user_activation_notification_type.mojom-blink.h"
@@ -599,8 +600,7 @@ std::optional<ui::Cursor> EventHandler::SelectCursor(
   // style recalc, for the cursor.
   const ComputedStyle* area_style = nullptr;
   if (auto* area = DynamicTo<HTMLAreaElement>(node);
-      area && !hit_layout_object &&
-      RuntimeEnabledFeatures::HTMLAreaElementDisplayNoneEnabled()) {
+      area && !hit_layout_object) {
     area_style = ComputedStyle::NullifyEnsured(area->GetComputedStyle());
     if (area_style) {
       HTMLImageElement* image = area->ImageElement();
@@ -926,7 +926,8 @@ WebInputEventResult EventHandler::HandleMousePressEvent(
   }
 
   LocalFrame::NotifyUserActivation(
-      frame_, mojom::blink::UserActivationNotificationType::kInteraction);
+      frame_, mojom::blink::UserActivationNotificationType::kInteraction,
+      RuntimeEnabledFeatures::TrustedUserActivationTriggersEnabled());
 
   if (RuntimeEnabledFeatures::MiddleClickAutoscrollEnabled()) {
     // We store whether middle click autoscroll is in progress before calling
@@ -2227,6 +2228,25 @@ WebInputEventResult EventHandler::SendContextMenuEvent(
   return result;
 }
 
+// The contextmenu event is dispatched from the browser process or from
+// in-renderer touch selection code paths, without a real input event to
+// inherit the pointer type from.
+static bool IsTouchMenuSourceType(
+    ui::mojom::blink::MenuSourceType source_type) {
+  switch (source_type) {
+    case ui::mojom::blink::MenuSourceType::kTouch:
+    case ui::mojom::blink::MenuSourceType::kLongPress:
+    case ui::mojom::blink::MenuSourceType::kLongTap:
+    case ui::mojom::blink::MenuSourceType::kTouchEditMenu:
+    case ui::mojom::blink::MenuSourceType::kTouchHandle:
+    case ui::mojom::blink::MenuSourceType::kAdjustSelection:
+    case ui::mojom::blink::MenuSourceType::kAdjustSelectionReset:
+      return true;
+    default:
+      return false;
+  }
+}
+
 static bool ShouldShowContextMenuAtSelection(const FrameSelection& selection) {
   // TODO(editing-dev): The use of UpdateStyleAndLayout
   // needs to be audited.  See http://crbug.com/590369 for more details.
@@ -2350,6 +2370,10 @@ WebInputEventResult EventHandler::ShowNonLocatedContextMenu(
       WebPointerProperties::Button::kNoButton, /* clickCount */ 0,
       WebInputEvent::kNoModifiers, base::TimeTicks::Now(), source_type);
   mouse_event.id = PointerEventFactory::kMouseId;
+  if (base::FeatureList::IsEnabled(features::kContextMenuPointerTypeForTouch) &&
+      IsTouchMenuSourceType(source_type)) {
+    mouse_event.pointer_type = WebPointerProperties::PointerType::kTouch;
+  }
 
   // TODO(dtapuska): Transition the mouseEvent to be created really in viewport
   // coordinates instead of root frame coordinates.

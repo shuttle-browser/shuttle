@@ -17,8 +17,10 @@
 
 #include <vector>
 
-#include "Eigen/Core"
-#include "absl/log/absl_check.h"
+#include "Eigen/Core"                   // from @eigen
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "audio/dsp/window_functions.h"
 #include "mediapipe/calculators/audio/time_series_framer_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -335,7 +337,7 @@ absl::Status TimeSeriesFramerCalculator::Open(CalculatorContext* cc) {
       << framer_options.frame_overlap_seconds();
 
   TimeSeriesHeader input_header;
-  MP_RETURN_IF_ERROR(time_series_util::FillTimeSeriesHeaderIfValid(
+  ABSL_RETURN_IF_ERROR(time_series_util::FillTimeSeriesHeaderIfValid(
       cc->Inputs().Index(0).Header(), &input_header));
 
   sample_rate_ = input_header.sample_rate();

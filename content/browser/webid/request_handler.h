@@ -255,10 +255,15 @@ class CONTENT_EXPORT RequestHandler
     return account_ids_before_login_.contains(account_id);
   }
 
-  // Called when there is an error fetching information to show the prompt for a
-  // given IDP, and because of the mismatch this IDP must be present in the
-  // dialog we show to the user.
-  void OnIdpMismatch(std::unique_ptr<IdentityProviderInfo> idp_info);
+  // Called for an IdP that has no accounts to show but must still be shown, so
+  // that the user can log in to it. This is either because of a login status
+  // mismatch, or, in active mode with multiple IdPs, because the user is logged
+  // out of the IdP. See `AccountsFetcher::Result::has_no_accounts`.
+  void OnIdpWithoutAccounts(std::unique_ptr<IdentityProviderInfo> idp_info);
+
+  // Called once every IdP has been fetched, if none of them has accounts but at
+  // least one of them must still be shown. Shows the appropriate UI.
+  void ShowUiForIdpsWithoutAccounts();
 
   void CompleteRequestWithError(
       blink::mojom::FederatedRequestResult result,
@@ -438,16 +443,23 @@ class CONTENT_EXPORT RequestHandler
 
   bool IsNewlyLoggedIn(const IdentityRequestAccount& account);
 
+  // Whether this is an active mode request with multiple IdPs.
+  bool IsMultiIdpActiveMode() const;
+
   // Returns whether we'll be using an ambient UI for a passive call.
   bool IsUsingAmbient() const;
 
   blink::mojom::RpMode GetRpMode() const { return req_->rp_mode(); }
 
-  // Shows a FedCM UI and returns true if it succeeded and the RequestHandler
-  // was not destroyed. Showing a FedCM UI may cause the tab to drop fullscreen
-  // or lose focus, during which the frame may be detached and this
-  // RequestHandler destroyed.
-  bool ShowDialog(base::FunctionRef<bool()> show_dialog_callback);
+  // Runs `callback`, a call to the dialog controller. Returns true
+  // if it returned true, the `RequestHandler` was not destroyed, and its
+  // request did not complete. Dialog calls may destroy this `RequestHandler`:
+  // showing a FedCM UI may cause the tab to drop fullscreen or lose focus,
+  // during which the frame may be detached, and closing the pop-up may
+  // activate another tab, which can close a window that hosts the RP's frame.
+  // If this returns false, the caller must return early.
+  [[nodiscard]] bool RunDialogCallAndCheckAlive(
+      base::FunctionRef<bool()> callback);
 
   // If the client metadata has not been received yet the UI may not be able to
   // show a correct title, so we need to indicate that in the RelyingPartyData.
@@ -465,7 +477,7 @@ class CONTENT_EXPORT RequestHandler
   // RequestToken() method, so all metrics must be recorded after that.
   std::unique_ptr<Metrics> fedcm_metrics_;
 
-  // Populated by OnFetchDataForIdpSucceeded() and OnIdpMismatch().
+  // Populated by OnFetchDataForIdpSucceeded() and OnIdpWithoutAccounts().
   base::flat_map<GURL, std::unique_ptr<IdentityProviderInfo>> idp_infos_;
   // Populated by MaybeShowAccountsDialog().
   std::vector<scoped_refptr<IdentityProviderData>> idp_data_for_display_;

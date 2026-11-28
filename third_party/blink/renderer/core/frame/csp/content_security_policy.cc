@@ -745,11 +745,12 @@ bool ContentSecurityPolicy::AllowWasmCodeGeneration(
   return is_allowed;
 }
 
-HashSet<HashAlgorithm> ContentSecurityPolicy::HashesToReport() const {
-  HashSet<HashAlgorithm> algorithms;
+HashAlgorithmSet ContentSecurityPolicy::HashesToReport() const {
+  HashAlgorithmSet algorithms;
   for (const auto& policy : policies_) {
-    if (auto algorithm = CSPDirectiveListHashToReport(*policy)) {
-      algorithms.insert(algorithm.value());
+    if (std::optional<HashAlgorithm> algorithm =
+            CSPDirectiveListHashToReport(*policy)) {
+      algorithms.Put(algorithm.value());
     }
   }
   return algorithms;
@@ -970,7 +971,7 @@ bool ContentSecurityPolicy::AllowRequest(
 }
 
 void ContentSecurityPolicy::UsesHashAlgorithm(IntegrityAlgorithm algorithm) {
-  hash_algorithms_used_.insert(algorithm);
+  hash_algorithms_used_.Put(algorithm);
 }
 
 bool ContentSecurityPolicy::AllowFromSource(
@@ -1218,7 +1219,6 @@ namespace {
 SourceLocation* GatherSecurityPolicyViolationEventData(
     SecurityPolicyViolationEventInit* init,
     ContentSecurityPolicyDelegate* delegate,
-    const String& directive_text,
     CSPDirectiveName effective_type,
     const KURL& blocked_url,
     const String& header,
@@ -1332,6 +1332,8 @@ SourceLocation* GatherSecurityPolicyViolationEventData(
     init->setLineNumber(source_location->LineNumber());
     init->setColumnNumber(source_location->ColumnNumber());
   } else {
+    // The source location is unknown.
+    source_location = nullptr;
     init->setSourceFile(String());
     init->setLineNumber(0);
     init->setColumnNumber(0);
@@ -1360,7 +1362,29 @@ SourceLocation* GatherSecurityPolicyViolationEventData(
 }  // namespace
 
 void ContentSecurityPolicy::ReportViolation(
-    const String& directive_text,
+    CSPDirectiveName effective_type,
+    const KURL& blocked_url,
+    const Vector<String>& report_endpoints,
+    bool use_reporting_api,
+    const String& header,
+    ContentSecurityPolicyType header_type,
+    ContentSecurityPolicyViolationType violation_type,
+    SourceLocation* source_location,
+    LocalFrame* context_frame,
+    Element* element,
+    const String& source,
+    const String& source_prefix,
+    std::optional<base::UnguessableToken> issue_id,
+    const String& eval_hash,
+    const String& url_hash) {
+  LogToConsoleAndReportViolation(
+      effective_type, /*console_message=*/String(), blocked_url,
+      report_endpoints, use_reporting_api, header, header_type, violation_type,
+      source_location, context_frame, element, source, source_prefix, issue_id,
+      eval_hash, url_hash);
+}
+
+void ContentSecurityPolicy::LogToConsoleAndReportViolation(
     CSPDirectiveName effective_type,
     const String& console_message,
     const KURL& blocked_url,
@@ -1379,6 +1403,26 @@ void ContentSecurityPolicy::ReportViolation(
     const String& url_hash) {
   CHECK(violation_type == kURLViolation || blocked_url.IsEmpty() ||
         violation_type == kSRIViolation);
+
+  if (delegate_ &&
+      delegate_->ReportViolationOnOutsideSettingsIfNeeded(
+          effective_type, console_message, blocked_url, report_endpoints,
+          use_reporting_api, header, header_type, source_location)) {
+    return;
+  }
+
+  if (!console_message.empty()) {
+    auto level = header_type == ContentSecurityPolicyType::kReport
+                     ? mojom::blink::ConsoleMessageLevel::kInfo
+                     : mojom::blink::ConsoleMessageLevel::kError;
+    LogToConsole(source_location
+                     ? MakeGarbageCollected<ConsoleMessage>(
+                           mojom::blink::ConsoleMessageSource::kSecurity, level,
+                           console_message, source_location)
+                     : MakeGarbageCollected<ConsoleMessage>(
+                           mojom::blink::ConsoleMessageSource::kSecurity, level,
+                           console_message));
+  }
 
   // TODO(crbug.com/1279745): Remove/clarify what this block is about.
   if (!delegate_ && !context_frame) {
@@ -1407,9 +1451,9 @@ void ContentSecurityPolicy::ReportViolation(
   // Let GatherSecurityPolicyViolationEventData decide which source location to
   // report.
   source_location = GatherSecurityPolicyViolationEventData(
-      violation_data, relevant_delegate, directive_text, effective_type,
-      blocked_url, header, header_type, violation_type, source_location, source,
-      source_prefix, eval_hash, url_hash);
+      violation_data, relevant_delegate, effective_type, blocked_url, header,
+      header_type, violation_type, source_location, source, source_prefix,
+      eval_hash, url_hash);
 
   // Suppress reports pointing at extension URLs loaded outside of extensions.
   //
@@ -1517,13 +1561,11 @@ void ContentSecurityPolicy::ReportMixedContent(const KURL& blocked_url,
                                                RedirectStatus redirect_status) {
   for (const auto& policy : policies_) {
     if (policy->block_all_mixed_content) {
-      ReportViolation(
-          GetDirectiveName(CSPDirectiveName::BlockAllMixedContent),
-          CSPDirectiveName::BlockAllMixedContent, String(), blocked_url,
-          policy->report_endpoints, policy->use_reporting_api,
-          policy->header->header_value, policy->header->type,
-          ContentSecurityPolicyViolationType::kURLViolation, nullptr,
-          /*contextFrame=*/nullptr);
+      ReportViolation(CSPDirectiveName::BlockAllMixedContent, blocked_url,
+                      policy->report_endpoints, policy->use_reporting_api,
+                      policy->header->header_value, policy->header->type,
+                      ContentSecurityPolicyViolationType::kURLViolation,
+                      /*source_location=*/nullptr, /*context_frame=*/nullptr);
     }
   }
 }

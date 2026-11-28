@@ -72,12 +72,23 @@ class CORE_EXPORT NativePaintWorkletData
   scoped_refptr<CompositorAnimationCurve> GetAnimationCurve();
 
   void SetAnimationCurve(scoped_refptr<CompositorAnimationCurve> curve) {
-    animation_curve_ = std::move(curve);
+    animation_curve_ = animation_ ? std::move(curve) : nullptr;
+    needs_keyframes_snapshot_update_ = false;
   }
 
   bool NeedsKeyframeSnapshotUpdate() {
     return needs_keyframes_snapshot_update_;
   }
+
+  // The final compositing decision is made during Animation::Precommit.
+  // Even if the [Pre]Paint decision is kComposited, this is a recommendation
+  // and not a mandate. If the animation is not composited, the compositor
+  // paint status must be updated accordingly. A "no" from Precommit can still
+  // leave the status as kNeedsRepaint, as long as the reason for the "no"
+  // vote is having no visual effect. The next paint will either create a
+  // deferred paint image and trigger a new compositing decision or downgrade
+  // the status.
+  void NotifyNotComposited(Animation* animation);
 
   void Trace(Visitor*) const;
 

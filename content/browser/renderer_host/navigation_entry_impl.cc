@@ -8,9 +8,11 @@
 
 #include <algorithm>
 #include <map>
+#include <ranges>
 #include <string>
 #include <utility>
 
+#include "base/containers/flat_set.h"
 #include "base/containers/queue.h"
 #include "base/feature_list.h"
 #include "base/files/file_path.h"
@@ -65,20 +67,18 @@ int CreateUniqueEntryID() {
 void RecursivelyGenerateFrameEntries(
     NavigationEntryRestoreContextImpl* context,
     const blink::ExplodedFrameState& state,
-    const std::vector<std::optional<std::u16string>>& referenced_files,
+    base::flat_set<std::optional<std::u16string>> referenced_files,
     NavigationEntryImpl::TreeNode* node) {
   CHECK(context, base::NotFatalUntil::M152);
   // Set a single-frame PageState on the entry.
   blink::ExplodedPageState page_state;
 
-  // Copy the incoming PageState's list of referenced files into the main
-  // frame's PageState.  (We don't pass the list to subframes below.)
-  // TODO(creis): Grant access to this list for each process that renders
-  // this page, even for OOPIFs.  Eventually keep track of a verified list of
+  // Move the incoming PageState's set of referenced files into the main
+  // frame's PageState.  (We don't pass the set to subframes below.)
+  // TODO(creis): Grant access to this set for each process that renders
+  // this page, even for OOPIFs.  Eventually keep track of a verified set of
   // files per frame, so that we only grant access to processes that need it.
-  if (referenced_files.size() > 0) {
-    page_state.referenced_files = referenced_files;
-  }
+  page_state.referenced_files = std::move(referenced_files);
 
   page_state.top = state;
   std::string data;
@@ -131,12 +131,11 @@ void RecursivelyGenerateFrameEntries(
   // Don't pass the file list to subframes, since that would result in multiple
   // copies of it ending up in the combined list in GetPageState (via
   // RecursivelyGenerateFrameState).
-  std::vector<std::optional<std::u16string>> empty_file_list;
-
   for (const blink::ExplodedFrameState& child_state : state.children) {
     node->children.push_back(
         std::make_unique<NavigationEntryImpl::TreeNode>(node, nullptr));
-    RecursivelyGenerateFrameEntries(context, child_state, empty_file_list,
+    RecursivelyGenerateFrameEntries(context, child_state,
+                                    /*referenced_files=*/{},
                                     node->children.back().get());
   }
 }
@@ -151,7 +150,7 @@ std::optional<std::u16string> UrlToOptionalString16(const GURL& url) {
 void RecursivelyGenerateFrameState(
     NavigationEntryImpl::TreeNode* node,
     blink::ExplodedFrameState* state,
-    std::vector<std::optional<std::u16string>>* referenced_files) {
+    base::flat_set<std::optional<std::u16string>>* referenced_files) {
   // The FrameNavigationEntry's PageState contains just the ExplodedFrameState
   // for that particular frame.
   blink::ExplodedPageState exploded_page_state;
@@ -201,12 +200,9 @@ void RecursivelyGenerateFrameState(
   state->protect_url_in_navigation_api =
       node->frame_entry->protect_url_in_navigation_api();
 
-  // Copy the frame's files into the PageState's |referenced_files|.
-  referenced_files->reserve(referenced_files->size() +
-                            exploded_page_state.referenced_files.size());
-  for (auto& file : exploded_page_state.referenced_files) {
-    referenced_files->emplace_back(file);
-  }
+  // Move the frame's files into the PageState's |referenced_files|.
+  referenced_files->insert_range(
+      std::views::as_rvalue(exploded_page_state.referenced_files));
 
   state->children.resize(node->children.size());
   for (size_t i = 0; i < node->children.size(); ++i) {
@@ -635,7 +631,8 @@ void NavigationEntryImpl::SetPageState(const blink::PageState& state,
 
   RecursivelyGenerateFrameEntries(
       static_cast<NavigationEntryRestoreContextImpl*>(context),
-      exploded_state.top, exploded_state.referenced_files, frame_tree_.get());
+      exploded_state.top, std::move(exploded_state.referenced_files),
+      frame_tree_.get());
 }
 
 blink::PageState NavigationEntryImpl::GetPageState() const {
@@ -1081,7 +1078,6 @@ NavigationEntryImpl::ConstructCommitNavigationParams(
           // This timestamp will be populated when the commit IPC is sent.
           base::TimeTicks() /* commit_sent */, std::string() /* srcdoc_value */,
           false /* should_load_data_url */, ancestor_or_self_has_cspee,
-          std::string() /* reduced_accept_language */,
           /*navigation_delivery_type=*/
           network::mojom::NavigationDeliveryType::kDefault,
           /*view_transition_state=*/std::nullopt,

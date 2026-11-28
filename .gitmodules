@@ -136,9 +136,6 @@
 [submodule "third_party/devtools-frontend/src"]
 	path = third_party/devtools-frontend/src
 	url = https://chromium.googlesource.com/devtools/devtools-frontend
-[submodule "third_party/dom_distiller_js/dist"]
-	path = third_party/dom_distiller_js/dist
-	url = https://chromium.googlesource.com/chromium/dom-distiller/dist
 [submodule "third_party/ds_store/src"]
 	path = third_party/ds_store/src
 	url = https://chromium.googlesource.com/external/github.com/dmgbuild/ds_store
@@ -479,6 +476,9 @@
 [submodule "third_party/ruy/src"]
 	path = third_party/ruy/src
 	url = https://chromium.googlesource.com/external/github.com/google/ruy
+[submodule "third_party/safeint/src"]
+	path = third_party/safeint/src
+	url = https://chromium.googlesource.com/external/github.com/dcleblanc/safeint
 [submodule "third_party/search_engines_data/resources"]
 	path = third_party/search_engines_data/resources
 	url = https://chromium.googlesource.com/external/search_engines_data
@@ -557,13 +557,9 @@
 	path = third_party/wayland-protocols/src
 	url = https://chromium.googlesource.com/external/anongit.freedesktop.org/git/wayland/wayland-protocols
 	gclient-condition = checkout_linux
-[submodule "third_party/wayland-protocols/kde"]
-	path = third_party/wayland-protocols/kde
+[submodule "third_party/wayland-protocols/kde/src"]
+	path = third_party/wayland-protocols/kde/src
 	url = https://chromium.googlesource.com/external/github.com/KDE/plasma-wayland-protocols
-	gclient-condition = checkout_linux
-[submodule "third_party/wayland-protocols/gtk"]
-	path = third_party/wayland-protocols/gtk
-	url = https://chromium.googlesource.com/external/github.com/GNOME/gtk
 	gclient-condition = checkout_linux
 [submodule "third_party/webdriver/pylib"]
 	path = third_party/webdriver/pylib

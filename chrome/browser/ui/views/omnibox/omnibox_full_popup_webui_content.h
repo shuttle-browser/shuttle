@@ -20,7 +20,8 @@
 #include "ui/views/metadata/view_factory.h"
 
 class LocationBar;
-class OmniboxPopupPresenterBase;
+class OmniboxPopupContentDelegate;
+class OmniboxPopupContentSizer;
 class OmniboxController;
 
 // The content WebView for the full popup (input row + suggestions dropdown) of
@@ -32,9 +33,19 @@ class OmniboxFullPopupWebUIContent
 
  public:
   OmniboxFullPopupWebUIContent() = delete;
-  OmniboxFullPopupWebUIContent(OmniboxPopupPresenterBase* presenter,
+  OmniboxFullPopupWebUIContent(OmniboxPopupContentDelegate* content_delegate,
+                               OmniboxPopupContentSizer* sizer,
+                               OmniboxPopupContentConfig config,
                                LocationBar* location_bar,
                                OmniboxController* controller);
+  // `contents` is a WebContents to adopt, or null; see
+  // `OmniboxPopupWebUIBaseContent`.
+  OmniboxFullPopupWebUIContent(OmniboxPopupContentDelegate* content_delegate,
+                               OmniboxPopupContentSizer* sizer,
+                               OmniboxPopupContentConfig config,
+                               LocationBar* location_bar,
+                               OmniboxController* controller,
+                               std::unique_ptr<ContentsWrapper> contents);
   OmniboxFullPopupWebUIContent(const OmniboxFullPopupWebUIContent&) = delete;
   OmniboxFullPopupWebUIContent& operator=(const OmniboxFullPopupWebUIContent&) =
       delete;
@@ -53,12 +64,18 @@ class OmniboxFullPopupWebUIContent
 
   // Whether the popup has presented a frame since it was last shown.
   void OnPopupWidgetPresentedChanged(bool presented);
+  bool popup_presented_for_testing() const { return popup_presented_; }
 
   void CancelPendingContextMenuRequest();
+
+  // Shows or hides the WebUI's AI Mode button to match the location bar's AI
+  // Mode page action.
+  void UpdateAimButtonVisibility();
 
   // content::WebContentsObserver:
   void OnFocusChangedInPage(
       const content::FocusedNodeDetails& details) override;
+  void DidFirstVisuallyNonEmptyPaint() override;
 
  private:
   friend class OmniboxFullPopupWebUIContentBrowserTest;

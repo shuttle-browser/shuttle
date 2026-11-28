@@ -1041,9 +1041,23 @@ gn_args.config(
 )
 
 gn_args.config(
+    name = "no_devtools_bundled_chromium_deps",
+    args = {
+        "devtools_build_with_bundled_chromium_deps": False,
+    },
+)
+
+gn_args.config(
     name = "no_dsyms",
     args = {
         "enable_dsyms": False,
+    },
+)
+
+gn_args.config(
+    name = "no_fuzztest_fuzz",
+    args = {
+        "enable_fuzztest_fuzz": False,
     },
 )
 

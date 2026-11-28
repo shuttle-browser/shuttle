@@ -207,17 +207,13 @@ unsigned WebGLRenderingContextBase::max_active_webgl_contexts_on_worker_ = 0;
 
 namespace {
 
+// LINT.IfChange(WebGLANGLEImplementation)
 enum class WebGLANGLEImplementation {
   // These values are persisted to logs. Entries should not be renumbered and
   // numeric values should never be reused.
 
-  // vWebGL = 0 (for WebGL1) or 2 (for WebGL2).
-  // vWebGLANGLEImplementation = vWebGL * 10 + vANGLEImplementation
-  // where vANGLEImplementation is aligned with ANGLEImplementation enum
-  // values defined in ui/gl/gl_implementation.h.
-
   kWebGL1_None = 0,
-  kWebGL1_D3D9 = 1,
+  kWebGL1_D3D9 = 1,  // Deprecated
   kWebGL1_D3D11 = 2,
   kWebGL1_OpenGL = 3,
   kWebGL1_OpenGLES = 4,
@@ -245,6 +241,44 @@ enum class WebGLANGLEImplementation {
 
   kMaxValue = kWebGL2_D3D11Warp,
 };
+// LINT.ThenChange(//tools/metrics/histograms/metadata/blink/enums.xml:WebGLANGLEImplementation)
+
+WebGLANGLEImplementation ToWebGLANGLEImplementation(
+    gl::ANGLEImplementation angle_impl,
+    bool is_webgl2) {
+  using Impl = gl::ANGLEImplementation;
+  using Uma = WebGLANGLEImplementation;
+  // clang-format off
+  if (is_webgl2) {
+    switch (angle_impl) {
+      case Impl::kNone:        return Uma::kWebGL2_None;
+      case Impl::kD3D11:       return Uma::kWebGL2_D3D11;
+      case Impl::kOpenGL:      return Uma::kWebGL2_OpenGL;
+      case Impl::kOpenGLES:    return Uma::kWebGL2_OpenGLES;
+      case Impl::kNull:        return Uma::kWebGL2_Null;
+      case Impl::kVulkan:      return Uma::kWebGL2_Vulkan;
+      case Impl::kSwiftShader: return Uma::kWebGL2_SwiftShader;
+      case Impl::kMetal:       return Uma::kWebGL2_Metal;
+      case Impl::kDefault:     return Uma::kWebGL2_Default;
+      case Impl::kD3D11Warp:   return Uma::kWebGL2_D3D11Warp;
+    }
+  } else {
+    switch (angle_impl) {
+      case Impl::kNone:        return Uma::kWebGL1_None;
+      case Impl::kD3D11:       return Uma::kWebGL1_D3D11;
+      case Impl::kOpenGL:      return Uma::kWebGL1_OpenGL;
+      case Impl::kOpenGLES:    return Uma::kWebGL1_OpenGLES;
+      case Impl::kNull:        return Uma::kWebGL1_Null;
+      case Impl::kVulkan:      return Uma::kWebGL1_Vulkan;
+      case Impl::kSwiftShader: return Uma::kWebGL1_SwiftShader;
+      case Impl::kMetal:       return Uma::kWebGL1_Metal;
+      case Impl::kDefault:     return Uma::kWebGL1_Default;
+      case Impl::kD3D11Warp:   return Uma::kWebGL1_D3D11Warp;
+    }
+  }
+  // clang-format on
+  NOTREACHED();
+}
 
 bool CopyVideoFrameTexturesToGLTextureViaIntermediateSI(
     viz::RasterContextProvider* raster_context_provider,
@@ -336,7 +370,7 @@ base::Lock& WebGLContextLimitLock() {
 
 using WebGLRenderingContextBaseSet =
     HeapHashSet<WeakMember<WebGLRenderingContextBase>>;
-WebGLRenderingContextBaseSet& ActiveContexts() {
+WebGLRenderingContextBaseSet* TryActiveContexts(bool create_if_absent = false) {
   using WebGLRenderingContextBaseSetHolder =
       DisallowNewWrapper<WebGLRenderingContextBaseSet>;
   DEFINE_THREAD_SAFE_STATIC_LOCAL(
@@ -345,16 +379,24 @@ WebGLRenderingContextBaseSet& ActiveContexts() {
   Persistent<WebGLRenderingContextBaseSetHolder>& active_contexts_persistent =
       *active_contexts;
   if (!active_contexts_persistent) {
+    if (!create_if_absent) {
+      return nullptr;
+    }
     active_contexts_persistent =
         MakeGarbageCollected<WebGLRenderingContextBaseSetHolder>();
     LEAK_SANITIZER_IGNORE_OBJECT(&active_contexts_persistent);
   }
-  return active_contexts_persistent->Value();
+  return &active_contexts_persistent->Value();
+}
+
+WebGLRenderingContextBaseSet& ActiveContexts() {
+  return *TryActiveContexts(/*create_if_absent=*/true);
 }
 
 using WebGLRenderingContextBaseMap =
     HeapHashMap<WeakMember<WebGLRenderingContextBase>, int>;
-WebGLRenderingContextBaseMap& ForciblyEvictedContexts() {
+WebGLRenderingContextBaseMap* TryForciblyEvictedContexts(
+    bool create_if_absent = false) {
   using WebGLRenderingContextBaseMapHolder =
       DisallowNewWrapper<WebGLRenderingContextBaseMap>;
   DEFINE_THREAD_SAFE_STATIC_LOCAL(
@@ -362,11 +404,18 @@ WebGLRenderingContextBaseMap& ForciblyEvictedContexts() {
       ());
   Persistent<WebGLRenderingContextBaseMapHolder>& holder_persistent = *holder;
   if (!holder_persistent) {
+    if (!create_if_absent) {
+      return nullptr;
+    }
     holder_persistent =
         MakeGarbageCollected<WebGLRenderingContextBaseMapHolder>();
     LEAK_SANITIZER_IGNORE_OBJECT(&holder_persistent);
   }
-  return holder_persistent->Value();
+  return &holder_persistent->Value();
+}
+
+WebGLRenderingContextBaseMap& ForciblyEvictedContexts() {
+  return *TryForciblyEvictedContexts(/*create_if_absent=*/true);
 }
 
 }  // namespace
@@ -464,12 +513,14 @@ void WebGLRenderingContextBase::ForciblyLoseOldestContext(
 }
 
 WebGLRenderingContextBase* WebGLRenderingContextBase::OldestContext() {
-  if (ActiveContexts().empty())
+  auto* active_contexts = TryActiveContexts();
+  if (!active_contexts || active_contexts->empty()) {
     return nullptr;
+  }
 
-  WebGLRenderingContextBase* candidate = *(ActiveContexts().begin());
+  WebGLRenderingContextBase* candidate = *(active_contexts->begin());
   DCHECK(!candidate->isContextLost());
-  for (WebGLRenderingContextBase* context : ActiveContexts()) {
+  for (WebGLRenderingContextBase* context : *active_contexts) {
     DCHECK(!context->isContextLost());
     if (context->ContextGL()->GetLastFlushIdCHROMIUM() <
         candidate->ContextGL()->GetLastFlushIdCHROMIUM()) {
@@ -481,15 +532,17 @@ WebGLRenderingContextBase* WebGLRenderingContextBase::OldestContext() {
 }
 
 WebGLRenderingContextBase* WebGLRenderingContextBase::OldestEvictedContext() {
-  if (ForciblyEvictedContexts().empty())
+  auto* evicted_contexts = TryForciblyEvictedContexts();
+  if (!evicted_contexts || evicted_contexts->empty()) {
     return nullptr;
+  }
 
   WebGLRenderingContextBase* candidate = nullptr;
   int generation = -1;
-  for (WebGLRenderingContextBase* context : ForciblyEvictedContexts().Keys()) {
-    if (!candidate || ForciblyEvictedContexts().at(context) < generation) {
-      candidate = context;
-      generation = ForciblyEvictedContexts().at(context);
+  for (const auto& entry : *evicted_contexts) {
+    if (!candidate || entry.value < generation) {
+      candidate = entry.key.Get();
+      generation = entry.value;
     }
   }
 
@@ -509,12 +562,15 @@ void WebGLRenderingContextBase::ActivateContext(
   }
 
   DCHECK(!context->isContextLost());
+  context->was_activated_ = true;
   ActiveContexts().insert(context);
 }
 
 void WebGLRenderingContextBase::DeactivateContext(
     WebGLRenderingContextBase* context) {
-  ActiveContexts().erase(context);
+  if (auto* active_contexts = TryActiveContexts()) {
+    active_contexts->erase(context);
+  }
 }
 
 void WebGLRenderingContextBase::AddToEvictedList(
@@ -525,23 +581,31 @@ void WebGLRenderingContextBase::AddToEvictedList(
 
 void WebGLRenderingContextBase::RemoveFromEvictedList(
     WebGLRenderingContextBase* context) {
-  ForciblyEvictedContexts().erase(context);
+  if (auto* evicted_contexts = TryForciblyEvictedContexts()) {
+    evicted_contexts->erase(context);
+  }
 }
 
 void WebGLRenderingContextBase::RestoreEvictedContext(
     WebGLRenderingContextBase* context) {
+  auto* evicted_contexts = TryForciblyEvictedContexts();
+  auto* active_contexts = TryActiveContexts();
   // These two sets keep weak references to their contexts;
-  // verify that the GC already removed the |context| entries.
-  DCHECK(!ForciblyEvictedContexts().Contains(context));
-  DCHECK(!ActiveContexts().Contains(context));
+  // verify that GC or Dispose() already removed the |context| entries.
+  DCHECK(!evicted_contexts || !evicted_contexts->Contains(context));
+  DCHECK(!active_contexts || !active_contexts->Contains(context));
+  if (!evicted_contexts || evicted_contexts->empty()) {
+    return;
+  }
 
   unsigned max_gl_contexts = CurrentMaxGLContexts();
   // Try to re-enable the oldest inactive contexts.
-  while (ActiveContexts().size() < max_gl_contexts &&
-         ForciblyEvictedContexts().size()) {
+  while (((active_contexts ? active_contexts->size() : 0u) < max_gl_contexts) &&
+         !evicted_contexts->empty()) {
     WebGLRenderingContextBase* evicted_context = OldestEvictedContext();
-    if (!evicted_context->restore_allowed_) {
-      ForciblyEvictedContexts().erase(evicted_context);
+    if (!evicted_context->isContextLost() ||
+        !evicted_context->restore_allowed_ || !evicted_context->Host()) {
+      evicted_contexts->erase(evicted_context);
       continue;
     }
 
@@ -551,7 +615,7 @@ void WebGLRenderingContextBase::RestoreEvictedContext(
 
     // If there's room in the pixel budget for this context, restore it.
     if (!desired_size.IsEmpty()) {
-      ForciblyEvictedContexts().erase(evicted_context);
+      evicted_contexts->erase(evicted_context);
       evicted_context->ForceRestoreContext();
     }
     break;
@@ -1659,31 +1723,13 @@ unsigned WebGLRenderingContextBase::GetWebGLVersion(
 }
 
 WebGLRenderingContextBase::~WebGLRenderingContextBase() {
-  // It's forbidden to refer to other GC'd objects in a GC'd object's
-  // destructor. It's useful for DrawingBuffer to guarantee that it
-  // calls its DrawingBufferClient during its own destruction, but if
-  // the WebGL context is also being destroyed, then it's essential
-  // that the DrawingBufferClient methods not try to touch other
-  // objects like WebGLTextures that were previously hooked into the
-  // context state.
+  // Dispose() normally tears down the underlying context and triggers evicted
+  // context restoration during Oilpan pre-finalization before sweeping begins
+  // (touching other GC'd objects in a destructor is forbidden). Keep an
+  // idempotent off-heap fallback here in case an object is destroyed without
+  // Dispose().
   destruction_in_progress_ = true;
-
-  // Now that the context and context group no longer hold on to the
-  // objects they create, and now that the objects are eagerly finalized
-  // rather than the context, there is very little useful work that this
-  // destructor can do, since it's not allowed to touch other on-heap
-  // objects. All it can do is destroy its underlying context, which, if
-  // there are no other contexts in the same share group, will cause all of
-  // the underlying graphics resources to be deleted. (Currently, it's
-  // always the case that there are no other contexts in the same share
-  // group -- resource sharing between WebGL contexts is not yet
-  // implemented, and due to its complex semantics, it's doubtful that it
-  // ever will be.)
   DestroyContext();
-
-  // Now that this context is destroyed, see if there's a
-  // previously-evicted one that should be restored.
-  RestoreEvictedContext(this);
 }
 
 HTMLCanvasElement* WebGLRenderingContextBase::canvas() const {
@@ -1778,8 +1824,7 @@ WebGLRenderingContextBase::GetResourceForPushFrame(
     if (auto canvas_resource = GetDrawingBuffer()->ExportCanvasResource()) {
       should_call_push_frame = true;
       MarkLayerComposited();
-      return base::MakeRefCounted<ExportedCanvasResource>(
-          std::move(canvas_resource));
+      return canvas_resource;
     }
   }
 
@@ -1806,6 +1851,32 @@ WebGLRenderingContextBase::GetResourceForPushFrame(
 
 void WebGLRenderingContextBase::Dispose() {
   TRACE_EVENT("gpu", __PRETTY_FUNCTION__);
+  if (!destruction_in_progress_) {
+    // Tear down the DrawingBuffer and detach its cc::TextureLayer during Oilpan
+    // pre-finalization before sweeping begins, while avoiding access to dead
+    // on-heap WebGL child objects.
+    destruction_in_progress_ = true;
+    if (!isContextLost()) {
+      context_lost_mode_ = kCanvasDisposed;
+    }
+    restore_allowed_ = false;
+    auto_recovery_method_ = kManual;
+    dispatch_context_lost_event_timer_.Stop();
+    restore_timer_.Stop();
+    DeactivateContext(this);
+    RemoveFromEvictedList(this);
+    DestroyContext();
+    // Only restore an evicted context if this context was previously activated
+    // by ActivateContext(). If CreateDrawingBuffer() fails in the constructor,
+    // WebGLContextFactory::CreateInternal() immediately calls Dispose() before
+    // InitializeNewContext() and ActivateContext() are reached; such a context
+    // never occupied a slot in ActiveContexts() and should not trigger
+    // restoration of a previously evicted context.
+    if (was_activated_) {
+      RestoreEvictedContext(this);
+    }
+  }
+
   base::trace_event::MemoryDumpManager::GetInstance()->UnregisterDumpProvider(
       this);
   resource_provider_.reset();
@@ -1841,7 +1912,9 @@ WebGLRenderingContextBase::ClearIfComposited(
     //
     // Note: we don't call MarkContentsChanged(), because it hasn't (there is
     // no new content to present yet).
-    GetDrawingBuffer()->EnsureBuffers();
+    if (!GetDrawingBuffer()->EnsureBuffers()) {
+      return kSkipped;
+    }
   }
 
   if (!GetDrawingBuffer()->BufferClearNeeded() ||
@@ -1901,16 +1974,21 @@ WebGLRenderingContextBase::ClearIfComposited(
         true, true, true,
         !GetDrawingBuffer()->DefaultBufferRequiresAlphaChannelToBePreserved());
   }
+  bool cleared = false;
   {
     ScopedDisableRasterizerDiscard scoped_disable(this,
                                                   rasterizer_discard_enabled_);
-    GetDrawingBuffer()->ClearFramebuffers(clear_mask);
+    cleared = GetDrawingBuffer()->ClearFramebuffers(clear_mask);
   }
 
   // Call the DrawingBufferClient method to restore scissor test, mask, and
   // clear values, because we dirtied them above.
   DrawingBufferClientRestoreScissorTest();
   DrawingBufferClientRestoreMaskAndClearValues();
+
+  if (!cleared) {
+    return kSkipped;
+  }
 
   GetDrawingBuffer()->SetBufferClearNeeded(false);
 
@@ -2161,8 +2239,7 @@ WebGLRenderingContextBase::PaintRenderingResultsToSnapshot(
       snapshot = resource_provider->DoExternalOverdrawAndSnapshot(
           [&image](cc::PaintCanvas& canvas) {
             DrawImageToCanvas(image.get(), canvas);
-          },
-          ImageOrientationEnum::kDefault);
+          });
       copy_succeeded = true;
     }
   }
@@ -2194,10 +2271,7 @@ WebGLRenderingContextBase::PaintRenderingResultsToResource(
     // painted the canvas' contents by doing any necessary clearing in the above
     // call.
     must_paint_to_canvas_ = false;
-    auto resource = GetDrawingBuffer()->ExportLowLatencyCanvasResource();
-    return resource ? base::MakeRefCounted<ExportedCanvasResource>(
-                          std::move(resource))
-                    : nullptr;
+    return GetDrawingBuffer()->ExportLowLatencyCanvasResource();
   }
 
 
@@ -2209,10 +2283,7 @@ WebGLRenderingContextBase::PaintRenderingResultsToResource(
 
   if (!must_paint_to_canvas_ && !cleared_content && resource_provider_.get()) {
     // `resource_provider_` already has the current contents.
-    auto resource = resource_provider_->ProduceCanvasResource();
-    return resource ? base::MakeRefCounted<ExportedCanvasResource>(
-                          std::move(resource))
-                    : nullptr;
+    return resource_provider_->ProduceCanvasResource();
   }
 
   return CopyRenderingResultsFromDrawingBufferToResource(source_buffer);
@@ -2312,7 +2383,7 @@ WebGLRenderingContextBase::CopyRenderingResultsFromDrawingBufferToResource(
   }
 
   bool copy_succeeded = false;
-  scoped_refptr<CanvasResource> resource;
+  scoped_refptr<ExportedCanvasResource> resource;
   if (!resource_provider->IsSoftware()) {
     copy_succeeded = CopyRenderingResultsFromDrawingBufferAccelerated(
         resource_provider, source_buffer);
@@ -2341,9 +2412,7 @@ WebGLRenderingContextBase::CopyRenderingResultsFromDrawingBufferToResource(
 
   // We successfully painted the contents to the resource provider.
   must_paint_to_canvas_ = false;
-  return resource
-             ? base::MakeRefCounted<ExportedCanvasResource>(std::move(resource))
-             : nullptr;
+  return resource;
 }
 
 bool WebGLRenderingContextBase::
@@ -2351,7 +2420,6 @@ bool WebGLRenderingContextBase::
         CanvasNon2DResourceProvider* resource_provider,
         SourceDrawingBuffer source_buffer) {
   DCHECK(resource_provider);
-  DCHECK(!resource_provider->IsSingleBuffered());
   CHECK(!resource_provider->IsSoftware());
 
   // Early-out if the context has been lost.
@@ -4071,15 +4139,10 @@ void WebGLRenderingContextBase::RecordANGLEImplementation() {
   DCHECK(drawing_buffer_.get());
   const Platform::WebGLContextInfo& context_info =
       drawing_buffer_->ContextInfo();
-  // For mapping mathematics, see WebGLANGLEImplementation definition above.
-  int webgl_version_multiplier =
-      (context_type_ == Platform::kWebGL2ContextType ? 2 : 0);
-  WebGLANGLEImplementation webgl_angle_implementation =
-      static_cast<WebGLANGLEImplementation>(
-          webgl_version_multiplier * 10 +
-          static_cast<int>(context_info.angle_implementation));
-  UMA_HISTOGRAM_ENUMERATION("Blink.Canvas.WebGLANGLEImplementation",
-                            webgl_angle_implementation);
+  UMA_HISTOGRAM_ENUMERATION("Blink.Canvas.WebGLANGLEImplementation2",
+                            ToWebGLANGLEImplementation(
+                                context_info.angle_implementation,
+                                context_type_ == Platform::kWebGL2ContextType));
 }
 
 ScriptValue WebGLRenderingContextBase::getParameter(ScriptState* script_state,
@@ -6419,7 +6482,12 @@ void WebGLRenderingContextBase::TexImageViaGPU(
               params.GetDestinationAlphaType(), params.GetDestinationOrigin(),
               gfx::Point(params.xoffset, params.yoffset), source_sub_rectangle,
               kBackBuffer)) {
-        NOTREACHED();
+        // Copy failure, source context is lost. Make sure to not leak the
+        // texture.
+        if (!possible_direct_copy) {
+          ContextGL()->DeleteTextures(1, &target_texture);
+        }
+        return;
       }
     }
   }
@@ -7830,7 +7898,9 @@ void WebGLRenderingContextBase::ForceRestoreContext() {
 }
 
 cc::Layer* WebGLRenderingContextBase::CcLayer() const {
-  return isContextLost() ? nullptr : GetDrawingBuffer()->CcLayer();
+  return (isContextLost() || !GetDrawingBuffer())
+             ? nullptr
+             : GetDrawingBuffer()->CcLayer();
 }
 
 void WebGLRenderingContextBase::SetHdrMetadata(
@@ -7993,11 +8063,29 @@ bool WebGLRenderingContextBase::
 
 void WebGLRenderingContextBase::
     DrawingBufferClientForceLostContextWithAutoRecovery(const char* reason) {
-  ForceLostContext(WebGLRenderingContextBase::kSyntheticLostContext,
-                   WebGLRenderingContextBase::kAuto);
+  if (isContextLost() || !drawing_buffer_) {
+    return;
+  }
   if (reason) {
     PrintWarningToConsole(reason);
   }
+  // Post context loss asynchronously rather than running ForceLostContext
+  // re-entrantly while DrawingBuffer / WebGLRenderingContextBase frames are
+  // still on the stack, matching CommandBufferProxyImpl's lost-context
+  // callback behavior.
+  GetContextTaskRunner()->PostTask(
+      FROM_HERE,
+      blink::BindOnce(
+          &WebGLRenderingContextBase::ForceLostContextFromDrawingBuffer,
+          WrapWeakPersistent(this), blink::RetainedRef(drawing_buffer_)));
+}
+
+void WebGLRenderingContextBase::ForceLostContextFromDrawingBuffer(
+    DrawingBuffer* failed_drawing_buffer) {
+  if (isContextLost() || drawing_buffer_.get() != failed_drawing_buffer) {
+    return;
+  }
+  ForceLostContext(kRealLostContext, kAuto);
 }
 
 void WebGLRenderingContextBase::DrawingBufferClientInitializeLayer(

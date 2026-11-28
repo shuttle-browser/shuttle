@@ -505,7 +505,9 @@ void SurfaceEmbedWebPlugin::SetFrameSinkId(
 
 void SurfaceEmbedWebPlugin::UpdateLocalSurfaceIdFromChild(
     const ::viz::LocalSurfaceId& local_surface_id) {
-  if (!parent_local_surface_id_allocator_->UpdateFromChild(local_surface_id)) {
+  if (parent_local_surface_id_allocator_->GetEmbedToken() !=
+          local_surface_id.embed_token() ||
+      !parent_local_surface_id_allocator_->UpdateFromChild(local_surface_id)) {
     return;
   }
 
@@ -550,8 +552,7 @@ scoped_refptr<cc::DisplayItemList>
 SurfaceEmbedWebPlugin::PaintContentsToDisplayList() {
   blink::WebFrameWidget* ancestor_widget =
       container_->GetDocument().GetFrame()->LocalRoot()->FrameWidget();
-  auto device_scale_factor =
-      ancestor_widget->GetOriginalScreenInfo().device_scale_factor;
+  auto device_scale_factor = ancestor_widget->GetOriginalDeviceScaleFactor();
   // Adapted from ChildFrameCompositingHelper::PaintContentsToDisplayList().
   auto layer_size = crashed_layer_->bounds();
   auto display_list = base::MakeRefCounted<cc::DisplayItemList>();

@@ -16,6 +16,7 @@
 #include "base/auto_reset.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
+#include "base/types/optional_ref.h"
 #include "cc/base/protected_sequence_synchronizer.h"
 #include "cc/base/region.h"
 #include "cc/cc_export.h"
@@ -537,11 +538,12 @@ class CC_EXPORT Layer : public base::RefCounted<Layer>,
   // Set or get data for tracked elements on this layer. The geometry provided
   // is in layer space.
   void SetTrackedElementRects(viz::TrackedElementRects rects);
-  const viz::TrackedElementRects& tracked_element_rects() const {
+  base::optional_ref<const viz::TrackedElementRects> tracked_element_rects()
+      const {
     if (const auto& rare_inputs = inputs_.Read(*this).rare_inputs) {
       return rare_inputs->tracked_element_rects;
     }
-    return viz::TrackedElementRectsEmpty();
+    return std::nullopt;
   }
 
   // Set or get the set of blocking wheel rects of this layer. The
@@ -704,18 +706,6 @@ class CC_EXPORT Layer : public base::RefCounted<Layer>,
   // Stable identifier for clients. See comment in cc/paint/element_id.h.
   void SetElementId(ElementId id);
   ElementId element_id() const { return inputs_.Read(*this).element_id; }
-
-  // For layer tree mode only.
-  // Sets or gets if trilinear filtering should be used to scaling the contents
-  // of this layer and its subtree. When set the layer and its subtree will be
-  // composited together as a single unit, mip maps will be generated of the
-  // subtree together, and trilinear filtering applied when supported, if
-  // scaling during composite of the content from this layer and its subtree
-  // into the target.
-  void SetTrilinearFiltering(bool trilinear_filtering);
-  bool trilinear_filtering() const {
-    return layer_tree_inputs() && layer_tree_inputs()->trilinear_filtering;
-  }
 
   // For layer tree mode only.
   // Increments/decrements/gets number of layers mirroring this layer.
@@ -1129,8 +1119,6 @@ class CC_EXPORT Layer : public base::RefCounted<Layer>,
     // If set, disables this layer's rounded corner from triggering a render
     // surface on itself if possible.
     bool is_fast_rounded_corner : 1 = false;
-
-    bool trilinear_filtering : 1 = false;
 
     bool hide_layer_and_subtree : 1 = false;
 

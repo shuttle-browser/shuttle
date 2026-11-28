@@ -158,13 +158,18 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Variations.ExtendedSafeMode.BeaconFileWrite"
-    enum="BooleanSuccess" expires_after="2027-03-21">
+    enum="BeaconFileWriteResult" expires_after="2027-03-21">
   <owner>caitlinfischer@google.com</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <component>1456342</component>
   <summary>
-    Denotes whether the beacon file was successfully written. Recorded
-    immediately after Chrome tries to write the file.
+    Denotes the result of writing the beacon file. Recorded immediately after
+    Chrome tries to write the file.
+
+    Before M158, this was a BooleanSuccess histogram. Buckets 0 (failure) and 1
+    (success) are compatible with it; as of M158, bucket 0 is only logged on
+    Windows, and other platforms instead record the more specific failure
+    buckets.
 
     As of M102 for desktop and iOS and M103 for Android Chrome, any client may
     emit this metric. Prior to this, the metric was emitted by only clients in
@@ -380,24 +385,15 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="Variations.Limits.VariationKeySize.{Size}" units="KiB"
+<histogram name="Variations.Limits.VariationKeySize.Default" units="KiB"
     expires_after="2027-03-07">
   <owner>caitlinfischer@google.com</owner>
   <owner>src/base/metrics/OWNERS</owner>
   <summary>
     The number of kilobytes of the variations crash keys, recorded every time
-    crash keys are updated. Crash keys larger than kVariationKeySize will be
-    truncated. The size of kVariationKeySize is controlled by the preprocessor
-    macro LARGE_VARIATION_KEY_SIZE. {Size};
+    crash keys are updated. Crash keys larger than kVariationsKeySize will be
+    truncated.
   </summary>
-  <token key="Size">
-    <variant name="Default"
-        summary="&quot;Default&quot; is recorded when
-                 LARGE_VARIATION_KEY_SIZE is NOT defined."/>
-    <variant name="Large"
-        summary="&quot;Large&quot; is used when LARGE_VARIATION_KEY_SIZE is
-                 defined."/>
-  </token>
 </histogram>
 
 <histogram name="Variations.LoadPermanentConsistencyCountryResult"
@@ -1003,6 +999,17 @@ chromium-metrics-reviews@google.com.
     The result of verifying the variations seed signature, recorded when the
     variations seed is stored to Local State after being retrieved from the
     server.
+  </summary>
+</histogram>
+
+<histogram name="Variations.SyntheticSeedFreshness" units="minutes"
+    expires_after="2027-04-20">
+  <owner>alexmitra@chromium.org</owner>
+  <owner>src/android_webview/OWNERS</owner>
+  <summary>
+    The time interval between when the fake seed file distributed via GMS was
+    last modified and when it was checked during WebView startup. Recorded on
+    startup if the seed file exists and is readable.
   </summary>
 </histogram>
 

@@ -74,7 +74,7 @@
 #include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window_state.h"
-#include "chrome/browser/ui/browser_window_theme_observer.h"
+#include "chrome/browser/ui/browser_window_theme_observer/browser_window_theme_observer.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/dialogs/browser_dialogs.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_bubble_type.h"
@@ -90,7 +90,10 @@
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
+#include "chrome/browser/ui/omnibox/omnibox_controller.h"
+#include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
+#include "chrome/browser/ui/omnibox/omnibox_popup_state_manager.h"
 #include "chrome/browser/ui/omnibox/omnibox_popup_view.h"
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
@@ -240,12 +243,12 @@
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/image_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/text/bytes_formatting.h"
 #include "ui/base/theme_provider.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/color/color_id.h"
 #include "ui/compositor/debug_utils.h"
@@ -292,6 +295,7 @@
 #include "ash/public/cpp/metrics_util.h"
 #include "ash/wm/window_properties.h"
 #include "chrome/browser/ash/boca/on_task/on_task_locked_controller.h"
+#include "chrome/browser/lifetime/browser_shutdown.h"  // nogncheck
 #include "chrome/browser/ui/chromeos/locked_state/locked_state_controller.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view_chromeos.h"
 #include "chrome/browser/ui/views/frame/immersive_mode_controller_chromeos.h"
@@ -1410,6 +1414,11 @@ void BrowserView::SetBounds(const gfx::Rect& bounds) {
 }
 
 void BrowserView::Close() {
+#if BUILDFLAG(IS_CHROMEOS)
+  if (browser_shutdown::HasShutdownStarted()) {
+    browser_widget_->SetVisibilityChangedAnimationsEnabled(false);
+  }
+#endif  // BUILDFLAG(IS_CHROMEOS)
   browser_widget_->Close();
 }
 
@@ -1420,6 +1429,17 @@ void BrowserView::Activate() {
     // to continue.
     return;
   }
+
+#if BUILDFLAG(IS_LINUX)
+  // Ozone platform windows ignore activation requests while unmapped, so
+  // activating a window that was never shown would leave the previously active
+  // window active. Show the window instead, which also activates it. This
+  // matches Mac, where activating a hidden window shows it.
+  if (!browser_widget_->IsVisible()) {
+    Show();
+    return;
+  }
+#endif
 
 #if !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_CHROMEOS)
   // Update the list managed by `BrowserList` synchronously the same way
@@ -1936,6 +1956,15 @@ void BrowserView::FullscreenStateChanged() {
                                     widget_for_anchoring);
   GetFrameView()->OnFullscreenStateChanged();
 
+  // On Mac, a failed enter never goes through ProcessFullscreen(false), so
+  // PrepareFullscreen(false) never ran. We must tear down the host explicitly.
+  if (!IsFullscreen()) {
+    if (auto* const fullscreen_control_host =
+            FullscreenControlHost::From(browser_.get())) {
+      fullscreen_control_host->OnExitFullscreen();
+    }
+  }
+
   // Reopen a popup that `OmniboxPopupView::OnFullscreenTransitionStarting()`
   // closed for the transition. This runs after entering and after exiting, as
   // immersive fullscreen keeps the location bar drawn. Skip it in content
@@ -2164,7 +2193,8 @@ base::CallbackListSubscription BrowserView::AddOnLinkOpeningFromGestureCallback(
   return link_opened_from_gesture_callbacks_.Add(callback);
 }
 
-void BrowserView::LinkOpeningFromGesture(WindowOpenDisposition disposition) {
+void BrowserView::LinkOpeningFromGesture(
+    ui::mojom::WindowOpenDisposition disposition) {
   link_opened_from_gesture_callbacks_.Notify(disposition);
 }
 
@@ -2633,6 +2663,15 @@ void BrowserView::Paste() {
 // manager to do that.
 void BrowserView::CutCopyPaste(int command_id) {
 #if BUILDFLAG(IS_MAC)
+  // The command is forwarded to NSApp below, which dispatches it to the first
+  // responder of whichever window is key at that time, not necessarily this
+  // one. If this window is no longer active (e.g. another window became key
+  // between the command being chosen and it being executed), drop the command
+  // so it can't be delivered to a different window.
+  if (!GetWidget() || !GetWidget()->IsActive()) {
+    return;
+  }
+
   auto command = CommandFromBrowserCommand(command_id);
   auto* application_host =
       GetWidget() ? remote_cocoa::ApplicationHost::GetForNativeView(
@@ -3537,8 +3576,7 @@ void BrowserView::UpdateTabModalDialogHost() {
         SafeInvoke(contents_view->web_contents())
             .Then(Overload<content::WebContents*>(
                 &tabs::TabInterface::GetFromContents))
-            .Then(Overload<>(&tabs::TabInterface::GetTabFeatures))
-            .Then(&tabs::TabFeatures::tab_dialog_manager)
+            .Then(&tabs::TabDialogManager::From)
             .Then(&tabs::TabDialogManager::UpdateModalDialogHost);
       }));
 }
@@ -3869,12 +3907,17 @@ void BrowserView::Layout(PassKey) {
     // However, if the window size changed since the last layout pass, do not
     // defer; child views must be laid out to match the new window size.
     //
-    // Also, if the active contents container has not yet received its
-    // initial non-empty bounds (e.g. during tab restore or when the first tab
-    // is added to the window), allow this layout pass so that the web contents
-    // gets properly sized before it starts loading.
+    // Also, if the active contents container or visible tab strip has not yet
+    // received initial non-empty bounds (e.g. during tab restore or when the
+    // first tab is added or attached to the window), allow this layout pass so
+    // views get properly sized before loading or computing drag offsets.
+    const bool needs_initial_tab_strip_layout =
+        GetTabStripVisible() && !browser_->GetTabStripModel()->empty() &&
+        tab_strip_view() && tab_strip_view()->GetTabStripView() &&
+        tab_strip_view()->GetTabStripView()->size().IsEmpty();
     const bool size_changed = size() != last_laid_out_size_;
-    if (!size_changed && (size().IsEmpty() || !GetContentsSize().IsEmpty())) {
+    if (!size_changed && !needs_initial_tab_strip_layout &&
+        (size().IsEmpty() || !GetContentsSize().IsEmpty())) {
       layout_deferred_while_invisible_ = true;
       return;
     }
@@ -4129,6 +4172,13 @@ void BrowserView::AddedToWidget() {
       kFallbackPopupAnchorElementId, *this);
 
   initialized_ = true;
+  // `View::AddChildViewAtImpl()` runs `PropagateThemeChanged()` before
+  // `AddedToWidget()`, so the initial `OnThemeChanged()` returned early before
+  // `initialized_` was set.
+  if (base::FeatureList::IsEnabled(
+          views::features::kSkipRedundantSetNativeThemeUpdate)) {
+    FrameColorsChanged();
+  }
 }
 
 void BrowserView::RemovedFromWidget() {
@@ -4402,6 +4452,24 @@ void BrowserView::PrepareFullscreen(bool fullscreen) {
   if (fullscreen) {
     // Move focus out of the location bar if necessary.
     LocationBar* location_bar = GetLocationBar();
+#if BUILDFLAG(IS_CHROMEOS)
+    // The Full WebUI popup sits on top of the location bar but isn't part of
+    // it, and immersive fullscreen keeps the location bar drawn, so blur the
+    // omnibox here. A draft keeps the popup open.
+    // TODO(crbug.com/582521205): Update macOS to have the same behavior and
+    // unify code flow if possible.
+    if (OmniboxController* const controller =
+            location_bar ? location_bar->GetOmniboxController() : nullptr;
+        controller && controller->edit_model()->has_focus() &&
+        controller->popup_state_manager()->popup_state() ==
+            OmniboxPopupState::kFull) {
+      // A tab switch while the popup held activation may have set this. Hiding
+      // the popup would then restore the tab's focus, which is the omnibox on
+      // the NTP, and reopen the popup.
+      restore_focus_on_activation_ = false;
+      location_bar->GetOmniboxPopupView()->Blur();
+    }
+#endif  // BUILDFLAG(IS_CHROMEOS)
     if (location_bar && location_bar->IsFocusWithin()) {
       views::FocusManager* focus_manager = GetFocusManager();
       CHECK(focus_manager, base::NotFatalUntil::M162);

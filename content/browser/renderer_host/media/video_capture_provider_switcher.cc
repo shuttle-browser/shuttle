@@ -73,9 +73,10 @@ VideoCaptureProviderSwitcher::VideoCaptureProviderSwitcher(
 VideoCaptureProviderSwitcher::~VideoCaptureProviderSwitcher() = default;
 
 void VideoCaptureProviderSwitcher::GetDeviceInfosAsync(
+    media::mojom::VideoCaptureDeviceEnumerationMode enumeration_mode,
     GetDeviceInfosCallback result_callback) {
   media_device_capture_provider_->GetDeviceInfosAsync(
-      std::move(result_callback));
+      enumeration_mode, std::move(result_callback));
 }
 
 std::unique_ptr<VideoCaptureDeviceLauncher>
@@ -83,6 +84,16 @@ VideoCaptureProviderSwitcher::CreateDeviceLauncher() {
   return std::make_unique<VideoCaptureDeviceLauncherSwitcher>(
       media_device_capture_provider_->CreateDeviceLauncher(),
       other_types_capture_provider_->CreateDeviceLauncher());
+}
+
+std::unique_ptr<VideoCaptureDeviceLauncher>
+VideoCaptureProviderSwitcher::CreateDeviceLauncherWithSharedMemoryBuffers() {
+  // Only the provider for other types launches screen, window, and tab
+  // capture devices.
+  return std::make_unique<VideoCaptureDeviceLauncherSwitcher>(
+      media_device_capture_provider_->CreateDeviceLauncher(),
+      other_types_capture_provider_
+          ->CreateDeviceLauncherWithSharedMemoryBuffers());
 }
 
 void VideoCaptureProviderSwitcher::OpenNativeScreenCapturePicker(

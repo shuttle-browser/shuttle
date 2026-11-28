@@ -318,8 +318,7 @@ void BlockLayoutAlgorithm::SetupRelayoutData(
   column_spanner_path_ = previous.column_spanner_path_;
 
   if (relayout_type == kRelayoutIgnoringLineClamp) {
-    line_clamp_data_.data.state = LineClampData::State::kDisabled;
-    line_clamp_data_.ignore_line_clamp = true;
+    line_clamp_data_.data.state = LineClampData::State::kDontClamp;
   } else if (relayout_type == kRelayoutClampingByLines) {
     line_clamp_data_.data.state = LineClampData::State::kClampByLines;
     line_clamp_data_.data.lines_until_clamp =
@@ -340,6 +339,9 @@ void BlockLayoutAlgorithm::SetupRelayoutData(
             previous.line_clamp_data_.initial_lines_until_clamp;
     line_clamp_data_.data.block_ellipsis =
         previous.line_clamp_data_.data.block_ellipsis;
+  } else if (previous.line_clamp_data_.data.state ==
+             LineClampData::State::kDontClamp) {
+    line_clamp_data_.data.state = LineClampData::State::kDontClamp;
   }
 
   if (relayout_type == kRelayoutForTextBoxTrim) {
@@ -1055,6 +1057,11 @@ inline const LayoutResult* BlockLayoutAlgorithm::Layout(
         DCHECK(!entry.token);
         if (sibling.IsColumnSpanAll())
           continue;
+        if (sibling.IsOutOfFlowPositioned() &&
+            container_builder_.GetFragmentedOofContainer()) {
+          // OOF discovery is managed by FragmentedOofContainer.
+          continue;
+        }
         container_builder_.AddBreakBeforeChild(sibling, kBreakAppealPerfect,
                                                /* is_forced_break */ true);
         break;
@@ -1287,9 +1294,9 @@ const LayoutResult* BlockLayoutAlgorithm::FinishLayout(
     // Additionally this fragment produces no end margin strut.
 
     // If the current layout is a new formatting context, we need to encapsulate
-    // all of our floats. We only do this if we haven't line-clamped, though.
+    // all of our floats. We don't do this in line-clamp containers though.
     if (constraint_space.IsNewFormattingContext() &&
-        !line_clamp_data_.previous_inflow_position_when_clamped) {
+        !line_clamp_data_.data.IsLineClampContext()) {
       intrinsic_block_size_ =
           std::max(intrinsic_block_size_,
                    GetExclusionSpace().ClearanceOffsetIncludingInitialLetter(
@@ -1519,7 +1526,11 @@ const LayoutResult* BlockLayoutAlgorithm::FinishLayout(
                       unconstrained_intrinsic_block_size, container_builder_);
   }
 
-  container_builder_.HandleOofsAndSpecialDescendants();
+  LayoutResult::EStatus oof_status =
+      container_builder_.HandleOofsAndSpecialDescendants();
+  if (oof_status != LayoutResult::kSuccess) {
+    return container_builder_.Abort(oof_status);
+  }
 
   if (constraint_space.GetBaselineAlgorithmType() ==
       BaselineAlgorithmType::kInlineBlock) {
@@ -1652,16 +1663,6 @@ void BlockLayoutAlgorithm::HandleOutOfFlowPositioned(
     }
   }
 
-  if (child_break_token && !child_break_token->IsForcedBreak() &&
-      RuntimeEnabledFeatures::FragmentedOofInCbEnabled()) {
-    // This OOF is either being resumed (after a break inside), or has been
-    // attempted placed earlier, and therefore has the correct offsets stored on
-    // the break token (and running through the offset calculation code below
-    // would give incorrect results).
-    container_builder_.AddOutOfFlowChildCandidate(child, *child_break_token);
-    return;
-  }
-
   DCHECK(child.IsOutOfFlowPositioned());
   LogicalStaticPosition static_pos(
       LogicalOffset(BorderScrollbarPadding().inline_start,
@@ -1730,7 +1731,8 @@ void BlockLayoutAlgorithm::HandleOutOfFlowPositioned(
     }
   }
 
-  container_builder_.AddOutOfFlowChildCandidate(child, static_pos);
+  container_builder_.AddOutOfFlowChildCandidate(child, static_pos,
+                                                child_break_token);
 }
 
 void BlockLayoutAlgorithm::HandleFloat(
@@ -4167,21 +4169,21 @@ LayoutUnit BlockLayoutAlgorithm::ComputeInitialBlockStartAnnotationSpace()
 
 void BlockLineClampData::Setup(const BlockNode& node,
                                const BoxFragmentBuilder& container_builder) {
+  if (node.IsMulticolContainer()) {
+    return;
+  }
+
   const ConstraintSpace& constraint_space =
       container_builder.GetConstraintSpace();
   const ComputedStyle& style = node.Style();
 
   // Setting up the state in the line-clamp container
-  if (style.HasLineClamp() && !node.IsMulticolContainer()) {
+  if (style.HasLineClamp()) {
     if (data.IsLineClampContext()) {
       // We're in a relayout, we keep the existing state.
       return;
     }
-
     DCHECK_EQ(data.state, LineClampData::State::kDisabled);
-    if (ignore_line_clamp) {
-      return;
-    }
 
     LayoutUnit clamp_bfc_offset = kIndefiniteSize;
     if (RuntimeEnabledFeatures::CSSLineClampEnabled() &&
@@ -4225,7 +4227,8 @@ void BlockLineClampData::Setup(const BlockNode& node,
     return;
   }
 
-  if (style.WebkitLineClamp() != 0) {
+  if (style.WebkitLineClamp() != 0 ||
+      style.Continue() == EContinue::kWebkitLegacy) {
     UseCounter::Count(node.GetDocument(),
                       WebFeature::kWebkitLineClampWithoutWebkitBox);
   }

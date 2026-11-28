@@ -210,7 +210,7 @@ def boot_cuttlefish(args, cuttlefish_zip, bootloader, temp_dir):
         '-smp',
         '6',
         '-machine',
-        'pc',
+        'q35',
         '-cpu',
         'host',
         '-enable-kvm',
@@ -220,17 +220,23 @@ def boot_cuttlefish(args, cuttlefish_zip, bootloader, temp_dir):
         # Load U-Boot vars flash (read-write environment)
         '-drive',
         f'if=pflash,format=raw,file={os.path.join(temp_dir, "u-boot-vars.img")}',
+        # Disable default VGA so we can configure VGA at slot 1.0 with multifunction=on,
+        # allowing virtio-net to attach to function 1.2 matching Fuchsia/Starnix network slot spec.
+        '-vga',
+        'none',
+        '-device',
+        'VGA,addr=1.0,multifunction=on',
         # Shift our main system disk to virtio 1 (second slot) by mapping a dummy disk
         # to virtio 0, since Cuttlefish U-Boot and fstab expect Android on virtio 1.
         '-drive',
         f'file={os.path.join(temp_dir, "dummy.img")},format=raw,if=none,id=drive-disk0',
         '-device',
-        'virtio-blk-pci-non-transitional,drive=drive-disk0,id=virtio-disk0,bootindex=1',
+        'virtio-blk-pci-non-transitional,drive=drive-disk0,id=virtio-disk0,bootindex=1,addr=3.0',
         # Map our partitioned VMDK disk as virtio 1
         '-drive',
         f'file={os.path.join(temp_dir, "disk.vmdk")},format=vmdk,if=none,id=drive-disk1',
         '-device',
-        'virtio-blk-pci-non-transitional,drive=drive-disk1,id=virtio-disk1',
+        'virtio-blk-pci-non-transitional,drive=drive-disk1,id=virtio-disk1,addr=4.0',
         # User-mode networking with static hostfwd for ADB and SSH
         '-netdev',
         f'user,id=net0,hostfwd=tcp::2222-:22,hostfwd=tcp::{args.adb_port}-:5555',
@@ -325,7 +331,8 @@ def _bind_mount_test_data_root(adb_path, adb_port):
     FUSE filesystem (/sdcard). Bind-mounting the test data root directly
     from underlying media storage bypasses FUSE while ensuring unprivileged
     test processes have permissions for both mmap() and creating temporary
-    directories.
+    directories. Also ensures standard Download directories exist for test
+    output XML artifacts.
     """
     target = f'127.0.0.1:{adb_port}'
     logging.info("Configuring mmap-capable test data root on Starnix...")
@@ -370,6 +377,25 @@ def _bind_mount_test_data_root(adb_path, adb_port):
             f"Successfully bind-mounted {source_root} "
             "over /sdcard/chromium_tests_root"
         )
+
+    # Ensure Download directories exist and are writable so test runners can
+    # write gtest output XML files and adb pull succeeds during list_tests.
+    download_root = '/mnt/pass_through/0/emulated/0/Download'
+    _run_shell_cmd(['mkdir', '-p', download_root])
+    _run_shell_cmd(['chmod', '777', download_root])
+    _run_shell_cmd(
+        ['chcon', '-R', 'u:object_r:media_rw_data_file:s0', download_root]
+    )
+    _run_shell_cmd(
+        [
+            'mkdir',
+            '-p',
+            '/storage/emulated/0/Download',
+            '/sdcard/Download',
+        ]
+    )
+    _run_shell_cmd(['chmod', '777', '/storage/emulated/0/Download'])
+    _run_shell_cmd(['chmod', '777', '/sdcard/Download'])
     return True
 
 
@@ -462,7 +488,7 @@ def main():
         f"No Cuttlefish guest image ZIP found in {cuttlefish_dir}"
     )
 
-    bootloader = args.packages / 'uboot' / 'u-boot.rom'
+    bootloader = args.packages / 'uboot_q35' / 'u-boot.rom'
     assert bootloader.exists(), f"Bootloader not found at {bootloader}"
 
     hvc_stop_event = None

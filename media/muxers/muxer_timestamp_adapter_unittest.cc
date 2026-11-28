@@ -194,7 +194,6 @@ TEST_F(MuxerTimestampAdapterTest, ForwardsAudioVideoSamples) {
   CreateAdapterWithSuccessfulPut(/*has_video=*/true, /*has_audio=*/true);
   InSequence s;
   std::string str1 = "f1";
-  std::string str2 = "f2";
   std::string alpha_data1 = "a1";
   EXPECT_CALL(*muxer_, PutFrame(MatchBufferDataAndAlphaData(str1, alpha_data1),
                                 base::Milliseconds(0)));
@@ -252,9 +251,9 @@ TEST_F(MuxerTimestampAdapterTest, VideoKeptWhileWaitingForAudio) {
 TEST_F(MuxerTimestampAdapterTest, CompensatesForPausedTimeWithVideo) {
   CreateAdapterWithSuccessfulPut(/*has_video=*/true, /*has_audio=*/true);
   PutVideoFrame(Frame().WithTimestamp(123).AsKeyframe());
-  adapter_->Pause();
+  adapter_->Pause(base::TimeTicks::Now());
   environment_.FastForwardBy(base::Milliseconds(200));
-  adapter_->Resume();
+  adapter_->Resume(base::TimeTicks::Now());
   PutVideoFrame(Frame().WithTimestamp(123 + 266));
   muxer_ = nullptr;
   adapter_ = nullptr;
@@ -265,9 +264,9 @@ TEST_F(MuxerTimestampAdapterTest, CompensatesForPausedTimeWithVideo) {
 TEST_F(MuxerTimestampAdapterTest, CompensatesForPausedTimeWithAudio) {
   CreateAdapterWithSuccessfulPut(/*has_video=*/true, /*has_audio=*/true);
   PutAudioFrame(Frame().WithTimestamp(234));
-  adapter_->Pause();
+  adapter_->Pause(base::TimeTicks::Now());
   environment_.FastForwardBy(base::Milliseconds(666));
-  adapter_->Resume();
+  adapter_->Resume(base::TimeTicks::Now());
   PutAudioFrame(Frame().WithTimestamp(234 + 686));
   muxer_ = nullptr;
   adapter_ = nullptr;
@@ -279,9 +278,9 @@ TEST_F(MuxerTimestampAdapterTest, CompensatesForPausedTimeWithAudioAndVideo) {
   CreateAdapterWithSuccessfulPut(/*has_video=*/true, /*has_audio=*/true);
   PutAudioFrame(Frame().WithTimestamp(234));
   PutVideoFrame(Frame().WithTimestamp(234 + 1).AsKeyframe());
-  adapter_->Pause();
+  adapter_->Pause(base::TimeTicks::Now());
   environment_.FastForwardBy(base::Milliseconds(300));
-  adapter_->Resume();
+  adapter_->Resume(base::TimeTicks::Now());
   PutAudioFrame(Frame().WithTimestamp(234 + 321));
   PutVideoFrame(Frame().WithTimestamp(234 + 315));
   muxer_ = nullptr;
@@ -289,6 +288,20 @@ TEST_F(MuxerTimestampAdapterTest, CompensatesForPausedTimeWithAudioAndVideo) {
   EXPECT_THAT(put_timestamps_, ElementsAre(Pair(kAudio, 0), Pair(kVideo, 1),
                                            Pair(kVideo, /*315 - 300=*/15),
                                            Pair(kAudio, /*321 - 300=*/21)));
+}
+
+TEST_F(MuxerTimestampAdapterTest, UsesSuppliedTimeForPausedTime) {
+  CreateAdapterWithSuccessfulPut(/*has_video=*/true, /*has_audio=*/false);
+  PutVideoFrame(Frame().WithTimestamp(100).AsKeyframe());
+  // The supplied times are used rather than the system clock, so that callers
+  // can coarsen them consistently with the frame timestamps.
+  adapter_->Pause(base::TimeTicks() + base::Milliseconds(110));
+  adapter_->Resume(base::TimeTicks() + base::Milliseconds(150));
+  PutVideoFrame(Frame().WithTimestamp(160));
+  muxer_ = nullptr;
+  adapter_ = nullptr;
+  EXPECT_THAT(put_timestamps_,
+              ElementsAre(Pair(kVideo, 0), Pair(kVideo, /*60 - 40=*/20)));
 }
 
 TEST_F(MuxerTimestampAdapterTest, ReleasesAudioDataWhileVideoMuted) {

@@ -3,10 +3,10 @@
 #include <memory>
 #include <utility>
 
-#include "absl/functional/bind_front.h"
-#include "absl/log/absl_check.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
+#include "absl/functional/bind_front.h"  // from @com_google_absl
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/strings/str_cat.h"        // from @com_google_absl
+#include "absl/strings/str_join.h"       // from @com_google_absl
 #include "mediapipe/framework/port/logging.h"
 
 #if MEDIAPIPE_GPU_BUFFER_USE_CV_PIXEL_BUFFER
@@ -33,7 +33,7 @@ std::string GpuBuffer::DebugString() const {
 }
 
 std::string GpuBuffer::StorageHolder::DebugString() const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   return absl::StrJoin(storages_, ", ", StorageTypeFormatter());
 }
 
@@ -43,7 +43,7 @@ internal::GpuBufferStorage* GpuBuffer::StorageHolder::GetStorageForView(
   std::function<std::shared_ptr<internal::GpuBufferStorage>()> conversion;
 
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     // First see if any current storage supports the view.
     for (const auto& s : storages_) {
       if (s->can_down_cast_to(view_provider_type)) {
@@ -78,7 +78,7 @@ internal::GpuBufferStorage* GpuBuffer::StorageHolder::GetStorageForView(
   //    TODO: we could use Mutex::ForgetDeadlockInfo instead.
   if (conversion) {
     auto new_storage = conversion();
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     // Another reader might have already completed and inserted the same
     // conversion. TODO: prevent this?
     for (const auto& s : storages_) {
@@ -100,7 +100,7 @@ internal::GpuBufferStorage* GpuBuffer::StorageHolder::GetStorageForView(
     using std::swap;
     if (chosen_storage) {
       // Discard all other storages.
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       swap(old_storages, storages_);
       storages_ = {chosen_storage};
     } else {
@@ -109,7 +109,7 @@ internal::GpuBufferStorage* GpuBuffer::StorageHolder::GetStorageForView(
               internal::GpuBufferStorageRegistry::Get()
                   .StorageFactoryForViewProvider(view_provider_type)) {
         if (auto new_storage = factory(width_, height_, format_)) {
-          absl::MutexLock lock(&mutex_);
+          absl::MutexLock lock(mutex_);
           swap(old_storages, storages_);
           storages_ = {std::move(new_storage)};
           chosen_storage = storages_.back();

@@ -40,6 +40,7 @@
 #if BUILDFLAG(ENABLE_SCREEN_CAPTURE)
 #include "content/browser/media/capture/desktop_capture_device_uma_types.h"
 #include "content/browser/media/capture/web_contents_video_capture_device.h"
+#include "services/viz/privileged/mojom/compositing/frame_sink_video_capture.mojom-shared.h"
 #if !BUILDFLAG(IS_IOS)
 #if defined(USE_AURA)
 #include "content/browser/media/capture/aura_window_video_capture_device.h"
@@ -229,6 +230,8 @@ InProcessVideoCaptureDeviceLauncher::InProcessVideoCaptureDeviceLauncher(
 InProcessVideoCaptureDeviceLauncher::~InProcessVideoCaptureDeviceLauncher() {
   CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M158);
   CHECK(state_ == State::READY_TO_LAUNCH, base::NotFatalUntil::M158);
+  // OnDeviceStarted() runs `done_cb_` before the launcher can be destroyed.
+  DCHECK(!done_cb_);
 }
 
 void InProcessVideoCaptureDeviceLauncher::LaunchDeviceAsync(
@@ -241,6 +244,8 @@ void InProcessVideoCaptureDeviceLauncher::LaunchDeviceAsync(
     base::OnceClosure done_cb) {
   CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M158);
   CHECK(state_ == State::READY_TO_LAUNCH, base::NotFatalUntil::M158);
+  CHECK(!done_cb_);
+  done_cb_ = std::move(done_cb);
 
   if (receiver_on_io_thread) {
     std::ostringstream string_stream;
@@ -257,10 +262,15 @@ void InProcessVideoCaptureDeviceLauncher::LaunchDeviceAsync(
       receiver_on_io_thread, GetIOThreadTaskRunner({}));
 
   base::OnceClosure start_capture_closure;
+  // If the IO thread has stopped when the device thread runs this callback, the
+  // callback is destroyed on the device thread. Thus it must not own objects
+  // that must be destroyed on the IO thread, like `done_cb_`. The WeakPtr is
+  // only a safeguard: `done_cb_` keeps the owner of `this` alive until the
+  // launch completes.
   ReceiveDeviceCallback after_start_capture_callback =
-      base::BindPostTaskToCurrentDefault(base::BindOnce(
-          &InProcessVideoCaptureDeviceLauncher::OnDeviceStarted,
-          weak_factory_.GetWeakPtr(), callbacks, std::move(done_cb)));
+      base::BindPostTaskToCurrentDefault(
+          base::BindOnce(&InProcessVideoCaptureDeviceLauncher::OnDeviceStarted,
+                         weak_factory_.GetWeakPtr(), callbacks));
 
   switch (stream_type) {
     case blink::mojom::MediaStreamType::DEVICE_VIDEO_CAPTURE:
@@ -271,7 +281,7 @@ void InProcessVideoCaptureDeviceLauncher::LaunchDeviceAsync(
     case blink::mojom::MediaStreamType::GUM_TAB_VIDEO_CAPTURE:
       start_capture_closure = base::BindOnce(
           &InProcessVideoCaptureDeviceLauncher::DoStartTabCaptureOnDeviceThread,
-          device_id, params, std::move(receiver),
+          device_id, params, prefer_shared_memory_buffers_, std::move(receiver),
           std::move(after_start_capture_callback));
       break;
 
@@ -312,11 +322,11 @@ void InProcessVideoCaptureDeviceLauncher::LaunchDeviceAsync(
               std::move(callback).Run(std::move(device));
             },
             desktop_id, std::move(after_start_capture_callback));
-        start_capture_closure =
-            base::BindOnce(&InProcessVideoCaptureDeviceLauncher::
-                               DoStartTabCaptureOnDeviceThread,
-                           device_id, params, std::move(receiver),
-                           std::move(after_start_capture_callback));
+        start_capture_closure = base::BindOnce(
+            &InProcessVideoCaptureDeviceLauncher::
+                DoStartTabCaptureOnDeviceThread,
+            device_id, params, prefer_shared_memory_buffers_,
+            std::move(receiver), std::move(after_start_capture_callback));
         break;
       }
 
@@ -328,11 +338,11 @@ void InProcessVideoCaptureDeviceLauncher::LaunchDeviceAsync(
         TRACE_EVENT_INSTANT(
             TRACE_DISABLED_BY_DEFAULT("video_and_image_capture"),
             "UsingVizFrameSinkCapturer");
-        start_capture_closure =
-            base::BindOnce(&InProcessVideoCaptureDeviceLauncher::
-                               DoStartVizFrameSinkWindowCaptureOnDeviceThread,
-                           desktop_id, params, std::move(receiver),
-                           std::move(after_start_capture_callback));
+        start_capture_closure = base::BindOnce(
+            &InProcessVideoCaptureDeviceLauncher::
+                DoStartVizFrameSinkWindowCaptureOnDeviceThread,
+            desktop_id, params, prefer_shared_memory_buffers_,
+            std::move(receiver), std::move(after_start_capture_callback));
         break;
       }
 #endif  // defined(USE_AURA) || BUILDFLAG(IS_MAC)
@@ -350,7 +360,8 @@ void InProcessVideoCaptureDeviceLauncher::LaunchDeviceAsync(
       const bool wgc_may_be_used =
           desktop_id.type == DesktopMediaID::TYPE_WINDOW ||
           IsWgcEnabledForScreenCapture();
-      if (base::FeatureList::IsEnabled(features::kWebRtcAllowWgcUsingTexture) &&
+      if (!prefer_shared_memory_buffers_ &&
+          base::FeatureList::IsEnabled(features::kWebRtcAllowWgcUsingTexture) &&
           wgc_may_be_used) {
         buffer_type = media::VideoCaptureBufferType::kGpuMemoryBuffer;
         max_buffer_count = 10;
@@ -379,6 +390,12 @@ void InProcessVideoCaptureDeviceLauncher::LaunchDeviceAsync(
   state_ = State::DEVICE_START_IN_PROGRESS;
   device_task_runner_->PostTask(FROM_HERE, std::move(start_capture_closure));
 #endif
+}
+
+void InProcessVideoCaptureDeviceLauncher::SetPreferSharedMemoryBuffers() {
+  CHECK_CURRENTLY_ON(BrowserThread::IO);
+  CHECK(state_ == State::READY_TO_LAUNCH);
+  prefer_shared_memory_buffers_ = true;
 }
 
 void InProcessVideoCaptureDeviceLauncher::AbortLaunch() {
@@ -424,11 +441,14 @@ InProcessVideoCaptureDeviceLauncher::CreateDeviceClient(
 
 void InProcessVideoCaptureDeviceLauncher::OnDeviceStarted(
     Callbacks* callbacks,
-    base::OnceClosure done_cb,
     std::unique_ptr<media::VideoCaptureDevice> device) {
   CHECK_CURRENTLY_ON(BrowserThread::IO, base::NotFatalUntil::M158);
   State state_copy = state_;
   state_ = State::READY_TO_LAUNCH;
+  // Move `done_cb_` out before the callbacks run: they can call
+  // LaunchDeviceAsync() again, which sets `done_cb_`, and running `done_cb`
+  // can destroy `this`.
+  base::OnceClosure done_cb = std::move(done_cb_);
   if (!device) {
     switch (state_copy) {
       case State::DEVICE_START_IN_PROGRESS:
@@ -469,11 +489,18 @@ void InProcessVideoCaptureDeviceLauncher::OnDeviceStarted(
 void InProcessVideoCaptureDeviceLauncher::DoStartTabCaptureOnDeviceThread(
     const std::string& device_id,
     const media::VideoCaptureParams& params,
+    bool prefer_shared_memory_buffers,
     std::unique_ptr<media::VideoFrameReceiver> receiver,
     ReceiveDeviceCallback result_callback) {
   std::unique_ptr<WebContentsVideoCaptureDevice> video_capture_device =
       WebContentsVideoCaptureDevice::Create(device_id);
   if (video_capture_device) {
+    if (prefer_shared_memory_buffers) {
+      // FrameSinkVideoCaptureDevice defaults to kPreferMappableSharedImage
+      // when unset; kDefault requests shared memory buffers from viz.
+      video_capture_device->SetBufferFormatPreference(
+          viz::mojom::BufferFormatPreference::kDefault);
+    }
     video_capture_device->AllocateAndStartWithReceiver(params,
                                                        std::move(receiver));
   }
@@ -485,6 +512,7 @@ void InProcessVideoCaptureDeviceLauncher::
     DoStartVizFrameSinkWindowCaptureOnDeviceThread(
         const DesktopMediaID& device_id,
         const media::VideoCaptureParams& params,
+        bool prefer_shared_memory_buffers,
         std::unique_ptr<media::VideoFrameReceiver> receiver,
         ReceiveDeviceCallback result_callback) {
   std::unique_ptr<FrameSinkVideoCaptureDevice> video_capture_device;
@@ -496,6 +524,12 @@ void InProcessVideoCaptureDeviceLauncher::
       std::make_unique<ViewsWidgetVideoCaptureDeviceMac>(device_id);
 #endif
   if (video_capture_device) {
+    if (prefer_shared_memory_buffers) {
+      // FrameSinkVideoCaptureDevice defaults to kPreferMappableSharedImage
+      // when unset; kDefault requests shared memory buffers from viz.
+      video_capture_device->SetBufferFormatPreference(
+          viz::mojom::BufferFormatPreference::kDefault);
+    }
     video_capture_device->AllocateAndStartWithReceiver(params,
                                                        std::move(receiver));
     IncrementDesktopCaptureCounters(device_id);

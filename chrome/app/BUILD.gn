@@ -25,11 +25,22 @@ if (is_posix) {
   source_set("chrome_crash_reporter_client") {
     public = [ "chrome_crash_reporter_client.h" ]
     public_deps = [
+      ":chrome_crash_user_streams",
       "//base",
       "//build:buildflag_header_h",
       "//components/crash/core/app",
     ]
   }
+}
+
+source_set("chrome_crash_user_streams") {
+  public = [ "chrome_crash_user_streams.h" ]
+  sources = [ "chrome_crash_user_streams.cc" ]
+  public_deps = [
+    "//base",
+    "//components/crash/core/common:shared_memory_user_stream",
+  ]
+  deps = [ "//components/metrics:system_profile_user_stream" ]
 }
 
 # This target is for dependency tracking for the command ID header.

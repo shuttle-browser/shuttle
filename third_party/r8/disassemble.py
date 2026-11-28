@@ -29,11 +29,7 @@ def main():
     parser.add_argument('--normalize', action='store_true', help='Optimize output for diffing')
     args, unknown_args = parser.parse_known_args()
 
-    r8_dir = os.path.dirname(__file__)
-    java_path = os.path.abspath(os.path.join(r8_dir, '..', 'jdk', 'current', 'bin', 'java'))
-    r8_jar_path = os.path.join(r8_dir, 'cipd', 'lib', 'r8.jar')
-
-    cmd = [java_path, '-cp', r8_jar_path, 'com.android.tools.r8.Disassemble']
+    cmd = dex_disassembly.BuildDisassembleCmd()
 
     # If no args default to --help.
     if not unknown_args:
@@ -53,7 +49,7 @@ def main():
         sys.exit(process.returncode)
     else:
         # Just exec if not normalizing
-        os.execv(java_path, cmd)
+        os.execv(cmd[0], cmd)
 
 if __name__ == '__main__':
     main()

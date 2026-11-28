@@ -40,6 +40,7 @@ group("resources") {
       "agents:resources",
       "certificate_manager:resources",
       "content_settings:resources",
+      "craft:resources",
       "downloads:resources",
       "inspect:resources",
       "key_value_pair_viewer_shared:resources",
@@ -344,10 +345,6 @@ group("dev_ui_resources") {
   if (enable_session_service) {
     public_deps += [ "tab_strip_internals:resources" ]
   }
-
-  if (enable_devtools_frontend) {
-    public_deps += [ "//content/browser/devtools:devtools_resources" ]
-  }
 }
 
 repack("dev_ui_paks") {
@@ -413,10 +410,14 @@ repack("dev_ui_paks") {
     sources += [ "$root_gen_dir/chrome/tab_strip_internals_resources.pak" ]
   }
 
+  deps = [ ":dev_ui_resources" ]
+
   if (enable_devtools_frontend) {
     sources +=
         [ "$root_gen_dir/content/browser/devtools/devtools_resources.pak" ]
-  }
 
-  deps = [ ":dev_ui_resources" ]
+    # Put this here instead of in :dev_ui_resources so that //chrome/browser
+    # C++ compiles don't unnecessarily wait on building devtools_resources.
+    deps += [ "//content/browser/devtools:devtools_resources" ]
+  }
 }

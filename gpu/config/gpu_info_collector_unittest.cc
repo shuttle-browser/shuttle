@@ -28,8 +28,6 @@
 
 using ::gl::MockGLInterface;
 using ::testing::Return;
-using ::testing::SetArgPointee;
-using ::testing::_;
 
 namespace {
 
@@ -162,9 +160,6 @@ class GPUInfoCollectorTest
     EXPECT_CALL(*gl_, GetString(GL_RENDERER))
         .WillRepeatedly(Return(reinterpret_cast<const GLubyte*>(
             test_values_.gl_renderer.c_str())));
-    EXPECT_CALL(*gl_, GetIntegerv(GL_MAX_SAMPLES, _))
-        .WillOnce(SetArgPointee<1>(8))
-        .RetiresOnSaturation();
   }
 
   void TearDown() override {
@@ -232,6 +227,35 @@ TEST_P(GPUInfoCollectorTest, CollectGraphicsInfoGL) {
   EXPECT_EQ(test_values_.gl_vendor, gpu_info.gl_vendor);
   EXPECT_EQ(test_values_.gl_extensions, gpu_info.gl_extensions);
 }
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+TEST_P(GPUInfoCollectorTest, CollectGraphicsInfoGLMultiGPU) {
+  GPUInfo::GPUDevice amd_gpu;
+  amd_gpu.vendor_id = 0x1002;
+  amd_gpu.device_id = 0x164e;
+  amd_gpu.active = true;
+  GPUInfo::GPUDevice nvidia_gpu;
+  nvidia_gpu.vendor_id = 0x10de;
+  nvidia_gpu.device_id = 0x2684;
+
+  GPUInfo gpu_info;
+  gpu_info.gpu = amd_gpu;
+  gpu_info.secondary_gpus.push_back(nvidia_gpu);
+
+  CollectGraphicsInfoGL(&gpu_info, gl::GetDefaultDisplay());
+
+  if (GetParam() == kMockedLinux) {
+    EXPECT_FALSE(gpu_info.gpu.active);
+    EXPECT_TRUE(gpu_info.gpu.driver_vendor.empty());
+    EXPECT_TRUE(gpu_info.gpu.driver_version.empty());
+    EXPECT_TRUE(gpu_info.secondary_gpus[0].active);
+    EXPECT_EQ(test_values_.gpu.driver_vendor,
+              gpu_info.secondary_gpus[0].driver_vendor);
+    EXPECT_EQ(test_values_.gpu.driver_version,
+              gpu_info.secondary_gpus[0].driver_version);
+  }
+}
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
 
 TEST(MultiGPUsTest, IdentifyActiveGPU0) {
   GPUInfo::GPUDevice nvidia_gpu;

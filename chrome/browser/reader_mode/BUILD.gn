@@ -1,0 +1,56 @@
+# Copyright 2025 The Chromium Authors
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+source_set("reader_mode") {
+  sources = [
+    "lazy_reader_mode_service.h",
+    "profile_utils.h",
+    "reader_mode_service_factory.h",
+    "tab_utils.h",
+  ]
+  public_deps = [
+    "//base",
+    "//chrome/browser/profiles:profile",
+    "//chrome/browser/ui/zoom",
+    "//components/keyed_service/core",
+    "//components/web_distiller/core",
+  ]
+
+  if (is_android) {
+    sources += [
+      "reader_mode_service_factory_android.h",
+    ]
+  }
+}
+
+source_set("impl") {
+  sources = [
+    "lazy_reader_mode_service.cc",
+    "profile_utils.cc",
+    "reader_mode_service_factory.cc",
+    "tab_utils.cc",
+  ]
+  deps = [
+    ":reader_mode",
+    "//chrome/browser/profiles",
+    "//chrome/browser/ui/tab_contents",
+    "//chrome/common",
+    "//chrome/common:non_code_constants",
+    "//components/back_forward_cache",
+    "//components/web_distiller/content/browser",
+  ]
+
+  if (is_android) {
+    sources += [
+      "reader_mode_service_factory_android.cc",
+      "tab_utils_android.cc",
+    ]
+    deps += [
+      "//components/navigation_interception",
+    ]
+  }
+}
+
+if (!is_android) {
+}

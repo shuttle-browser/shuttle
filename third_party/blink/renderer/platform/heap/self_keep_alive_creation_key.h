@@ -22,10 +22,8 @@ class SelfKeepAliveCreationKey final {
   friend class AudioContext;
   friend class BlobFileReaderClient;
   friend class BodyStreamBuffer;
-  friend class BucketFileSystemBuilder;
   friend class CachedResponseFileReaderLoaderClient;
   friend class ClipboardWriter;
-  friend class CSSImageGeneratorValue;
   friend class DetachedClient;
   friend class FileSystemDirectoryHandle;
   friend class InspectorFileReaderLoaderClient;
@@ -34,15 +32,10 @@ class SelfKeepAliveCreationKey final {
   friend class MIDIAccessInitializer;
   friend class MojoWatcher;
   friend class PausableScriptExecutor;
-  friend class RefCountedAndGarbageCollected;
   friend class Responder;
   friend class RTCDataChannel;
-  friend class ScriptState;
   friend class SetMediaKeysHandler;
   friend class ThreadedMessagingProxyBase;
-  friend class WebFormElementObserverImpl;
-  friend class WebLocalFrameImpl;
-  friend class WebRemoteFrameImpl;
 };
 
 }  // namespace blink

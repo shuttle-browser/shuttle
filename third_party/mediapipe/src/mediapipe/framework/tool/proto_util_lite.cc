@@ -16,14 +16,15 @@
 
 #include <tuple>
 
-#include "absl/log/absl_check.h"
-#include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
-#include "mediapipe/framework/port/canonical_errors.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/match.h"         // from @com_google_absl
+#include "absl/strings/numbers.h"       // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/framework/tool/field_data.pb.h"
 #include "mediapipe/framework/type_map.h"
 
@@ -79,7 +80,7 @@ absl::Status ReadPackedValues(WireFormatLite::WireType wire_type,
   uint32_t fake_tag = WireFormatLite::MakeTag(1, wire_type);
   while (data_size > 0) {
     std::string number;
-    MP_RETURN_IF_ERROR(ReadFieldValue(fake_tag, in, &number));
+    ABSL_RETURN_IF_ERROR(ReadFieldValue(fake_tag, in, &number));
     RET_CHECK_NO_LOG(number.size() <= data_size);
     field_values->push_back(number);
     data_size -= number.size();
@@ -99,10 +100,10 @@ absl::Status GetFieldValues(uint32_t field_id, CodedInputStream* in,
     if (field_number == field_id) {
       if (!IsLengthDelimited(wire_type) &&
           IsLengthDelimited(WireFormatLite::GetTagWireType(tag))) {
-        MP_RETURN_IF_ERROR(ReadPackedValues(wire_type, in, field_values));
+        ABSL_RETURN_IF_ERROR(ReadPackedValues(wire_type, in, field_values));
       } else {
         std::string value;
-        MP_RETURN_IF_ERROR(ReadFieldValue(tag, in, &value));
+        ABSL_RETURN_IF_ERROR(ReadFieldValue(tag, in, &value));
         field_values->push_back(value);
       }
     } else {
@@ -161,18 +162,18 @@ absl::StatusOr<std::pair<FieldAccess, int>> AccessField(
     const FieldValue& message) {
   FieldAccess result(entry.field_id, field_type);
   if (entry.field_id >= 0) {
-    MP_RETURN_IF_ERROR(result.SetMessage(message));
+    ABSL_RETURN_IF_ERROR(result.SetMessage(message));
     if (entry.index < result.mutable_field_values()->size()) {
       return std::pair(result, entry.index);
     }
   }
   if (entry.map_id >= 0) {
     FieldAccess access(entry.map_id, field_type);
-    MP_RETURN_IF_ERROR(access.SetMessage(message));
+    ABSL_RETURN_IF_ERROR(access.SetMessage(message));
     auto& field_values = *access.mutable_field_values();
     for (int index = 0; index < field_values.size(); ++index) {
       FieldAccess key(entry.key_id, entry.key_type);
-      MP_RETURN_IF_ERROR(key.SetMessage(field_values[index]));
+      ABSL_RETURN_IF_ERROR(key.SetMessage(field_values[index]));
       if (key.mutable_field_values()->at(0) == entry.key_value) {
         return std::pair(std::move(access), index);
       }
@@ -196,14 +197,14 @@ absl::Status ProtoUtilLite::ReplaceFieldRange(
   proto_path.erase(proto_path.begin());
   FieldType type =
       !proto_path.empty() ? WireFormatLite::TYPE_MESSAGE : field_type;
-  MP_ASSIGN_OR_RETURN(auto r, AccessField(entry, type, *message));
+  ABSL_ASSIGN_OR_RETURN(auto r, AccessField(entry, type, *message));
   FieldAccess& access = r.first;
   int index = r.second;
   std::vector<FieldValue>& v = *access.mutable_field_values();
   if (!proto_path.empty()) {
     RET_CHECK_NO_LOG(index >= 0 && index < v.size());
-    MP_RETURN_IF_ERROR(ReplaceFieldRange(&v[index], proto_path, length,
-                                         field_type, field_values));
+    ABSL_RETURN_IF_ERROR(ReplaceFieldRange(&v[index], proto_path, length,
+                                           field_type, field_values));
   } else {
     RET_CHECK_NO_LOG(index >= 0 && index <= v.size());
     RET_CHECK_NO_LOG(index + length >= 0 && index + length <= v.size());
@@ -223,13 +224,13 @@ absl::Status ProtoUtilLite::GetFieldRange(
   proto_path.erase(proto_path.begin());
   FieldType type =
       !proto_path.empty() ? WireFormatLite::TYPE_MESSAGE : field_type;
-  MP_ASSIGN_OR_RETURN(auto r, AccessField(entry, type, message));
+  ABSL_ASSIGN_OR_RETURN(auto r, AccessField(entry, type, message));
   FieldAccess& access = r.first;
   int index = r.second;
   std::vector<FieldValue>& v = *access.mutable_field_values();
   if (!proto_path.empty()) {
     RET_CHECK_NO_LOG(index >= 0 && index < v.size());
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         GetFieldRange(v[index], proto_path, length, field_type, field_values));
   } else {
     if (length == -1) {
@@ -252,13 +253,13 @@ absl::Status ProtoUtilLite::GetFieldCount(const FieldValue& message,
   proto_path.erase(proto_path.begin());
   FieldType type =
       !proto_path.empty() ? WireFormatLite::TYPE_MESSAGE : field_type;
-  MP_ASSIGN_OR_RETURN(auto r, AccessField(entry, type, message));
+  ABSL_ASSIGN_OR_RETURN(auto r, AccessField(entry, type, message));
   FieldAccess& access = r.first;
   int index = r.second;
   std::vector<FieldValue>& v = *access.mutable_field_values();
   if (!proto_path.empty()) {
     RET_CHECK_NO_LOG(index >= 0 && index < v.size());
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         GetFieldCount(v[index], proto_path, field_type, field_count));
   } else {
     *field_count = v.size();
@@ -310,7 +311,7 @@ template <typename T>
 absl::Status WritePrimitive(void (*writer)(T, proto_ns::io::CodedOutputStream*),
                             const std::string& text, CodedOutputStream* out) {
   T value;
-  MP_RETURN_IF_ERROR(ParseValue<T>(text, &value));
+  ABSL_RETURN_IF_ERROR(ParseValue<T>(text, &value));
   (*writer)(value, out);
   return absl::OkStatus();
 }
@@ -436,7 +437,7 @@ absl::Status ProtoUtilLite::Serialize(
   result->reserve(text_values.size());
   for (const std::string& text_value : text_values) {
     FieldValue field_value;
-    MP_RETURN_IF_ERROR(SerializeValue(text_value, field_type, &field_value));
+    ABSL_RETURN_IF_ERROR(SerializeValue(text_value, field_type, &field_value));
     result->push_back(field_value);
   }
   return absl::OkStatus();
@@ -449,7 +450,8 @@ absl::Status ProtoUtilLite::Deserialize(
   result->reserve(field_values.size());
   for (const FieldValue& field_value : field_values) {
     std::string text_value;
-    MP_RETURN_IF_ERROR(DeserializeValue(field_value, field_type, &text_value));
+    ABSL_RETURN_IF_ERROR(
+        DeserializeValue(field_value, field_type, &text_value));
     result->push_back(text_value);
   }
   return absl::OkStatus();

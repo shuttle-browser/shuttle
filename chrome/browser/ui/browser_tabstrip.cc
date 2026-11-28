@@ -26,8 +26,8 @@
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 
 namespace chrome {
@@ -63,8 +63,9 @@ content::WebContents* AddAndReturnTabAt(
   }
   const GURL resolved_url = url.is_empty() ? GetNewTabURL(browser) : url;
   NavigateParams params(browser, resolved_url, ui::PAGE_TRANSITION_TYPED);
-  params.disposition = foreground ? WindowOpenDisposition::kNewForegroundTab
-                                  : WindowOpenDisposition::kNewBackgroundTab;
+  params.disposition =
+      foreground ? ui::mojom::WindowOpenDisposition::kNewForegroundTab
+                 : ui::mojom::WindowOpenDisposition::kNewBackgroundTab;
   if (window_action) {
     params.window_action = window_action.value();
   }
@@ -98,7 +99,7 @@ content::WebContents* AddSelectedTabWithURL(BrowserWindowInterface* browser,
                                             const GURL& url,
                                             ui::PageTransition transition) {
   NavigateParams params(browser, url, transition);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   Navigate(&params);
   return params.navigated_or_inserted_contents;
 }
@@ -108,15 +109,15 @@ content::WebContents* AddWebContents(
     content::WebContents* source_contents,
     std::unique_ptr<content::WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     NavigateParams::WindowAction window_action,
     bool user_gesture) {
   // No code for this yet.
-  CHECK(disposition != WindowOpenDisposition::kSaveToDisk,
+  CHECK(disposition != ui::mojom::WindowOpenDisposition::kSaveToDisk,
         base::NotFatalUntil::M162);
   // Can't create a new contents for the current tab - invalid case.
-  CHECK(disposition != WindowOpenDisposition::kCurrentTab,
+  CHECK(disposition != ui::mojom::WindowOpenDisposition::kCurrentTab,
         base::NotFatalUntil::M162);
 
   NavigateParams params(browser, std::move(new_contents));
@@ -188,8 +189,10 @@ void ConfigureTabGroupForNavigation(NavigateParams* nav_params) {
     return;
   }
 
-  if (nav_params->disposition == WindowOpenDisposition::kNewForegroundTab ||
-      nav_params->disposition == WindowOpenDisposition::kNewBackgroundTab) {
+  if (nav_params->disposition ==
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab ||
+      nav_params->disposition ==
+          ui::mojom::WindowOpenDisposition::kNewBackgroundTab) {
     nav_params->group = model->GetTabGroupForTab(source_index);
   }
 }

@@ -57,7 +57,6 @@ component("modules") {
     ":modules_generated",
     "//third_party/blink/renderer/bindings/modules/v8",
     "//third_party/blink/renderer/modules/accessibility",
-    "//third_party/blink/renderer/modules/ad_auction",
     "//third_party/blink/renderer/modules/ai",
     "//third_party/blink/renderer/modules/animationworklet",
     "//third_party/blink/renderer/modules/app_banner",
@@ -90,6 +89,7 @@ component("modules") {
     "//third_party/blink/renderer/modules/delegated_ink",
     "//third_party/blink/renderer/modules/device_orientation",
     "//third_party/blink/renderer/modules/device_posture",
+    "//third_party/blink/renderer/modules/deviceboundsessions",
     "//third_party/blink/renderer/modules/dictation",
     "//third_party/blink/renderer/modules/document_metadata",
     "//third_party/blink/renderer/modules/document_picture_in_picture",
@@ -362,7 +362,7 @@ action_with_pydeps("modules_event_interfaces") {
 make_event_factory("make_modules_generated_event_factory") {
   in_files = [ "$blink_modules_output_dir/event_interface_modules_names.json5" ]
   outputs = [ "$blink_modules_output_dir/event_modules_factory.cc" ]
-  deps = make_core_generated_deps + [ ":modules_event_interfaces" ]
+  deps = [ ":modules_event_interfaces" ]
 }
 
 # make_names -------------------------------------------------------------------
@@ -370,7 +370,7 @@ make_event_factory("make_modules_generated_event_factory") {
 make_names("make_modules_generated_event_names") {
   in_files = [ "$blink_modules_output_dir/event_interface_modules_names.json5" ]
   output_dir = blink_modules_output_dir
-  deps = make_core_generated_deps + [ ":modules_event_interfaces" ]
+  deps = [ ":modules_event_interfaces" ]
 }
 
 make_names("make_modules_generated_event_target_names") {
@@ -381,7 +381,6 @@ make_names("make_modules_generated_event_target_names") {
 make_names("make_modules_generated_indexed_db_names") {
   in_files = [ "indexeddb/indexed_db_names.json5" ]
   output_dir = blink_modules_output_dir
-  deps = []  # Don't use default deps (otherwise it will be circular).
 }
 
 blink_modules_sources("modules_generated") {
@@ -475,11 +474,13 @@ source_set("unit_tests") {
     "delegated_ink/delegated_ink_trail_presenter_unittest.cc",
     "device_orientation/device_motion_event_pump_unittest.cc",
     "device_orientation/device_orientation_event_pump_unittest.cc",
+    "deviceboundsessions/device_bound_session_registration_observer_test.cc",
     "dictation/dictation_agent_impl_test.cc",
     "document_metadata/document_metadata_extractor_test.cc",
     "document_metadata/document_metadata_server_test.cc",
     "document_picture_in_picture/picture_in_picture_controller_test.cc",
     "encoding/text_decoder_test.cc",
+    "encoding/text_encoder_test.cc",
     "eventsource/event_source_parser_test.cc",
     "filesystem/dom_file_system_base_test.cc",
     "filesystem/file_writer_test.cc",
@@ -507,6 +508,7 @@ source_set("unit_tests") {
     "media_controls/elements/media_control_scrubbing_message_element_test.cc",
     "media_controls/elements/media_control_timeline_element_test.cc",
     "media_controls/elements/media_control_toggle_closed_captions_button_element_test.cc",
+    "media_controls/elements/media_control_track_selector_list_element_test.cc",
     "media_controls/media_controls_display_cutout_delegate_test.cc",
     "media_controls/media_controls_impl_test.cc",
     "media_controls/media_controls_orientation_lock_delegate_test.cc",
@@ -604,6 +606,7 @@ source_set("unit_tests") {
     "peerconnection/rtc_peer_connection_handler_test.cc",
     "peerconnection/rtc_peer_connection_test.cc",
     "peerconnection/rtc_rtp_receiver_impl_test.cc",
+    "peerconnection/rtc_rtp_receiver_test.cc",
     "peerconnection/rtc_rtp_script_transformer_test.cc",
     "peerconnection/rtc_rtp_sender_impl_test.cc",
     "peerconnection/rtc_rtp_sender_test.cc",
@@ -788,6 +791,7 @@ source_set("unit_tests") {
     "//third_party/blink/renderer/modules/storage_access:unit_tests",
     "//third_party/blink/renderer/modules/web_install:unit_tests",
     "//third_party/blink/renderer/modules/webcodecs:unit_tests",
+    "//third_party/blink/renderer/modules/webgl:unit_tests",
     "//third_party/blink/renderer/modules/webgpu:unit_tests",
     "//third_party/blink/renderer/modules/webtransport:unit_tests",
     "//third_party/blink/renderer/platform",

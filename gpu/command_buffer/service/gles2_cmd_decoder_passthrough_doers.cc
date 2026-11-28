@@ -741,6 +741,10 @@ error::Error GLES2DecoderPassthroughImpl::DoCompressedTexImage2D(
     GLint border,
     GLsizei image_size,
     const void* data) {
+  if (!CanRedefineBoundTexture(target)) {
+    return error::kNoError;
+  }
+
   CheckErrorCallbackState();
   api()->glCompressedTexImage2DFn(target, level, internalformat, width, height,
                                   border, image_size, data);
@@ -787,6 +791,10 @@ error::Error GLES2DecoderPassthroughImpl::DoCompressedTexImage3D(
     GLint border,
     GLsizei image_size,
     const void* data) {
+  if (!CanRedefineBoundTexture(target)) {
+    return error::kNoError;
+  }
+
   CheckErrorCallbackState();
   api()->glCompressedTexImage3DFn(target, level, internalformat, width, height,
                                   depth, border, image_size, data);
@@ -858,6 +866,15 @@ error::Error GLES2DecoderPassthroughImpl::DoCopyTexImage2D(
     GLsizei width,
     GLsizei height,
     GLint border) {
+  if (!CheckReadFramebufferSharedImageAccess(GL_COLOR_BUFFER_BIT,
+                                             "glCopyTexImage2D")) {
+    return error::kNoError;
+  }
+
+  if (!CanRedefineBoundTexture(target)) {
+    return error::kNoError;
+  }
+
   CheckErrorCallbackState();
   api()->glCopyTexImage2DFn(target, level, internalformat, x, y, width, height,
                             border);
@@ -882,6 +899,11 @@ error::Error GLES2DecoderPassthroughImpl::DoCopyTexSubImage2D(GLenum target,
                                                               GLint y,
                                                               GLsizei width,
                                                               GLsizei height) {
+  if (!CheckReadFramebufferSharedImageAccess(GL_COLOR_BUFFER_BIT,
+                                             "glCopyTexSubImage2D")) {
+    return error::kNoError;
+  }
+
   api()->glCopyTexSubImage2DFn(target, level, xoffset, yoffset, x, y, width,
                                height);
 
@@ -901,6 +923,11 @@ error::Error GLES2DecoderPassthroughImpl::DoCopyTexSubImage3D(GLenum target,
                                                               GLint y,
                                                               GLsizei width,
                                                               GLsizei height) {
+  if (!CheckReadFramebufferSharedImageAccess(GL_COLOR_BUFFER_BIT,
+                                             "glCopyTexSubImage3D")) {
+    return error::kNoError;
+  }
+
   api()->glCopyTexSubImage3DFn(target, level, xoffset, yoffset, zoffset, x, y,
                                width, height);
 
@@ -1078,7 +1105,7 @@ error::Error GLES2DecoderPassthroughImpl::DoDeleteTextures(
       // Deleted when unreferenced
       resources_->texture_id_map.RemoveClientID(client_id);
       resources_->texture_object_map.RemoveClientID(client_id);
-      resources_->texture_shared_image_map.erase(client_id);
+      resources_->RemoveSharedImage(client_id);
       UpdateTextureBinding(texture->target(), client_id, nullptr);
     }
   }
@@ -1254,6 +1281,10 @@ error::Error GLES2DecoderPassthroughImpl::DoFramebufferTexture2D(
                 "Cannot change the attachments of the default framebuffer.");
     return error::kNoError;
   }
+  if (!CheckSharedImageAttachment(attachment, texture,
+                                  "glFramebufferTexture2D")) {
+    return error::kNoError;
+  }
   api()->glFramebufferTexture2DEXTFn(
       target, attachment, textarget,
       GetTextureServiceID(api(), texture, resources_), level);
@@ -1269,6 +1300,10 @@ error::Error GLES2DecoderPassthroughImpl::DoFramebufferTextureLayer(
   if (IsEmulatedFramebufferBound(target)) {
     InsertError(GL_INVALID_OPERATION,
                 "Cannot change the attachments of the default framebuffer.");
+    return error::kNoError;
+  }
+  if (!CheckSharedImageAttachment(attachment, texture,
+                                  "glFramebufferTextureLayer")) {
     return error::kNoError;
   }
   api()->glFramebufferTextureLayerFn(
@@ -1287,6 +1322,10 @@ error::Error GLES2DecoderPassthroughImpl::DoFramebufferTextureMultiviewOVR(
   if (IsEmulatedFramebufferBound(target)) {
     InsertError(GL_INVALID_OPERATION,
                 "Cannot change the attachments of the default framebuffer.");
+    return error::kNoError;
+  }
+  if (!CheckSharedImageAttachment(attachment, texture,
+                                  "glFramebufferTextureMultiviewOVR")) {
     return error::kNoError;
   }
   api()->glFramebufferTextureMultiviewOVRFn(
@@ -2653,6 +2692,12 @@ error::Error GLES2DecoderPassthroughImpl::DoReadPixels(GLint x,
                                                        GLsizei* rows,
                                                        void* pixels,
                                                        int32_t* success) {
+  if (!CheckReadFramebufferSharedImageAccess(GL_COLOR_BUFFER_BIT,
+                                             "glReadPixels")) {
+    *success = 0;
+    return error::kNoError;
+  }
+
   CheckErrorCallbackState();
   ScopedPackStateRowLengthReset reset_row_length(
       api(), bound_buffers_[GL_PIXEL_PACK_BUFFER] == 0 &&
@@ -2705,6 +2750,11 @@ error::Error GLES2DecoderPassthroughImpl::DoReadPixelsAsync(
     uint32_t result_shm_offset) {
   DCHECK(feature_info_->feature_flags().use_async_readpixels &&
          bound_buffers_[GL_PIXEL_PACK_BUFFER] == 0);
+
+  if (!CheckReadFramebufferSharedImageAccess(GL_COLOR_BUFFER_BIT,
+                                             "glReadPixels")) {
+    return error::kNoError;
+  }
 
   CheckErrorCallbackState();
   ScopedPackStateRowLengthReset reset_row_length(
@@ -2923,6 +2973,10 @@ error::Error GLES2DecoderPassthroughImpl::DoTexImage2D(GLenum target,
                                                        GLenum type,
                                                        GLsizei image_size,
                                                        const void* pixels) {
+  if (!CanRedefineBoundTexture(target)) {
+    return error::kNoError;
+  }
+
   ScopedUnpackStateButAlignmentReset reset_unpack(
       api(), image_size != 0 && feature_info_->gl_version_info().is_es3, false);
 
@@ -2953,6 +3007,10 @@ error::Error GLES2DecoderPassthroughImpl::DoTexImage3D(GLenum target,
                                                        GLenum type,
                                                        GLsizei image_size,
                                                        const void* pixels) {
+  if (!CanRedefineBoundTexture(target)) {
+    return error::kNoError;
+  }
+
   ScopedUnpackStateButAlignmentReset reset_unpack(
       api(), image_size != 0 && feature_info_->gl_version_info().is_es3, true);
 
@@ -3039,6 +3097,10 @@ error::Error GLES2DecoderPassthroughImpl::DoTexStorage3D(GLenum target,
                                                          GLsizei width,
                                                          GLsizei height,
                                                          GLsizei depth) {
+  if (!CanRedefineBoundTexture(target)) {
+    return error::kNoError;
+  }
+
   CheckErrorCallbackState();
   api()->glTexStorage3DFn(target, levels, internalFormat, width, height, depth);
   if (CheckErrorCallbackState()) {
@@ -3538,6 +3600,9 @@ error::Error GLES2DecoderPassthroughImpl::DoBlitFramebufferCHROMIUM(
     GLbitfield mask,
     GLenum filter) {
   DCHECK(feature_info_->feature_flags().chromium_framebuffer_multisample);
+  if (!CheckReadFramebufferSharedImageAccess(mask, "glBlitFramebuffer")) {
+    return error::kNoError;
+  }
   api()->glBlitFramebufferFn(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1,
                              dstY1, mask, filter);
   return error::kNoError;
@@ -3595,6 +3660,10 @@ error::Error GLES2DecoderPassthroughImpl::DoFramebufferTexture2DMultisampleEXT(
                 "Cannot change the attachments of the default framebuffer.");
     return error::kNoError;
   }
+  if (!CheckSharedImageAttachment(attachment, texture,
+                                  "glFramebufferTexture2DMultisampleEXT")) {
+    return error::kNoError;
+  }
   api()->glFramebufferTexture2DMultisampleEXTFn(
       target, attachment, textarget,
       GetTextureServiceID(api(), texture, resources_), level, samples);
@@ -3607,6 +3676,10 @@ error::Error GLES2DecoderPassthroughImpl::DoTexStorage2DEXT(
     GLenum internalFormat,
     GLsizei width,
     GLsizei height) {
+  if (!CanRedefineBoundTexture(target)) {
+    return error::kNoError;
+  }
+
   CheckErrorCallbackState();
   api()->glTexStorage2DEXTFn(target, levels, internalFormat, width, height);
   if (CheckErrorCallbackState()) {
@@ -4405,6 +4478,9 @@ error::Error GLES2DecoderPassthroughImpl::DoCopyTextureCHROMIUM(
     GLboolean unpack_flip_y,
     GLboolean unpack_premultiply_alpha,
     GLboolean unpack_unmultiply_alpha) {
+  if (!CheckSharedImageTextureReadAccess(source_id, "glCopyTextureCHROMIUM")) {
+    return error::kNoError;
+  }
   gl::ScopedEnableTextureRectangleInShaderCompiler enable(
       feature_info_->IsWebGLContext() ? api() : nullptr);
   api()->glCopyTextureCHROMIUMFn(
@@ -4433,6 +4509,10 @@ error::Error GLES2DecoderPassthroughImpl::DoCopySubTextureCHROMIUM(
     GLboolean unpack_flip_y,
     GLboolean unpack_premultiply_alpha,
     GLboolean unpack_unmultiply_alpha) {
+  if (!CheckSharedImageTextureReadAccess(source_id,
+                                         "glCopySubTextureCHROMIUM")) {
+    return error::kNoError;
+  }
   gl::ScopedEnableTextureRectangleInShaderCompiler enable(
       feature_info_->IsWebGLContext() ? api() : nullptr);
   api()->glCopySubTextureCHROMIUMFn(
@@ -4751,16 +4831,29 @@ GLES2DecoderPassthroughImpl::DoCreateAndTexStorage2DSharedImageINTERNAL(
     return error::kNoError;
   }
 
-  auto texture = shared_image->GetTexturePassthrough();
+  PassthroughResources::SharedImageData shared_image_data(
+      this, std::move(shared_image));
+  if ((!shared_image_data.representation()->IsCleared() ||
+       !shared_image_data.representation()->IsBackingCleared()) &&
+      base::FeatureList::IsEnabled(kRejectUnclearedSharedImageOnClearFailure)) {
+    // Create a placeholder texture (see http://crbug.com/472465 and
+    // http://crbug.com/851878) and do not expose the uncleared shared image.
+    DoGenTextures(1, &texture_client_id);
+    InsertError(GL_INVALID_OPERATION,
+                "shared image could not be initialized before use");
+    return error::kNoError;
+  }
+
+  auto texture = shared_image_data.representation()->GetTexturePassthrough();
 
   // Update id mappings
   resources_->texture_id_map.RemoveClientID(texture_client_id);
   resources_->texture_id_map.SetIDMapping(texture_client_id,
                                           texture->service_id());
   resources_->texture_object_map.RemoveClientID(texture_client_id);
-  resources_->texture_object_map.SetIDMapping(texture_client_id, texture);
-  resources_->texture_shared_image_map[texture_client_id] =
-      PassthroughResources::SharedImageData(this, std::move(shared_image));
+  resources_->texture_object_map.SetIDMapping(texture_client_id,
+                                              std::move(texture));
+  resources_->AddSharedImage(texture_client_id, std::move(shared_image_data));
 
   return error::kNoError;
 }

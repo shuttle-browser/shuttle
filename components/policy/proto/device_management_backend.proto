@@ -2272,6 +2272,23 @@ message Policy {
   // Other sources that set the same policy. Including the ones that are
   // merged in or have the same value.
   repeated Policy conflicts = 7;
+
+  // Describes how a conflicting policy entry relates to the applied policy.
+  enum ConflictType {
+    CONFLICT_TYPE_UNSPECIFIED = 0;
+    // The entry's value differs from the applied policy and was not merged.
+    CONFLICT = 1;
+    // The entry was not applied because another scope or source took
+    // precedence (or policies were merged), and its value is the same as the
+    // applied policy.
+    SUPERSEDED = 2;
+    // The entry contributed to a merged policy (`SOURCE_MERGED`) and its
+    // pre-merge value differs from the final merged value.
+    MERGED = 3;
+  }
+
+  // Only set on entries in `conflicts`.
+  optional ConflictType conflict_type = 8;
 }
 
 // Extension policy information.
@@ -2412,6 +2429,21 @@ message ChromeUserProfileInfo {
   optional ProfileType profile_type = 16;
 }
 
+// State of App-Bound Encryption on Windows.
+enum AppBoundEncryptionState {
+  APP_BOUND_ENCRYPTION_STATE_UNSPECIFIED = 0;
+  // App-Bound Encryption (v20) is active.
+  APP_BOUND_ENCRYPTION_STATE_ENABLED = 1;
+  // Disabled via the ApplicationBoundEncryptionEnabled enterprise policy.
+  APP_BOUND_ENCRYPTION_STATE_DISABLED_BY_POLICY = 2;
+  // Bypassed because a roaming profile is active.
+  APP_BOUND_ENCRYPTION_STATE_UNSUPPORTED_ROAMING_PROFILE = 3;
+  // Unsupported due to a non-system install or non-default user data path.
+  APP_BOUND_ENCRYPTION_STATE_UNSUPPORTED_INSTALL_OR_PATH = 4;
+  // Failed to initialize due to an elevation service or OS error.
+  APP_BOUND_ENCRYPTION_STATE_SERVICE_FAILURE = 5;
+}
+
 // Report browser level status.
 message BrowserReport {
   reserved 4, 7;
@@ -2442,6 +2474,9 @@ message BrowserReport {
 
   // True for an extended stable channel installation.
   optional bool is_extended_stable_channel = 9 [default = false];
+
+  // Current state of App-Bound Encryption on Windows.
+  optional AppBoundEncryptionState app_bound_encryption_state = 10;
 }
 
 // Report profile level security signals.
@@ -2499,6 +2534,9 @@ message ProfileSignalsReport {
 
   // A boolean indicating whether the profile is in isolated mode.
   optional bool is_isolated_mode = 13;
+
+  // Current state of App-Bound Encryption on Windows.
+  optional AppBoundEncryptionState app_bound_encryption_state = 14;
 }
 
 // Anti virus product information.

@@ -22,6 +22,7 @@ class BrowserInfoBarManager;
 
 class GlobalBrowserCollection;
 
+
 namespace system_permission_settings {
 class PlatformHandle;
 }  // namespace system_permission_settings
@@ -154,6 +155,7 @@ class GlobalFeatures {
     return global_browser_collection_.get();
   }
 
+
   static ui::UserDataFactoryWithOwner<BrowserProcess>&
   GetUserDataFactoryForTesting();
 
@@ -203,6 +205,7 @@ class GlobalFeatures {
   // std::unique_ptr<FooFeature> foo_feature_;
 
   std::unique_ptr<GlobalBrowserCollection> global_browser_collection_;
+
 
   std::unique_ptr<system_permission_settings::PlatformHandle>
       system_permissions_platform_handle_;

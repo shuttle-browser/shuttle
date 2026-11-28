@@ -281,6 +281,7 @@ class WaylandWindow : public PlatformWindow,
     bool is_activated = false;
     bool is_minimized = false;
     bool is_suspended = false;
+    bool is_resizing = false;
     WindowTiledEdges tiled_edges;
 
     // Dumps the values of the states into a string.
@@ -307,6 +308,9 @@ class WaylandWindow : public PlatformWindow,
   // and sends the appropriate acks back to the wayland server.
   virtual void OnSequencePoint(int64_t seq) = 0;
 
+  // Called after `root_surface_` commits a frame for `seq`.
+  virtual void OnFrameCommitted(int64_t seq) {}
+
   // Called by shell surfaces to indicate that this window can start submitting
   // frames. Updating state based on configure is handled separately to this.
   void OnSurfaceConfigureEvent();
@@ -320,6 +324,16 @@ class WaylandWindow : public PlatformWindow,
   const PlatformWindowDelegate::State& latched_state() const {
     return latched_state_;
   }
+
+  // Returns the size of the root surface in Wayland DIP (i.e. not scaled by
+  // `ui_scale`) for `state`: its window geometry plus decoration insets.
+  gfx::Size GetSurfaceSizeInWaylandDIP(
+      const PlatformWindowDelegate::State& state) const;
+
+  // Returns the origin of the window geometry in Wayland DIP for `state`, i.e.
+  // the top-left decoration insets scaled by `ui_scale`.
+  gfx::Point GetWindowGeometryOriginInWaylandDIP(
+      const PlatformWindowDelegate::State& state) const;
 
   // Tells if the surface has already been configured. This will be true after
   // the first set of configure event and ack request, meaning that wl_surface
@@ -439,6 +453,26 @@ class WaylandWindow : public PlatformWindow,
 
   const gfx::Rect& restored_bounds_dip() const { return restored_bounds_dip_; }
 
+  // Sets the restored bounds together with their window geometry size in
+  // Wayland DIP. An empty `geometry_size_dip` means it is derived from
+  // `bounds` when needed.
+  void SetRestoredGeometry(const gfx::Rect& bounds,
+                           const gfx::Size& geometry_size_dip);
+
+  // Returns the window geometry size of the restored bounds in Wayland DIP:
+  // the stored one, or one derived from `restored_bounds_dip()`.
+  gfx::Size GetRestoredGeometrySizeDIP() const;
+
+  // Convert between the window geometry size in Wayland DIP (see
+  // `PlatformWindowDelegate::State::geometry_size_dip`) and the size of
+  // `bounds_dip` in UI DIP, which includes decoration insets.
+  gfx::Size GeometrySizeToBoundsSizeDIP(const gfx::Size& geometry_size_dip,
+                                        PlatformWindowState window_state,
+                                        float ui_scale) const;
+  gfx::Size BoundsSizeToGeometrySizeDIP(const gfx::Size& bounds_size_dip,
+                                        PlatformWindowState window_state,
+                                        float ui_scale) const;
+
   WaylandFrameManager* frame_manager() { return frame_manager_.get(); }
 
   // Configure related:
@@ -511,12 +545,21 @@ class WaylandWindow : public PlatformWindow,
   // become invalid. Clear them so we do not get "wrong configure serial" error.
   void ClearInFlightRequestsSerial();
 
+  // Notifies subclasses after a state request has been applied and assigned its
+  // `viz_seq`, before any immediate sequence-point latching runs.
+  virtual void OnStateRequestApplied(
+      const PlatformWindowDelegate::State& old_state,
+      const PlatformWindowDelegate::State& new_state,
+      int64_t viz_seq,
+      bool from_client) {}
+
   // PendingConfigureState describes the content of a configure sent from the
   // wayland server.
   struct PendingConfigureState {
     std::optional<PlatformWindowState> window_state;
     std::optional<WindowTiledEdges> tiled_edges;
     std::optional<gfx::Rect> bounds_dip;
+    std::optional<gfx::Size> geometry_size_dip;
     std::optional<gfx::Size> size_px;
   };
 
@@ -581,6 +624,10 @@ class WaylandWindow : public PlatformWindow,
 
     // Whether this request has been applied.
     bool applied = false;
+
+    // True if this request originated from the client rather than a server
+    // configure event.
+    bool from_client = false;
   };
 
   // Latches the given request. This must be called after the frame
@@ -646,6 +693,7 @@ class WaylandWindow : public PlatformWindow,
   // The bounds of the platform window before it went maximized or fullscreen in
   // dip.
   gfx::Rect restored_bounds_dip_;
+  gfx::Size restored_geometry_size_dip_;
 
   // A focus client that, once set, is expected to live at least as long as this
   // window.

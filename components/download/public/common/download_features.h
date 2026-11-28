@@ -6,6 +6,8 @@
 #define COMPONENTS_DOWNLOAD_PUBLIC_COMMON_DOWNLOAD_FEATURES_H_
 
 #include "base/feature_list.h"
+#include "base/metrics/field_trial_params.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "components/download/public/common/download_export.h"
 
@@ -64,6 +66,14 @@ COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kUseParallelRequestsForQUIC);
 // Whether to delete downloads that are overwritten by others.
 COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kDeleteOverwrittenDownloads);
 
+// When enabled, completed downloads that started more than
+// `kRemoveOldDownloadsFromHistoryMinAge` ago are removed from download history
+// when it is loaded, instead of being loaded. Downloaded files are not deleted.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kRemoveOldDownloadsFromHistory);
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE_PARAM(
+    base::TimeDelta,
+    kRemoveOldDownloadsFromHistoryMinAge);
+
 // Whether to allow changing the size of file buffer.
 COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kAllowFileBufferSizeControl);
 
@@ -104,6 +114,16 @@ COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
 // Whether to defer download history loading until first use.
 COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
     kDeferredDownloadHistoryLoading);
+
+#if BUILDFLAG(IS_WIN)
+// Whether to enable the "Open with..." context menu option for finished
+// downloads on Windows.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(
+    kEnableDownloadOpenWithContextMenu);
+#endif  // BUILDFLAG(IS_WIN)
+
+// Whether to preserve the HTTP Last-Modified timestamp on downloaded files.
+COMPONENTS_DOWNLOAD_EXPORT BASE_DECLARE_FEATURE(kPreserveDownloadLastModified);
 }  // namespace features
 
 }  // namespace download

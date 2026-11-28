@@ -177,7 +177,6 @@ static_library("common_lib") {
     "//components/component_updater",
     "//components/content_settings/core/common",
     "//components/crash/core/common",
-    "//components/dom_distiller/core",
     "//components/embedder_support/origin_trials",
     "//components/error_page/common",
     "//components/favicon_base",
@@ -205,6 +204,7 @@ static_library("common_lib") {
     "//components/variations",
     "//components/variations/net",
     "//components/visitedlink/common",
+    "//components/web_distiller/core",
     "//components/webui/flags:switches",
     "//content/public/common:buildflags",
     "//google_apis",
@@ -303,6 +303,7 @@ static_library("common_lib") {
     deps += [
       "//ash/constants",
       "//chrome/common/chromeos/extensions",
+      "//chromeos/ash/components/logging",
     ]
   }
 
@@ -337,7 +338,7 @@ static_library("common_lib") {
     ]
 
     public_deps += [
-      "//components/dom_distiller/core",  # Needed by chrome_content_client.cc.
+      "//components/web_distiller/core",  # Needed by chrome_content_client.cc.
       "//third_party/wtl",
     ]
 

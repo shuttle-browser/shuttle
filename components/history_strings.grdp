@@ -65,6 +65,21 @@
   <message name="IDS_HISTORY_NO_SEARCH_RESULTS" desc="Text shown when no history search results have been found">
     No search results found
   </message>
+  <message name="IDS_HISTORY_OTHER_SESSIONS_COLLAPSE_SESSION" desc="In the 'Other Sessions' menu on the history page, the label for the command to collapse (hide) the list of windows and tabs in a session.">
+    Collapse list
+  </message>
+  <message name="IDS_HISTORY_OTHER_SESSIONS_EXPAND_SESSION" desc="In the 'Other Sessions' menu on the history page, the label for the command to expand (uncollapse) the list of windows and tabs in a session.">
+    Expand list
+  </message>
+  <message name="IDS_HISTORY_OTHER_SESSIONS_WINDOW_HEADER_SINGULAR" desc="In the 'Other Sessions' section on the history page, the subheader title for a synced window containing 1 tab.">
+    Window <ph name="WINDOW_NUMBER">$1<ex>1</ex></ph> · 1 tab
+  </message>
+  <message name="IDS_HISTORY_OTHER_SESSIONS_WINDOW_HEADER_PLURAL" desc="In the 'Other Sessions' section on the history page, the subheader title for a synced window containing multiple tabs.">
+    Window <ph name="WINDOW_NUMBER">$1<ex>1</ex></ph> · <ph name="NUM_TABS">$2<ex>3</ex></ph> tabs
+  </message>
+  <message name="IDS_HISTORY_PROMO_CLOSE" desc="On the history page, the accessiblility label for the close button for the history promos." translateable="false">
+    Close promo
+  </message>
   <message name="IDS_HISTORY_REMOVE_BOOKMARK" desc="Tooltip shown when hovered over a history entry's bookmark star. When clicked, removes the bookmark.">
     Delete bookmark
   </message>
@@ -83,20 +98,19 @@
   <message name="IDS_HISTORY_SEARCH_RESULTS" desc="Used when plural/multiple results are found.">
     search results
   </message>
-  <!-- TODO(b/573481189): Make translatable when strings are finalized. -->
-  <message name="IDS_HISTORY_TIME_PERIOD_FILTER_ALL_TIME" desc="Option in the time period filter dropdown on the history page. Selecting it shows history from all time, i.e. no time period filtering is applied. This is the default option." translateable="false">
+  <message name="IDS_HISTORY_TIME_PERIOD_FILTER_ALL_TIME" desc="Option in the time period filter dropdown on the history page. Selecting it shows history from all time, i.e. no time period filtering is applied. This is the default option.">
     All time
   </message>
-  <message name="IDS_HISTORY_TIME_PERIOD_FILTER_YESTERDAY" desc="Option in the time period filter dropdown on the history page. Selecting it shows only history from yesterday (the day before today)." translateable="false">
+  <message name="IDS_HISTORY_TIME_PERIOD_FILTER_YESTERDAY" desc="Option in the time period filter dropdown on the history page. Selecting it shows only history from yesterday (the day before today).">
     Yesterday
   </message>
-  <message name="IDS_HISTORY_TIME_PERIOD_FILTER_EARLIER_THIS_WEEK" desc="Option in the time period filter dropdown on the history page. Selecting it shows only history from Monday of the current week up to now." translateable="false">
+  <message name="IDS_HISTORY_TIME_PERIOD_FILTER_EARLIER_THIS_WEEK" desc="Option in the time period filter dropdown on the history page. Selecting it shows only history from Monday of the current week up to now.">
     Earlier this week
   </message>
-  <message name="IDS_HISTORY_TIME_PERIOD_FILTER_LAST_WEEK" desc="Option in the time period filter dropdown on the history page. Selecting it shows only history from the previous calendar week (Monday to Sunday)." translateable="false">
+  <message name="IDS_HISTORY_TIME_PERIOD_FILTER_LAST_WEEK" desc="Option in the time period filter dropdown on the history page. Selecting it shows only history from the previous calendar week (Monday to Sunday).">
     Last week
   </message>
-  <message name="IDS_HISTORY_TIME_PERIOD_FILTER_TWO_WEEKS_AGO" desc="Option in the time period filter dropdown on the history page. Selecting it shows only history from the calendar week (Monday to Sunday) before the previous one." translateable="false">
+  <message name="IDS_HISTORY_TIME_PERIOD_FILTER_TWO_WEEKS_AGO" desc="Option in the time period filter dropdown on the history page. Selecting it shows only history from the calendar week (Monday to Sunday) before the previous one.">
     2 weeks ago
   </message>
   <message name="IDS_HISTORY_SHOW_HISTORY" desc="The show history menu in the app menu">
@@ -128,7 +142,6 @@
   <message name="IDS_HISTORY_TITLE" desc="Title for the history tab.">
     History
   </message>
-
 
 
 

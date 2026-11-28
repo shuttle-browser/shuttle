@@ -101,7 +101,6 @@ source_set("host_main_headers") {
     "//remoting/host/setup:native_messaging_host_main_headers",
     "//remoting/host/setup:start_host_main_headers",
     "//remoting/host/webauthn:remote_webauthn_main_headers",
-    "//remoting/host/win:remoting_console",
     "//remoting/host/win:remoting_core",
     "//remoting/host/win:remoting_curtain",
     "//remoting/host/win:remoting_desktop",
@@ -510,6 +509,8 @@ static_library("common") {
     "session_policies_from_dict.h",
     "shutdown_watchdog.cc",
     "shutdown_watchdog.h",
+    "terminal_data_channel_manager.cc",
+    "terminal_data_channel_manager.h",
     "terminal_error.cc",
     "terminal_error.h",
     "terminal_session.h",
@@ -712,6 +713,7 @@ static_library("common") {
   if (is_linux) {
     assert(use_glib)
     deps += [
+      "//sandbox/linux:sandbox_services",
       "//sandbox/linux:seccomp_bpf",
       "//ui/base/glib",
     ]
@@ -775,6 +777,8 @@ static_library("common") {
       "input_injector_mac.h",
       "keyboard_layout_monitor_mac.cc",
       "pairing_registry_delegate_mac.cc",
+      "privacy_overlay_mac.h",
+      "privacy_overlay_mac.mm",
       "usage_stats_consent_mac.cc",
     ]
     frameworks = [
@@ -938,6 +942,7 @@ source_set("unit_tests") {
     "setup/host_starter_oauth_helper_unittest.cc",
     "setup/me2me_native_messaging_host_unittest.cc",
     "setup/pin_validator_unittest.cc",
+    "terminal_data_channel_manager_unittest.cc",
     "terminal_error_unittest.cc",
     "terminal_session_manager_unittest.cc",
     "webrtc_mouse_cursor_monitor_adaptor_unittest.cc",
@@ -1040,13 +1045,9 @@ source_set("unit_tests") {
 
   if (is_win) {
     sources += [ "setup/daemon_controller_delegate_win_unittest.cc" ]
-    deps += [ "//remoting/host/installer/win/setup:unit_tests" ]
-  }
-
-  if (is_linux) {
     deps += [
-      "//components/dbus",
-      "//ui/gtk:gtk_config",
+      "//remoting/host/installer/win/mini_installer:unit_tests",
+      "//remoting/host/installer/win/setup:unit_tests",
     ]
   }
 
@@ -1057,9 +1058,12 @@ source_set("unit_tests") {
       "pairing_registry_delegate_linux_unittest.cc",
       "terminal_process_monitor_linux_unittest.cc",
     ]
+    data = [ "$root_out_dir/remoting_locales/en-US.pak" ]
     deps += [
+      "//components/dbus",
       "//remoting/host/installer/linux:unit_tests",
       "//remoting/host/linux:unit_tests",
+      "//ui/gtk:gtk_config",
     ]
   }
 
@@ -1067,8 +1071,11 @@ source_set("unit_tests") {
     sources += [
       "input_injector_mac_unittest.cc",
       "input_monitor/local_keyboard_input_monitor_mac_unittest.cc",
+      "privacy_overlay_mac_unittest.mm",
     ]
+    data = [ "$root_out_dir/remoting/resources/en.lproj/locale.pak" ]
     deps += [
+      "//base/test:test_support",
       "//remoting/host/mac:unit_tests",
       "//ui/events:dom_keycode_converter",
     ]
@@ -1107,7 +1114,17 @@ source_set("unit_tests") {
   }
 
   if (is_win) {
+    # `PrivacyOverlayWin` loads localized strings, icons, and the disconnect
+    # dialog template (`IDS_PRODUCT_NAME`, `IDI_CHROME_REMOTE_DESKTOP`,
+    # `IDD_DISCONNECT`) from `CURRENT_MODULE()`, so `core.rc` must be linked
+    # into the unit test binary on Windows.
+    if (!defined(defines)) {
+      defines = []
+    }
+    defines += host_predefines + [ "REMOTING_HOST_BINARY=BINARY_CORE" ]
+
     sources += [
+      "$root_gen_dir/remoting/core.rc",
       "certificate_broker_impl_unittest.cc",
       "clipboard_win_unittest.cc",
       "pairing_registry_delegate_win_unittest.cc",
@@ -1116,7 +1133,10 @@ source_set("unit_tests") {
       "remote_ssl_private_key_unittest.cc",
       "touch_injector_win_unittest.cc",
     ]
-    deps += [ "//remoting/host/win:unit_tests" ]
+    deps += [
+      "//remoting/host/win:remoting_windows_resources",
+      "//remoting/host/win:unit_tests",
+    ]
   }
 
   if (!is_ios) {

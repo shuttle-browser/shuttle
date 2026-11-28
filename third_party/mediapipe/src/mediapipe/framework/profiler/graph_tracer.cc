@@ -16,8 +16,8 @@
 
 #include <atomic>
 
-#include "absl/synchronization/mutex.h"
-#include "absl/time/time.h"
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
+#include "absl/time/time.h"              // from @com_google_absl
 #include "mediapipe/framework/calculator_context.h"
 #include "mediapipe/framework/input_stream_shard.h"
 #include "mediapipe/framework/output_stream_shard.h"
@@ -127,14 +127,14 @@ absl::Mutex* trace_builder_mutex() {
 
 void GraphTracer::GetTrace(absl::Time begin_time, absl::Time end_time,
                            GraphTrace* result) {
-  absl::MutexLock lock(trace_builder_mutex());
+  absl::MutexLock lock(*trace_builder_mutex());
   trace_builder_.CreateTrace(trace_buffer_, begin_time, end_time, result);
   trace_builder_.Clear();
 }
 
 void GraphTracer::GetLog(absl::Time begin_time, absl::Time end_time,
                          GraphTrace* result) {
-  absl::MutexLock lock(trace_builder_mutex());
+  absl::MutexLock lock(*trace_builder_mutex());
   trace_builder_.CreateLog(trace_buffer_, begin_time, end_time, result);
   trace_builder_.Clear();
 }

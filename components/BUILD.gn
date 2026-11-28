@@ -56,17 +56,14 @@ if (is_ios) {
     bundle_data("components_tests_distiller_bundle_data") {
       testonly = true
       public_deps =
-          [ "//components/dom_distiller/core:dom_distiller_viewer_js" ]
+          [ "//components/web_distiller/core:web_distiller_viewer_js" ]
       sources = [
-        "$root_gen_dir/components/dom_distiller/core/javascript/dom_distiller_viewer.js",
-        "//third_party/dom_distiller_js/dist/test/data/out/domdistillerjstest.js",
-        "//third_party/dom_distiller_js/dist/test/data/war/test.html",
+        "$root_gen_dir/components/web_distiller/core/javascript/web_distiller_viewer.js",
         "//third_party/node/node_modules/chai/index.js",
         "//third_party/node/node_modules/mocha/mocha.js",
-        "dom_distiller/core/javascript/domdistiller.js",
-        "dom_distiller/core/javascript/extract_features.js",
-        "dom_distiller/core/javascript/readability_distiller.js",
-        "dom_distiller/core/javascript/readability_triggering.js",
+        "web_distiller/core/javascript/extract_features.js",
+        "web_distiller/core/javascript/web_distiller.js",
+        "web_distiller/core/javascript/web_distiller_triggering.js",
       ]
       outputs = [ "{{bundle_resources_dir}}/" +
                   "{{source_root_relative_dir}}/{{source_file_part}}" ]
@@ -159,6 +156,7 @@ if (is_android) {
     deps = [
       "//components/android_autofill/browser/junit:components_autofill_junit_tests",
       "//components/background_task_scheduler:components_background_task_scheduler_junit_tests",
+      "//components/browser_ui/adaptive_ui/android:junit",
       "//components/browser_ui/bottomsheet/android/internal:junit_tests",
       "//components/browser_ui/client_certificate/android:junit",
       "//components/browser_ui/desktop_windowing/android:junit",
@@ -188,6 +186,7 @@ if (is_android) {
       "//components/spellcheck/browser/android:components_spellcheck_junit_tests",
       "//components/stylus_handwriting/android:stylus_handwriting_junit_tests",
       "//components/subresource_filter/android:junit",
+      "//components/supervised_user/android:junit",
       "//components/thin_webview/internal:junit",
       "//components/ukm/android:ukm_junit_tests",
       "//components/variations/android:components_variations_junit_tests",

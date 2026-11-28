@@ -62,6 +62,7 @@
 #include "base/check_is_test.h"
 #include "base/compiler_specific.h"
 #include "base/containers/flat_map.h"
+#include "base/containers/to_vector.h"
 #include "base/dcheck_is_on.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
@@ -763,7 +764,7 @@ void CookieMonster::GetAllCookies(GetAllCookiesCallback callback) {
   // Copy the CanonicalCookie pointers from the map so that we can use the same
   // sorter as elsewhere, then copy the result out.
   std::vector<CanonicalCookie*> cookie_ptrs;
-  cookie_ptrs.reserve(cookies_.size());
+  cookie_ptrs.reserve(cookies_.size() + num_partitioned_cookies_);
   for (const auto& cookie : cookies_)
     cookie_ptrs.push_back(cookie.second.get());
 
@@ -779,18 +780,18 @@ void CookieMonster::GetAllCookies(GetAllCookiesCallback callback) {
   for (auto* cookie_ptr : cookie_ptrs)
     cookie_list.push_back(*cookie_ptr);
 
-  MaybeRunCookieCallback(std::move(callback), cookie_list);
+  MaybeRunCookieCallback(std::move(callback), std::move(cookie_list));
 }
 
 void CookieMonster::AttachAccessSemanticsListForCookieList(
     GetAllCookiesWithAccessSemanticsCallback callback,
     const CookieList& cookie_list) {
-  std::vector<CookieAccessSemantics> access_semantics_list;
-  for (const CanonicalCookie& cookie : cookie_list) {
-    access_semantics_list.push_back(GetAccessSemanticsForCookie(cookie));
-  }
+  std::vector<CookieAccessSemantics> access_semantics_list =
+      base::ToVector(cookie_list, [this](const CanonicalCookie& cookie) {
+        return GetAccessSemanticsForCookie(cookie);
+      });
   MaybeRunCookieCallback(std::move(callback), cookie_list,
-                         access_semantics_list);
+                         std::move(access_semantics_list));
 }
 
 void CookieMonster::GetCookieListWithOptions(
@@ -941,23 +942,27 @@ void CookieMonster::DeleteCanonicalCookie(const CanonicalCookie& cookie,
     cookie_map = &cookies_;
   }
   if (cookie_map) {
-    for (CookieMapItPair its = cookie_map->equal_range(GetKey(cookie.Domain()));
-         its.first != its.second; ++its.first) {
-      const std::unique_ptr<CanonicalCookie>& candidate = its.first->second;
-      // Historically, this has refused modification if the cookie has changed
-      // value in between the CanonicalCookie object was returned by a getter
-      // and when this ran.  The later parts of the conditional (everything but
-      // the equivalence check) attempt to preserve this behavior.
-      if (candidate->IsEquivalent(cookie) &&
-          candidate->Value() == cookie.Value()) {
-        if (cookie.IsPartitioned()) {
-          InternalDeletePartitionedCookie(cookie_partition_it, its.first, true,
-                                          DELETE_COOKIE_EXPLICIT);
-        } else {
-          InternalDeleteCookie(its.first, true, DELETE_COOKIE_EXPLICIT);
+    CookieMapItPair its = cookie_map->equal_range(GetKey(cookie.Domain()));
+    if (its.first != its.second) {
+      // Decrypt Value() once before the loop.
+      const std::string cookie_value = cookie.Value();
+      for (; its.first != its.second; ++its.first) {
+        const std::unique_ptr<CanonicalCookie>& candidate = its.first->second;
+        // Historically, this has refused modification if the cookie has changed
+        // value in between the CanonicalCookie object was returned by a getter
+        // and when this ran.  The later parts of the conditional (everything
+        // but the equivalence check) attempt to preserve this behavior.
+        if (candidate->IsEquivalent(cookie) &&
+            candidate->IsValueEqual(cookie_value)) {
+          if (cookie.IsPartitioned()) {
+            InternalDeletePartitionedCookie(cookie_partition_it, its.first,
+                                            true, DELETE_COOKIE_EXPLICIT);
+          } else {
+            InternalDeleteCookie(its.first, true, DELETE_COOKIE_EXPLICIT);
+          }
+          result = 1u;
+          break;
         }
-        result = 1u;
-        break;
       }
     }
   }
@@ -1601,7 +1606,7 @@ CookieMonster::MaybeDeleteEquivalentCookieAndUpdateStatus(
       CookieChangeObservability::kWebObservable;
   if (deletion_candidate_it != cookie_map->end()) {
     CanonicalCookie* deletion_candidate = deletion_candidate_it->second.get();
-    if (deletion_candidate->Value() == cookie_being_set.Value()) {
+    if (deletion_candidate->IsValueEqual(cookie_being_set)) {
       creation_date_to_inherit = deletion_candidate->CreationDate();
       observability =
           CookieChangeObservability::kWebObservableWithoutValueChange;
@@ -2841,20 +2846,6 @@ bool CookieMonster::DoRecordPeriodicStats() {
     return false;
 
   base::UmaHistogramCounts100000("Cookie.Count2", cookies_.size());
-
-  if (cookie_access_delegate()) {
-    std::vector<SchemefulSite> sites;
-    for (const auto& entry : cookies_) {
-      sites.emplace_back(
-          GURL(base::StrCat({url::kHttpsScheme, "://", entry.first})));
-    }
-    for (const auto& [partition_key, cookie_map] : partitioned_cookies_) {
-      for (const auto& [domain, unused_cookie] : *cookie_map) {
-        sites.emplace_back(
-            GURL(base::StrCat({url::kHttpsScheme, "://", domain})));
-      }
-    }
-  }
 
   std::map<std::string, size_t> n_same_site_none_cookies;
   size_t n_bytes = 0;

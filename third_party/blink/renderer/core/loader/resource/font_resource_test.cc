@@ -23,6 +23,7 @@
 #include "third_party/blink/renderer/core/loader/resource/mock_font_resource_client.h"
 #include "third_party/blink/renderer/core/testing/dummy_page_holder.h"
 #include "third_party/blink/renderer/platform/exported/wrapped_resource_response.h"
+#include "third_party/blink/renderer/platform/fonts/font_custom_platform_data.h"
 #include "third_party/blink/renderer/platform/fonts/ift/ift_patcher.h"
 #include "third_party/blink/renderer/platform/loader/fetch/background_code_cache_host.h"
 #include "third_party/blink/renderer/platform/loader/fetch/fetch_parameters.h"
@@ -55,6 +56,31 @@ class FontResourceTest : public testing::Test {
  public:
   void TearDown() override {
     url_test_helpers::UnregisterAllURLsAndClearMemoryCache();
+  }
+
+ protected:
+  // Fetches and loads Ahem.woff2, without decoding it.
+  FontResource* LoadAhemFont() {
+    auto* properties = MakeGarbageCollected<TestResourceFetcherProperties>();
+    MockFetchContext* context = MakeGarbageCollected<MockFetchContext>();
+    auto* fetcher = MakeGarbageCollected<ResourceFetcher>(ResourceFetcherInit(
+        properties->MakeDetachable(), context,
+        base::MakeRefCounted<scheduler::FakeTaskRunner>(),
+        base::MakeRefCounted<scheduler::FakeTaskRunner>(),
+        MakeGarbageCollected<TestLoaderFactory>(),
+        MakeGarbageCollected<MockContextLifecycleNotifier>(),
+        nullptr /* back_forward_cache_loader_helper */));
+
+    KURL url("http://127.0.0.1:8000/font.woff2");
+    url_test_helpers::RegisterMockedURLLoad(
+        url, test::CoreTestDataPath("Ahem.woff2"));
+    FetchParameters fetch_params =
+        FetchParameters::CreateForTest(ResourceRequest(url));
+    FontResource* resource =
+        FontResource::Fetch(fetch_params, fetcher, nullptr);
+    fetcher->StartLoad(resource);
+    url_test_helpers::ServeAsynchronousRequests();
+    return resource;
   }
 
  private:
@@ -378,6 +404,72 @@ TEST_F(FontResourceStrongReferenceTest, FollowCacheControl) {
       MemoryCache::Get()->HasStrongReferenceForTesting(resource_no_store));
 }
 
+// With kFontResourceDecodedMemoryAccounting on, a decoded font reports the
+// decoded data as its decoded size, and MemoryCache::size() grows by that
+// amount.
+TEST_F(FontResourceTest, MemoryAccountingAfterDecode) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{features::kFontResourceDecodedMemoryAccounting},
+      /*disabled_features=*/{features::kResourceEncodedMemoryAccounting});
+  FontResource* resource = LoadAhemFont();
+  ASSERT_TRUE(MemoryCache::Get()->Contains(resource));
+
+  const size_t encoded_size = resource->EncodedSize();
+  const size_t cache_size = MemoryCache::Get()->size();
+  ASSERT_GT(encoded_size, 0u);
+  EXPECT_EQ(resource->DecodedSize(), 0u);
+
+  const FontCustomPlatformData* font_data = resource->GetCustomFontData();
+  ASSERT_TRUE(font_data);
+  ASSERT_GT(font_data->DataSize(), 0u);
+  EXPECT_EQ(resource->DecodedSize(), font_data->DataSize());
+  EXPECT_EQ(resource->EncodedSize(), encoded_size);
+  EXPECT_EQ(MemoryCache::Get()->size(), cache_size + font_data->DataSize());
+}
+
+// With kResourceEncodedMemoryAccounting also on, the compressed bytes released
+// after decoding stop counting, while EncodedSize() keeps the response size.
+TEST_F(FontResourceTest, EncodedMemoryAccountingAfterDecode) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{features::kFontResourceDecodedMemoryAccounting,
+                            features::kResourceEncodedMemoryAccounting},
+      /*disabled_features=*/{});
+  FontResource* resource = LoadAhemFont();
+  ASSERT_TRUE(MemoryCache::Get()->Contains(resource));
+
+  const size_t encoded_size = resource->EncodedSize();
+  const size_t cache_size = MemoryCache::Get()->size();
+  ASSERT_GT(encoded_size, 0u);
+  EXPECT_EQ(resource->DecodedSize(), 0u);
+
+  const FontCustomPlatformData* font_data = resource->GetCustomFontData();
+  ASSERT_TRUE(font_data);
+  ASSERT_GT(font_data->DataSize(), 0u);
+  EXPECT_EQ(resource->EncodedSize(), encoded_size);
+  EXPECT_EQ(resource->size(),
+            resource->DecodedSize() + resource->OverheadSize());
+  EXPECT_EQ(MemoryCache::Get()->size(),
+            cache_size - encoded_size + font_data->DataSize());
+}
+
+// Without kFontResourceDecodedMemoryAccounting, a decoded font keeps counting
+// its encoded size, since its decoded size isn't reported.
+TEST_F(FontResourceTest, EncodedMemoryAccountingNeedsDecodedAccounting) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      /*enabled_features=*/{features::kResourceEncodedMemoryAccounting},
+      /*disabled_features=*/{features::kFontResourceDecodedMemoryAccounting});
+  FontResource* resource = LoadAhemFont();
+  ASSERT_GT(resource->EncodedSize(), 0u);
+
+  ASSERT_TRUE(resource->GetCustomFontData());
+  EXPECT_EQ(resource->DecodedSize(), 0u);
+  EXPECT_EQ(resource->size(),
+            resource->EncodedSize() + resource->OverheadSize());
+}
+
 namespace {
 
 using LoadStartCallback = base::OnceCallback<void(
@@ -488,8 +580,8 @@ TEST_F(FontResourceTest, DecodeIftFontCreatesIftPatcher) {
   ASSERT_TRUE(resource->IsLoaded());
 
   EXPECT_TRUE(resource->GetCustomFontData());
-  EXPECT_NE(resource->TakeIftPatcher(), nullptr);
-  EXPECT_EQ(resource->TakeIftPatcher(), nullptr);
+  EXPECT_NE(resource->CloneIftPatcher(), nullptr);
+  EXPECT_NE(resource->CloneIftPatcher(), nullptr);
   EXPECT_TRUE(resource->OtsParsingMessage().empty());
   EXPECT_EQ(resource->GetStatus(), ResourceStatus::kCached);
 }
@@ -608,8 +700,8 @@ TEST_F(FontResourceBackgroundProcessorTest, IftFontHasIftPatcher) {
       CreateTestFontDataPipe(test::PlatformTestDataPath("roboto-ift.woff2")));
   const FontCustomPlatformData* font_data = resource->GetCustomFontData();
   EXPECT_TRUE(font_data);
-  EXPECT_NE(resource->TakeIftPatcher(), nullptr);
-  EXPECT_EQ(resource->TakeIftPatcher(), nullptr);
+  EXPECT_NE(resource->CloneIftPatcher(), nullptr);
+  EXPECT_NE(resource->CloneIftPatcher(), nullptr);
   EXPECT_TRUE(resource->OtsParsingMessage().empty());
   EXPECT_EQ(resource->GetStatus(), ResourceStatus::kCached);
 }

@@ -82,6 +82,9 @@ class BASE_EXPORT TaskQueueImpl : public TaskQueue {
   // after FeatureList initialization and while Chrome is still single-threaded.
   static void InitializeFeatures();
 
+  // Initializes a `TaskQueueImpl`. Looking up or binding to a `SequenceManager`
+  // is deferred if `sequence_manager` is null (used by
+  // `TaskQueue::CreateUnbound()` and by unit tests).
   TaskQueueImpl(SequenceManagerImpl* sequence_manager,
                 WakeUpQueue* wake_up_queue,
                 const TaskQueue::Spec& spec);
@@ -149,6 +152,7 @@ class BASE_EXPORT TaskQueueImpl : public TaskQueue {
   void RemoveCancelledTasks() override;
   bool IsBlockedByScopedExecutionFences() override;
 
+  void BindToCurrentThread();
   void SetQueueEnabled(bool enabled);
   void UnregisterTaskQueue();
 
@@ -247,6 +251,8 @@ class BASE_EXPORT TaskQueueImpl : public TaskQueue {
                        TaskQueue::TaskTiming* task_timing,
                        LazyNow* lazy_now);
   bool RequiresTaskTiming() const;
+
+  bool was_bound() const { return sequence_manager_ != nullptr; }
 
   WeakPtr<SequenceManagerImpl> GetSequenceManagerWeakPtr();
 
@@ -527,6 +533,8 @@ class BASE_EXPORT TaskQueueImpl : public TaskQueue {
 
   void InsertFence(Fence fence);
 
+  void ResetFences(std::optional<TimeTicks> new_delayed_fence);
+
   void RemoveOnTaskPostedHandler(
       OnTaskPostedCallbackHandleImpl* on_task_posted_callback_handle);
 
@@ -537,12 +545,16 @@ class BASE_EXPORT TaskQueueImpl : public TaskQueue {
            main_thread_only().voter_count;
   }
 
-  // Returns whether the queue is enabled. May be invoked from any thread.
-  bool IsQueueEnabledFromAnyThread() const;
+  // Returns whether the queue is enabled and has no fence (immediate or
+  // delayed). May be invoked from any thread.
+  bool IsQueueEnabledAndUnfencedFromAnyThread() const;
 
   QueueName name_;
-  const raw_ptr<SequenceManagerImpl, AcrossTasksDanglingUntriaged>
-      sequence_manager_;
+  // Set either in the constructor or once in `BindToCurrentThread()` before
+  // the release-store in `associated_thread_->BindToCurrentThread()`.
+  // Unlocked cross-thread readers must check `associated_thread_->IsBound()`
+  // (acquire) before reading `sequence_manager_`.
+  raw_ptr<SequenceManagerImpl, AcrossTasksDanglingUntriaged> sequence_manager_;
 
   const scoped_refptr<AssociatedThreadId> associated_thread_;
 
@@ -569,6 +581,7 @@ class BASE_EXPORT TaskQueueImpl : public TaskQueue {
     bool post_immediate_task_should_schedule_work = true;
     bool unregistered = false;
     bool is_enabled = true;
+    bool has_fence = false;
 
     base::flat_map<raw_ptr<OnTaskPostedCallbackHandleImpl>, OnTaskPostedHandler>
         on_task_posted_handlers;
@@ -607,6 +620,7 @@ class BASE_EXPORT TaskQueueImpl : public TaskQueue {
   const bool should_notify_observers_;
   const bool delayed_fence_allowed_;
   const bool scoped_execution_fence_allowed_;
+  const bool non_waking_;
 
   const scoped_refptr<SingleThreadTaskRunner> default_task_runner_;
 

@@ -67,6 +67,9 @@ constexpr char kGeolocationMigrateExceptionsPref[] =
 
 constexpr char kObsoleteTpcdHeuristicsGrantsPref[] =
     "profile.content_settings.exceptions.3pcd_heuristics_grants";
+// Deprecated 10/2026. Remove after 10/2027.
+constexpr char kObsoleteTopLevelStorageAccessExceptionsPref[] =
+    "profile.content_settings.exceptions.top_level_storage_access";
 
 #if !BUILDFLAG(IS_IOS)
 constexpr char kObsoleteTpcdTrialExceptionsPref[] =
@@ -127,6 +130,8 @@ void PrefProvider::RegisterProfilePrefs(
       kObsoleteFederatedIdentityActiveSesssionExceptionsPref);
   registry->RegisterDictionaryPref(kObsoletePrivateNetworkChooserDataPref);
   registry->RegisterDictionaryPref(kObsoleteTpcdHeuristicsGrantsPref);
+  registry->RegisterDictionaryPref(
+      kObsoleteTopLevelStorageAccessExceptionsPref);
 #if !BUILDFLAG(IS_IOS)
   registry->RegisterDictionaryPref(kObsoleteTpcdTrialExceptionsPref);
   registry->RegisterDictionaryPref(kObsoleteTopLevelTpcdTrialExceptionsPref);
@@ -520,6 +525,7 @@ void PrefProvider::DiscardOrMigrateObsoletePreferences() {
   prefs_->ClearPref(kObsoleteFederatedIdentityActiveSesssionExceptionsPref);
   prefs_->ClearPref(kObsoletePrivateNetworkChooserDataPref);
   prefs_->ClearPref(kObsoleteTpcdHeuristicsGrantsPref);
+  prefs_->ClearPref(kObsoleteTopLevelStorageAccessExceptionsPref);
 
 #if !BUILDFLAG(IS_IOS)
   prefs_->ClearPref(kObsoleteTpcdTrialExceptionsPref);

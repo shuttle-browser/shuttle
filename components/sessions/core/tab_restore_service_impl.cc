@@ -590,6 +590,7 @@ class TabRestoreServiceImpl::PersistenceDelegate
   // TabRestoreServiceHelper::Observer:
   void OnClearEntries() override;
   void OnNavigationEntriesDeleted() override;
+  void OnEntriesModified() override;
   void OnRestoreEntryById(SessionID id,
                           Entries::const_iterator entry_iterator) override;
   void OnAddEntry() override;
@@ -614,6 +615,9 @@ class TabRestoreServiceImpl::PersistenceDelegate
 
   // Schedules the commands for a window close.
   void ScheduleCommandsForWindow(const tab_restore::Window& window);
+
+  // Marks every entry for writing and resets the file on the next save.
+  void ScheduleFullRewrite();
 
   // Schedules the commands for a group close.
   void ScheduleCommandsForGroup(const tab_restore::Group& group);
@@ -832,6 +836,14 @@ void TabRestoreServiceImpl::PersistenceDelegate::OnClearEntries() {
 }
 
 void TabRestoreServiceImpl::PersistenceDelegate::OnNavigationEntriesDeleted() {
+  ScheduleFullRewrite();
+}
+
+void TabRestoreServiceImpl::PersistenceDelegate::OnEntriesModified() {
+  ScheduleFullRewrite();
+}
+
+void TabRestoreServiceImpl::PersistenceDelegate::ScheduleFullRewrite() {
   // Rewrite all entries.
   entries_to_write_ = tab_restore_service_helper_->entries().size();
 
@@ -1030,7 +1042,7 @@ void TabRestoreServiceImpl::PersistenceDelegate::ScheduleCommandsForTab(
     command_storage_manager_->ScheduleCommand(std::move(command));
   }
 
-  if (tab.group.has_value() && !tab.is_group_ephemeral) {
+  if (tab.group.has_value()) {
     base::Pickle pickle;
     WriteTokenToPickle(&pickle, tab.group.value().token());
     const tab_groups::TabGroupVisualData* visual_data =
@@ -1871,6 +1883,18 @@ void TabRestoreServiceImpl::GroupCloseStopped(
   helper_.GroupCloseStopped(group);
 }
 
+void TabRestoreServiceImpl::PromoteEphemeralTabGroup(
+    const tab_groups::TabGroupId& group_id,
+    const tab_groups::TabGroupVisualData& visual_data) {
+  helper_.PromoteEphemeralTabGroup(group_id, visual_data);
+}
+
+void TabRestoreServiceImpl::UpdateSavedTabGroupId(
+    const tab_groups::TabGroupId& group_id,
+    const base::Uuid& saved_group_id) {
+  helper_.UpdateSavedTabGroupId(group_id, saved_group_id);
+}
+
 void TabRestoreServiceImpl::SplitClosed(const split_tabs::SplitTabId& id) {
   helper_.SplitClosed(id);
 }
@@ -1910,7 +1934,7 @@ void TabRestoreServiceImpl::RemoveLeastRecentlyUsedEntries(int num_to_remove) {
 std::optional<std::vector<LiveTab*>> TabRestoreServiceImpl::RestoreEntryById(
     LiveTabContext* context,
     SessionID id,
-    WindowOpenDisposition disposition) {
+    ui::mojom::WindowOpenDisposition disposition) {
   return helper_.RestoreEntryById(context, id, disposition);
 }
 

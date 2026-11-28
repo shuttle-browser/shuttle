@@ -16,12 +16,14 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Eigen/Dense"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
-#include "absl/types/span.h"
+#include "Eigen/Dense"                  // from @eigen
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
+#include "absl/types/span.h"            // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
@@ -31,7 +33,7 @@
 #include "mediapipe/modules/objectron/calculators/decoder.h"
 #include "mediapipe/modules/objectron/calculators/tensor_util.h"
 #include "mediapipe/modules/objectron/calculators/tflite_tensors_to_objects_calculator.pb.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter.h"  // from @litert
 
 namespace {
 constexpr char kInputStreamTag[] = "TENSORS";
@@ -106,7 +108,7 @@ absl::Status TfLiteTensorsToObjectsCalculator::GetContract(
 }
 
 absl::Status TfLiteTensorsToObjectsCalculator::Open(CalculatorContext* cc) {
-  MP_RETURN_IF_ERROR(LoadOptions(cc));
+  ABSL_RETURN_IF_ERROR(LoadOptions(cc));
   // Load camera intrinsic matrix.
   const float fx = options_.normalized_focal_x();
   const float fy = options_.normalized_focal_y();
@@ -118,8 +120,8 @@ absl::Status TfLiteTensorsToObjectsCalculator::Open(CalculatorContext* cc) {
                         0., 0., -1., 0.,
                         0., 0., -1., 0.;
   // clang-format on
-  decoder_ = absl::make_unique<Decoder>(
-      BeliefDecoderConfig(options_.decoder_config()));
+  decoder_ =
+      std::make_unique<Decoder>(BeliefDecoderConfig(options_.decoder_config()));
 
   return absl::OkStatus();
 }
@@ -129,9 +131,9 @@ absl::Status TfLiteTensorsToObjectsCalculator::Process(CalculatorContext* cc) {
     return absl::OkStatus();
   }
 
-  auto output_objects = absl::make_unique<FrameAnnotation>();
+  auto output_objects = std::make_unique<FrameAnnotation>();
 
-  MP_RETURN_IF_ERROR(ProcessCPU(cc, output_objects.get()));
+  ABSL_RETURN_IF_ERROR(ProcessCPU(cc, output_objects.get()));
 
   // Output
   if (cc->Outputs().HasTag(kOutputStreamTag)) {

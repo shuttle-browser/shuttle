@@ -8,6 +8,7 @@
 #include "components/infobars/core/infobar.h"
 #include "components/infobars/core/infobar_manager.h"
 #include "ui/base/models/image_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/gfx/vector_icon_types.h"
 
@@ -77,7 +78,8 @@ bool InfoBarDelegate::ShouldExpire(const NavigationDetails& details) const {
          ((nav_entry_id_ != details.entry_id) || details.is_reload);
 }
 
-bool InfoBarDelegate::LinkClicked(WindowOpenDisposition disposition) {
+bool InfoBarDelegate::LinkClicked(
+    ui::mojom::WindowOpenDisposition disposition) {
   infobar()->owner()->OpenURL(GetLinkURL(), disposition);
   return false;
 }

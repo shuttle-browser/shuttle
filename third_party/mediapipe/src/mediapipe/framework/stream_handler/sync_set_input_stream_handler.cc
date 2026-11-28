@@ -19,14 +19,14 @@
 #include <utility>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/collection_item_id.h"
 #include "mediapipe/framework/input_stream_handler.h"
 #include "mediapipe/framework/packet_set.h"
 #include "mediapipe/framework/port/map_util.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/stream_handler/sync_set_input_stream_handler.pb.h"
 #include "mediapipe/framework/timestamp.h"
 
@@ -42,7 +42,7 @@ void SyncSetInputStreamHandler::PrepareForRun(
   const auto& handler_options =
       options_.GetExtension(mediapipe::SyncSetInputStreamHandlerOptions::ext);
   {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     sync_sets_.clear();
     std::set<CollectionItemId> used_ids;
     for (const auto& sync_set : handler_options.sync_set()) {
@@ -51,7 +51,7 @@ void SyncSetInputStreamHandler::PrepareForRun(
       for (const auto& tag_index : sync_set.tag_index()) {
         std::string tag;
         int index;
-        MEDIAPIPE_CHECK_OK(tool::ParseTagIndex(tag_index, &tag, &index));
+        ABSL_CHECK_OK(tool::ParseTagIndex(tag_index, &tag, &index));
         CollectionItemId id = input_stream_managers_.GetId(tag, index);
         ABSL_CHECK(id.IsValid())
             << "stream \"" << tag_index << "\" is not found.";
@@ -84,7 +84,7 @@ void SyncSetInputStreamHandler::PrepareForRun(
 NodeReadiness SyncSetInputStreamHandler::GetNodeReadiness(
     Timestamp* min_stream_timestamp) {
   ABSL_DCHECK(min_stream_timestamp);
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   if (ready_sync_set_index_ >= 0) {
     *min_stream_timestamp = ready_timestamp_;
     // TODO: Return kNotReady unless a new ready syncset is found.
@@ -130,7 +130,7 @@ NodeReadiness SyncSetInputStreamHandler::GetNodeReadiness(
 void SyncSetInputStreamHandler::FillInputSet(Timestamp input_timestamp,
                                              InputStreamShardSet* input_set) {
   // Assume that all current packets are already cleared.
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   ABSL_CHECK_LE(0, ready_sync_set_index_);
   sync_sets_[ready_sync_set_index_].FillInputSet(input_timestamp, input_set);
   for (int i = 0; i < sync_sets_.size(); ++i) {
@@ -143,7 +143,7 @@ void SyncSetInputStreamHandler::FillInputSet(Timestamp input_timestamp,
 }
 
 int SyncSetInputStreamHandler::SyncSetCount() {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   return sync_sets_.size();
 }
 

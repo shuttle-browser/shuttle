@@ -239,47 +239,6 @@ void LayoutReplaced::Paint(const PaintInfo& paint_info) const {
   ReplacedPainter(*this).Paint(paint_info);
 }
 
-PhysicalRect LayoutReplaced::ComputeSelfVisualOverflow() const {
-  NOT_DESTROYED();
-  const ComputedStyle& style = Style();
-  if (!style.HasVisualOverflowingEffect()) {
-    return PhysicalRect();
-  }
-
-  const PhysicalRect border_box_rect = PhysicalBorderBoxRect();
-
-  PhysicalBoxStrut outsets = style.BoxDecorationOutsets();
-  if (style.HasBorderShape()) {
-    const std::optional<BorderShapeReferenceRects> border_shape_rects =
-        ComputeBorderShapeReferenceRects(border_box_rect, style, *this);
-    const PhysicalRect outer_reference_rect =
-        border_shape_rects ? border_shape_rects->outer : border_box_rect;
-    const PhysicalRect inner_reference_rect =
-        border_shape_rects ? border_shape_rects->inner : border_box_rect;
-    // VisualOutsets() returns the complete border-shape overflow: both the
-    // border path's visual extent and the precise box-shadow extent.
-    outsets.Unite(BorderShapePainter::VisualOutsets(
-        style, border_box_rect, outer_reference_rect, inner_reference_rect));
-  }
-
-  if (style.HasOutline()) {
-    OutlineInfo info;
-    Vector<PhysicalRect> outline_rects =
-        OutlineRects(&info, PhysicalOffset(),
-                     style.OutlineRectsShouldIncludeBlockInkOverflow());
-    PhysicalRect rect = UnionRect(outline_rects);
-    if (!style.HasBorderShape() || style.OutlineStyleIsAuto()) {
-      rect.Inflate(
-          LayoutUnit(OutlinePainter::OutlineOutsetExtent(style, info)));
-      outsets.Unite(PhysicalBoxStrut(rect, border_box_rect));
-    }
-  }
-
-  PhysicalRect self_visual_overflow = border_box_rect;
-  self_visual_overflow.Expand(outsets);
-  return self_visual_overflow;
-}
-
 PhysicalRect LayoutReplaced::ComputeContentsVisualOverflow() const {
   NOT_DESTROYED();
   // Replaced elements clip the content to the element's content-box by default.
@@ -297,9 +256,12 @@ PhysicalRect LayoutReplaced::ComputeContentsVisualOverflow() const {
 
 void LayoutReplaced::RecalcVisualOverflow() {
   NOT_DESTROYED();
-  LayoutObject::RecalcVisualOverflow();
-  SetVisualOverflow(ComputeSelfVisualOverflow(),
-                    ComputeContentsVisualOverflow());
+  // Recalculate overflow from descendants. This is needed by replaced content,
+  // since children are then not part of the fragment tree. SVG needs this.
+  RecalcVisualOverflowForChildren();
+
+  // Calculate overflow from the physical fragments.
+  LayoutBox::RecalcVisualOverflow();
 }
 
 std::optional<PhysicalRect> LayoutReplaced::ComputeObjectViewBoxRect(

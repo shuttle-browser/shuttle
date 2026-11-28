@@ -106,6 +106,7 @@
 #include "media/media_buildflags.h"
 #include "pdf/buildflags.h"
 #include "printing/buildflags/buildflags.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "ui/accessibility/accessibility_prefs.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -206,7 +207,7 @@
 
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "components/safe_browsing/content/common/file_type_policies_prefs.h"
+#include "components/safe_browsing/content/common/file_type_policies/file_type_policies_prefs.h"
 #endif
 
 namespace policy {
@@ -1158,9 +1159,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kCreateThemesSettings,
     optimization_guide::prefs::kWallpaperSearchEnterprisePolicyAllowed,
     base::Value::Type::INTEGER},
-  { key::kHistorySearchSettings,
-    optimization_guide::prefs::kHistorySearchEnterprisePolicyAllowed,
-    base::Value::Type::INTEGER},
 #endif // !BUILDFLAG(IS_ANDROID)
   { key::kTabCompareSettings,
     optimization_guide::prefs::kProductSpecificationsEnterprisePolicyAllowed,
@@ -1747,9 +1745,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       optimization_guide::prefs::kWallpaperSearchEnterprisePolicyAllowed);
   gen_ai_default_policies.emplace_back(key::kDevToolsGenAiSettings,
                                        prefs::kDevToolsGenAiSettings);
-  gen_ai_default_policies.emplace_back(
-      key::kHistorySearchSettings,
-      optimization_guide::prefs::kHistorySearchEnterprisePolicyAllowed);
   gen_ai_default_policies.emplace_back(
       key::kTabCompareSettings,
       optimization_guide::prefs::kProductSpecificationsEnterprisePolicyAllowed);

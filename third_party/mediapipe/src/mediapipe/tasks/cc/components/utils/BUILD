@@ -37,6 +37,7 @@ cc_test(
         ":cosine_similarity",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/tasks/cc/components/containers:embedding_result",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -48,6 +49,18 @@ cc_library(
         "//mediapipe/calculators/core:gate_calculator_cc_proto",
         "//mediapipe/framework/api2:builder",
         "//mediapipe/framework/api2:port",
+    ],
+)
+
+cc_library(
+    name = "tga_utils",
+    srcs = ["tga_utils.cc"],
+    hdrs = ["tga_utils.h"],
+    deps = [
+        "//mediapipe/framework/formats:image",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 

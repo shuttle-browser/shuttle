@@ -23,9 +23,6 @@ class PLATFORM_EXPORT FontFormatCheck {
   virtual bool IsVariableFont() const;
   virtual bool IsCbdtCblcColorFont() const;
   virtual bool IsEbdtEblcMonochromeFont() const;
-  virtual bool IsColrCpalColorFont() const {
-    return IsColrCpalColorFontV0() || IsColrCpalColorFontV1();
-  }
   virtual bool IsColrCpalColorFontV0() const;
   virtual bool IsColrCpalColorFontV1() const;
   bool IsVariableColrV0Font() const;
@@ -42,8 +39,6 @@ class PLATFORM_EXPORT FontFormatCheck {
   };
 
   static VariableFontSubType ProbeVariableFont(sk_sp<SkTypeface>);
-
-  enum class COLRVersion { kCOLRV0, kCOLRV1, kNoCOLR };
 
  private:
   font_format::FontFormatInfo format_info_;

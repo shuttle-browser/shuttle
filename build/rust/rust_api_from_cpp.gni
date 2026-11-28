@@ -33,8 +33,18 @@ _globally_enabled_crubit_features = [
   # specializations (e.g. `base::IdType64<FooTag>`) used by the C++ headers.
   "template_instantiation",
 
+  # `strong_ordering_traits` makes Crubit implement `Eq` and `Ord` (in addition
+  # to `PartialEq` and `PartialOrd`) for C++ types whose `operator<=>` returns
+  # `std::strong_ordering` (e.g. `GURL` and `url::Origin`).
+  "strong_ordering_traits",
+
+  # `forward_declare` makes Crubit generate bindings for APIs that use
+  # forward-declared (incomplete) C++ types (e.g. `const Foo&` parameter
+  # after `class Foo;`).  Rust code can use `forward_declare::CppCoerce` to
+  # convert between the incomplete and complete types.
+  "forward_declare",
+
   # Other features to consider enabling by default:
-  # TODO(crbug.com/40226863): Consider enabling `forward_declare`.
   # TODO(crbug.com/40226863): Consider enabling `layout_compat_string`.
   # TODO(crbug.com/40226863): Consider enabling `layout_compat_tuple`.
 ]
@@ -115,7 +125,14 @@ _globally_enabled_crubit_features = [
 #     to provide items that Crubit-generated code expects at a specific module
 #     path).
 #
-#   override_target_label, override_crate_name: (optional)
+#   root_namespaces: (optional)
+#     A list of C++ namespaces (e.g. `"foo::bar"`) whose items should also be
+#     re-exported (via `pub use`) at the root of the generated bindings crate.
+#     For example, with `root_namespaces = [ "base" ]` in `base_rs_api`, Rust
+#     code can use `base_rs_api::Foo` instead of `base_rs_api::base::Foo`
+#     (both paths work).
+#
+#   override_target_label, unsafe_globally_unique_crate_name: (optional)
 #     Internal parameters, used only by `//build/rust/crubit:cc_std` (bindings
 #     for the C++ standard library) to provide the target label and crate name
 #     that Crubit expects for `cc_std`.
@@ -196,10 +213,17 @@ template("rust_api_from_cpp") {
   # Bindings of the C++ standard library are an implicit dependency of all
   # other `rust_api_from_cpp` targets (similarly to how `cpp_api_from_rust`
   # injects `//build/rust/std:std_bindings`).
+  #
+  # `visibility` of the `cc_std` target is restricted (to make other Rust code
+  # use `cpp_std` instead), and therefore the generated Rust library depends
+  # on `cc_std` via `internal_cc_std_for_generated_bindings`.
   _cc_std_target = "//build/rust/crubit:cc_std"
+  _bindings_rs_deps = _bindings_deps
   if (get_label_info(":${_lib_target_name}", "label_no_toolchain") !=
       _cc_std_target) {
     _bindings_deps += [ _cc_std_target ]
+    _bindings_rs_deps +=
+        [ "//build/rust/crubit:internal_cc_std_for_generated_bindings" ]
   }
 
   # Optional parameters: extra_rust_sources and extra_rust_source_groups.
@@ -290,12 +314,11 @@ template("rust_api_from_cpp") {
 
   # Crubit needs to know the crate name of the generated bindings (and of their
   # `_bindings_deps`) to refer to them from the generated code - see `c` below.
-  #
-  # NOTE: TargetName=>CrateName mangling algorithm should be kept in sync with
-  # `rust_target.gni` (see the NOTE there; `chromium::import!` relies on it).
-  if (defined(invoker.override_crate_name)) {
-    _lib_target_crate_name = invoker.override_crate_name
+  if (defined(invoker.unsafe_globally_unique_crate_name)) {
+    _lib_target_crate_name = invoker.unsafe_globally_unique_crate_name
   } else {
+    # NOTE: TargetName=>CrateName mangling algorithm should be kept in sync with
+    # `rust_target.gni` (see the NOTE there; `chromium::import!` relies on it).
     _dir_hash = string_hash(get_label_info(":${_lib_target_name}", "dir"))
     _lib_target_crate_name = "${_lib_target_name}_${_dir_hash}"
   }
@@ -386,6 +409,7 @@ template("rust_api_from_cpp") {
 
     configs -= crubit_gn_configs_to_remove
     configs += crubit_gn_support_configs_to_add
+    configs += [ "//build/rust/crubit:rust_api_from_cpp_thunks_config" ]
   }
 
   # Exposing the generated Rust bindings.
@@ -395,16 +419,16 @@ template("rust_api_from_cpp") {
       visibility = _visibility
     }
 
-    deps = _bindings_deps
+    deps = _bindings_rs_deps
     deps += [
       ":${_cc_impl_target_name}",
       ":${_gen_bindings_target_name}",
       "//build/rust/crubit:rust_api_from_cpp_bindings_rs_deps",
     ]
 
-    # Explicitly setting `crate_name` guarantees that it matches the name passed
-    # to Crubit (via `c` in the metadata above).
-    crate_name = _lib_target_crate_name
+    # `_lib_target_crate_name` is either mangled/unique (see calculations above)
+    # or forwarded from `invoker.unsafe_globally_unique_crate_name`.
+    unsafe_globally_unique_crate_name = _lib_target_crate_name
     crate_root = _rs_out_path
     sources = [ crate_root ] + _extra_rust_sources
     deps += _extra_rs_srcs_copy_targets
@@ -497,6 +521,11 @@ template("rust_api_from_cpp") {
       ]
     }
 
+    if (defined(invoker.root_namespaces)) {
+      args += [ "--reexported_namespaces=" +
+                string_join(",", invoker.root_namespaces) ]
+    }
+
     if (_extra_rs_srcs_flag_values != []) {
       args +=
           [ "--extra_rs_srcs=" + string_join(",", _extra_rs_srcs_flag_values) ]
@@ -523,13 +552,6 @@ template("rust_api_from_cpp") {
     # (and those may not be inherited via `public_configs` of `bindings_target`)
     configs = default_compiler_configs
     args += [ "--" ] + libclang_args_for_cpp
-
-    # TODO(crbug.com/40226863): Remove after rolling Crubit to a version that
-    # supports the `type_visibility` attribute that libc++ uses on
-    # `namespace std` (without this, Crubit can't generate bindings for any
-    # items in `namespace std` - e.g. for `std::optional`).  See the WIP PR at
-    # https://github.com/google/crubit/pull/2361
-    args += [ "-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS" ]
 
     # Clang args that write the `depfile`.  `-MT` sets the target inside the
     # depfile to the first output of the action (as expected by Ninja and

@@ -14,6 +14,9 @@
 
 #include "mediapipe/gpu/gl_simple_calculator.h"
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+
 namespace mediapipe {
 
 // static
@@ -38,7 +41,7 @@ absl::Status GlSimpleCalculator::Process(CalculatorContext* cc) {
   return RunInGlContext([this, cc]() -> absl::Status {
     const auto& input = TagOrIndex(cc->Inputs(), "VIDEO", 0).Get<GpuBuffer>();
     if (!initialized_) {
-      MP_RETURN_IF_ERROR(GlSetup());
+      ABSL_RETURN_IF_ERROR(GlSetup());
       initialized_ = true;
     }
 
@@ -53,9 +56,9 @@ absl::Status GlSimpleCalculator::Process(CalculatorContext* cc) {
     glActiveTexture(GL_TEXTURE1);
     glBindTexture(src.target(), src.name());
 
-    MP_RETURN_IF_ERROR(GlBind());
+    ABSL_RETURN_IF_ERROR(GlBind());
     // Run core program.
-    MP_RETURN_IF_ERROR(GlRender(src, dst));
+    ABSL_RETURN_IF_ERROR(GlRender(src, dst));
 
     glBindTexture(src.target(), 0);
 

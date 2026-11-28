@@ -170,19 +170,6 @@ constexpr float kOpacityEpsilon = 0.001f;
 // be attached to the aggregated frame.
 constexpr int kMaxFramesWithIdenticalInkMetadata = 3;
 
-void MoveMatchingRequests(
-    CompositorRenderPassId render_pass_id,
-    std::multimap<CompositorRenderPassId, std::unique_ptr<CopyOutputRequest>>*
-        copy_requests,
-    std::vector<std::unique_ptr<CopyOutputRequest>>* output_requests) {
-  auto request_range = copy_requests->equal_range(render_pass_id);
-  for (auto it = request_range.first; it != request_range.second; ++it) {
-    DCHECK(it->second);
-    output_requests->push_back(std::move(it->second));
-  }
-  copy_requests->erase(request_range.first, request_range.second);
-}
-
 // Create a clip rect for an aggregated quad from the original clip rect and
 // the clip rect from the surface it's on.
 std::optional<gfx::Rect> CalculateClipRect(
@@ -707,8 +694,7 @@ ResolvedFrameData* SurfaceAggregator::GetResolvedFrame(
         auto& prev_resolved_frame = prev_resolved_frame_iter->second;
         if (prev_resolved_frame.is_valid()) {
           prev_frame_index = prev_resolved_frame.previous_frame_index();
-          prev_root_pass_id =
-              prev_resolved_frame.GetRootRenderPassData().remapped_id();
+          prev_root_pass_id = prev_resolved_frame.TakeRootRenderPassId();
         }
       }
     }
@@ -841,6 +827,10 @@ void SurfaceAggregator::EmitSurfaceContent(
     const std::optional<gfx::Rect> dest_root_target_clip_rect,
     AggregatedRenderPass* dest_pass,
     const MaskFilterInfoExt& mask_filter_info) {
+  if (!resolved_frame.is_valid()) {
+    return;
+  }
+
   Surface* surface = resolved_frame.surface();
 
   // If this surface's id is already in our referenced set then it creates
@@ -848,7 +838,6 @@ void SurfaceAggregator::EmitSurfaceContent(
   SurfaceId surface_id = surface->surface_id();
   if (referenced_surfaces_.count(surface_id))
     return;
-
 
   // If we are stretching content to fill the SurfaceDrawQuad, or if the device
   // scale factor mismatches between content and SurfaceDrawQuad, we appply an
@@ -877,18 +866,6 @@ void SurfaceAggregator::EmitSurfaceContent(
   scaled_quad_to_target_transform.Scale(extra_content_scale_x,
                                         extra_content_scale_y);
 
-  // A map keyed by RenderPass id.
-  Surface::CopyRequestsMap copy_requests;
-  if (take_copy_requests_) {
-    surface->TakeCopyOutputRequests(&copy_requests);
-  }
-
-  if (!resolved_frame.is_valid()) {
-    // As |copy_requests| goes out-of-scope, all copy requests in that container
-    // will auto-send an empty result upon destruction.
-    return;
-  }
-
   const auto& frame_metadata = resolved_frame.GetMetadata();
   flow_ids_for_resolved_frames_.insert(frame_metadata.begin_frame_ack.trace_id);
 
@@ -901,6 +878,10 @@ void SurfaceAggregator::EmitSurfaceContent(
     CollectTrackedElementRects(frame_metadata, combined_transform,
                                dest_pass->transform_to_root_target,
                                dest_root_target_clip_rect);
+  } else {
+    // This surface is being drawn for a CopyOutputRequest so we didn't mark
+    // mark it as drawn previously.
+    surface->MarkAsDrawn();
   }
 
   // If the SurfaceDrawQuad is marked as being reflected and surface contents
@@ -923,8 +904,8 @@ void SurfaceAggregator::EmitSurfaceContent(
   // require an intermediate surface. However, video capture being enabled is a
   // hint that we will have a copy request soon, so we prevent |merge_pass| to
   // avoid thrashing on the render pass backing allocation.
-  const bool has_video_capture =
-      !copy_requests.empty() || surface->IsVideoCaptureOnFromClient();
+  const bool has_video_capture = resolved_frame.HasCopyOutputRequests() ||
+                                 surface->IsVideoCaptureOnFromClient();
 
   const bool merge_pass = pass_is_mergeable && !has_video_capture;
 
@@ -961,17 +942,19 @@ void SurfaceAggregator::EmitSurfaceContent(
   size_t passes_to_copy =
       merge_pass ? num_render_passes - 1 : num_render_passes;
 
-  // Only retained root passes need enlargement. Non-root effect passes are
-  // already sized at the external page scale. Preserve the source coordinate
-  // space throughout video capture.
+  // Only retained root passes need backing-scale adjustment. Non-root effect
+  // passes are already sized at the external page scale. Preserve the source
+  // coordinate space throughout video capture.
   float root_pass_backing_scale = 1.0f;
   if (base::FeatureList::IsEnabled(
           features::kRenderNonMergedSurfaceAtBackingScale) &&
       !merge_pass && !has_video_capture) {
     root_pass_backing_scale = frame_metadata.surface_backing_size_scale_factor;
-    root_pass_backing_scale = std::isfinite(root_pass_backing_scale)
-                                  ? std::max(root_pass_backing_scale, 1.0f)
-                                  : 1.0f;
+    if (!std::isfinite(root_pass_backing_scale) ||
+        root_pass_backing_scale <= 0.0f ||
+        !std::isfinite(1.0f / root_pass_backing_scale)) {
+      root_pass_backing_scale = 1.0f;
+    }
   }
 
   for (size_t j = 0; j < passes_to_copy; ++j) {
@@ -1007,7 +990,9 @@ void SurfaceAggregator::EmitSurfaceContent(
     UpdatePersistentPassDataMergeState(resolved_pass, copy_pass.get(),
                                        /*is_merged_pass=*/false);
 
-    MoveMatchingRequests(source.id, &copy_requests, &copy_pass->copy_requests);
+    if (take_copy_requests_) {
+      copy_pass->copy_requests = resolved_pass.TakeCopyOutputRequests();
+    }
 
     // Contributing passes aggregated in to the pass list need to take the
     // transform of the surface quad into account to update their transform to
@@ -1015,7 +1000,7 @@ void SurfaceAggregator::EmitSurfaceContent(
     copy_pass->transform_to_root_target.PostConcat(combined_transform);
     copy_pass->transform_to_root_target.PostConcat(
         dest_pass->transform_to_root_target);
-    // Scale quads into the enlarged backing and remove the same backing-only
+    // Scale quads into the adjusted backing and remove the same backing-only
     // scale from the pass's mapping to the root target, preserving its
     // on-screen geometry.
     copy_pass->transform_to_root_target.Scale(1.0f / pass_backing_scale);
@@ -1516,13 +1501,6 @@ void SurfaceAggregator::CopyQuadsToPass(
 void SurfaceAggregator::CopyPasses(ResolvedFrameData& resolved_frame) {
   Surface* surface = resolved_frame.surface();
 
-  // The root surface is allowed to have copy output requests, so grab them
-  // off its render passes. This map contains a set of CopyOutputRequests
-  // keyed by each RenderPass id.
-  Surface::CopyRequestsMap copy_requests;
-  if (take_copy_requests_)
-    surface->TakeCopyOutputRequests(&copy_requests);
-
   if (!resolved_frame.is_valid()) {
     return;
   }
@@ -1542,6 +1520,10 @@ void SurfaceAggregator::CopyPasses(ResolvedFrameData& resolved_frame) {
         frame_metadata, surface_transform,
         root_resolved_pass.render_pass().transform_to_root_target,
         /*root_target_clip_rect=*/std::nullopt);
+  } else {
+    // This surface is being drawn for a CopyOutputRequest so we didn't mark
+    // mark it as drawn previously.
+    surface->MarkAsDrawn();
   }
 
   if (frame_metadata.delegated_ink_metadata) {
@@ -1563,13 +1545,16 @@ void SurfaceAggregator::CopyPasses(ResolvedFrameData& resolved_frame) {
     size_t dq_size = source.quad_list.size();
     auto copy_pass = std::make_unique<AggregatedRenderPass>(sqs_size, dq_size);
 
-    MoveMatchingRequests(source.id, &copy_requests, &copy_pass->copy_requests);
+    if (take_copy_requests_) {
+      copy_pass->copy_requests = resolved_pass.TakeCopyOutputRequests();
+    }
 
     // We add an additional render pass for the transform if the root render
     // pass has any copy requests.
     apply_surface_transform_to_root_pass =
         resolved_pass.is_root() &&
-        (copy_pass->copy_requests.empty() || surface_transform.IsIdentity());
+        (!resolved_pass.aggregation().has_copy_request ||
+         surface_transform.IsIdentity());
 
     gfx::Rect output_rect = source.output_rect;
     gfx::Transform transform_to_root_target = source.transform_to_root_target;
@@ -2100,12 +2085,14 @@ gfx::Rect SurfaceAggregator::PrewalkSurface(ResolvedFrameData& resolved_frame,
     }
   }
 
-  for (auto& resolved_pass : resolved_frame.GetResolvedPasses()) {
+  if (take_copy_requests_) {
     // Checking for copy requests need to be done after the prewalk because
     // copy requests can get added after damage is computed.
-    if (resolved_pass.HasCopyOutputRequests()) {
-      has_copy_requests_ = true;
-      MarkAndPropagateCopyRequestPasses(resolved_pass);
+    for (auto& resolved_pass : resolved_frame.GetResolvedPasses()) {
+      if (resolved_pass.CheckCopyOutputRequests()) {
+        has_copy_requests_ = true;
+        MarkAndPropagateCopyRequestPasses(resolved_pass);
+      }
     }
   }
 
@@ -2116,38 +2103,38 @@ gfx::Rect SurfaceAggregator::PrewalkSurface(ResolvedFrameData& resolved_frame,
   return damage_rect;
 }
 
-void SurfaceAggregator::CopyUndrawnSurfaces(PrewalkResult* prewalk_result) {
+void SurfaceAggregator::CopyUndrawnSurfaces(
+    base::flat_set<SurfaceId> undrawn_surfaces) {
   // undrawn_surfaces are Surfaces that were identified by prewalk as being
   // referenced by a drawn Surface, but aren't contained in a SurfaceDrawQuad.
   // They need to be iterated over to ensure that any copy requests on them
   // (or on Surfaces they reference) are executed.
-  std::vector<SurfaceId> surfaces_to_copy(
-      prewalk_result->undrawn_surfaces.begin(),
-      prewalk_result->undrawn_surfaces.end());
+  std::vector<SurfaceId> surfaces_to_copy(undrawn_surfaces.begin(),
+                                          undrawn_surfaces.end());
   DCHECK(referenced_surfaces_.empty());
 
   for (size_t i = 0; i < surfaces_to_copy.size(); i++) {
     SurfaceId surface_id = surfaces_to_copy[i];
     ResolvedFrameData* resolved_frame = GetResolvedFrame(surface_id);
-    if (!resolved_frame)
+    if (!resolved_frame || !resolved_frame->is_valid()) {
       continue;
+    }
 
-    Surface* surface = resolved_frame->surface();
-    if (!surface->HasCopyOutputRequests()) {
+    if (!resolved_frame->HasCopyOutputRequests()) {
       // Children are not necessarily included in undrawn_surfaces (because
       // they weren't referenced directly from a drawn surface), but may have
       // copy requests, so make sure to check them as well.
-      for (const SurfaceId& child_id : surface->active_referenced_surfaces()) {
+      for (const SurfaceId& child_id :
+           resolved_frame->surface()->active_referenced_surfaces()) {
         // Don't iterate over the child Surface if it was already listed as a
         // child of a different Surface, or in the case where there's infinite
         // recursion.
-        if (!prewalk_result->undrawn_surfaces.count(child_id)) {
+        if (!undrawn_surfaces.contains(child_id)) {
           surfaces_to_copy.push_back(child_id);
-          prewalk_result->undrawn_surfaces.insert(child_id);
+          undrawn_surfaces.insert(child_id);
         }
       }
     } else {
-      prewalk_result->undrawn_surfaces.erase(surface_id);
       referenced_surfaces_.insert(surface_id);
       CopyPasses(*resolved_frame);
       referenced_surfaces_.erase(surface_id);
@@ -2281,7 +2268,7 @@ AggregatedFrame SurfaceAggregator::Aggregate(
   frame.content_color_usage = prewalk_result.content_color_usage;
   frame.page_fullscreen_mode = prewalk_result.page_fullscreen_mode;
 
-  CopyUndrawnSurfaces(&prewalk_result);
+  CopyUndrawnSurfaces(std::move(prewalk_result.undrawn_surfaces));
   referenced_surfaces_.insert(surface_id);
   CopyPasses(*resolved_frame);
   referenced_surfaces_.erase(surface_id);

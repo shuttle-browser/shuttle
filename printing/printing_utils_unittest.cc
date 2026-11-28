@@ -8,6 +8,7 @@
 
 #include <limits>
 #include <string>
+#include <string_view>
 
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
@@ -34,14 +35,9 @@ constexpr gfx::Size kIsoA4Microns(210000, 297000);
 constexpr gfx::Size kNaLetterMicrons(216000, 279000);
 #endif
 
-std::string Simplify(const std::string& title) {
-  return base::UTF16ToUTF8(
-      SimplifyDocumentTitleWithLength(base::UTF8ToUTF16(title), kTestLength));
-}
-
-std::string Format(const std::string& owner, const std::string& title) {
-  return base::UTF16ToUTF8(FormatDocumentTitleWithOwnerAndLength(
-      base::UTF8ToUTF16(owner), base::UTF8ToUTF16(title), kTestLength));
+std::string Simplify(std::string_view title) {
+  return base::UTF16ToUTF8(SimplifyDocumentTitleWithLengthForTesting(
+      base::UTF8ToUTF16(title), kTestLength));
 }
 
 #if BUILDFLAG(IS_WIN)
@@ -60,18 +56,9 @@ TEST(PrintingUtilsTest, SimplifyDocumentTitle) {
   EXPECT_EQ("C__foo_", Simplify("C:/foo/"));
   EXPECT_EQ("a_b_c", Simplify("a<b\"c"));
   EXPECT_EQ("d_e_f_", Simplify("d*e?f~"));
+  EXPECT_EQ("g_h_i_j_", Simplify("g(h)i{j}"));
+  EXPECT_EQ("_.k_l._", Simplify(" .k\uffffl. "));
   EXPECT_EQ("", Simplify("\n\r\n\r\t\r"));
-}
-
-TEST(PrintingUtilsTest, FormatDocumentTitleWithOwner) {
-  EXPECT_EQ(": ", Format("", ""));
-  EXPECT_EQ("abc: ", Format("abc", ""));
-  EXPECT_EQ(": 123", Format("", "123"));
-  EXPECT_EQ("abc: 123", Format("abc", "123"));
-  EXPECT_EQ("abc: 0.9", Format("abc", "0123456789"));
-  EXPECT_EQ("ab...j: ", Format("abcdefghij", "123"));
-  EXPECT_EQ("xyz: _.o", Format("xyz", "\\f\\oo"));
-  EXPECT_EQ("ab...j: ", Format("abcdefghij", "0123456789"));
 }
 
 #if BUILDFLAG(USE_CUPS) && !BUILDFLAG(IS_CHROMEOS)

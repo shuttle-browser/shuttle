@@ -31,6 +31,7 @@
 #include "third_party/blink/renderer/core/html/html_frame_owner_element.h"
 #include "third_party/blink/renderer/core/html/html_image_element.h"
 #include "third_party/blink/renderer/core/html/html_picture_element.h"
+#include "third_party/blink/renderer/core/html/html_slot_element.h"
 #include "third_party/blink/renderer/core/html/parser/html_document_parser.h"
 #include "third_party/blink/renderer/core/inspector/identifiers_factory.h"
 #include "third_party/blink/renderer/core/inspector/inspector_animation_agent.h"
@@ -55,7 +56,6 @@
 #include "third_party/blink/renderer/platform/bindings/source_location.h"
 #include "third_party/blink/renderer/platform/bindings/thread_debugger.h"
 #include "third_party/blink/renderer/platform/instrumentation/instance_counters.h"
-#include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/traced_value.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_load_priority.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_load_timing.h"
@@ -280,10 +280,9 @@ void InspectorTraceEvents::Did(const probe::CallFunction& probe) {
 
 void InspectorTraceEvents::PaintTiming(Document* document,
                                        const char* name,
-                                       double timestamp) {
+                                       base::TimeTicks timestamp) {
   TRACE_EVENT_MARK_WITH_TIMESTAMP2("loading,rail,devtools.timeline", name,
-                                   trace_event::ToTraceTimestamp(timestamp),
-                                   "frame",
+                                   timestamp, "frame",
                                    GetFrameIdForTracing(document->GetFrame()),
                                    "data", [&](perfetto::TracedValue context) {
                                      GetNavigationTracingData(
@@ -500,6 +499,8 @@ const char inspector_style_invalidator_invalidate_event::
 const char inspector_style_invalidator_invalidate_event::
     kInvalidationSetMatchedPart[] = "Invalidation set matched part";
 const char inspector_style_invalidator_invalidate_event::
+    kInvalidationSetMatchedFocused[] = "Invalidation set matched focused";
+const char inspector_style_invalidator_invalidate_event::
     kInvalidationSetInvalidatesTreeCounting[] =
         "Invalidation set invalidates tree-counting";
 const char inspector_style_invalidator_invalidate_event::
@@ -524,16 +525,44 @@ void FillSelectors(
       InvalidationSetToSelectorMap::Lookup(&invalidation_set, feature_type,
                                            feature_value);
   if (selectors != nullptr && selectors->size() > 0) {
+    const InvalidationSetToSelectorMap::IndexedSelectorList* slotted_selectors =
+        nullptr;
+    bool looked_up_slotted_selectors = false;
+    auto is_slotted_selector = [&](const auto& selector) {
+      if (element.AssignedSlot() == nullptr) {
+        return false;
+      }
+      if (!looked_up_slotted_selectors) {
+        slotted_selectors = InvalidationSetToSelectorMap::Lookup(
+            &invalidation_set,
+            InvalidationSetToSelectorMap::SelectorFeatureType::kSlotted,
+            g_empty_atom);
+        looked_up_slotted_selectors = true;
+      }
+      return slotted_selectors != nullptr &&
+             slotted_selectors->Contains(selector);
+    };
     dict.Add("selectorCount", selectors->size());
     auto array = dict.AddArray("selectors");
     for (auto selector : *selectors) {
       auto selector_dict = array.AppendDictionary();
       selector_dict.Add("selector", selector->GetSelectorText());
       const StyleSheetContents* contents = selector->GetStyleSheetContents();
-      const CSSStyleSheet* style_sheet =
-          (contents != nullptr)
-              ? contents->ClientInTreeScope(element.GetTreeScope())
-              : nullptr;
+      const CSSStyleSheet* style_sheet = nullptr;
+      if (contents != nullptr) {
+        if (is_slotted_selector(selector)) {
+          for (HTMLSlotElement* slot = element.AssignedSlot(); slot != nullptr;
+               slot = slot->AssignedSlot()) {
+            style_sheet = contents->ClientInTreeScope(slot->GetTreeScope());
+            if (style_sheet != nullptr) {
+              break;
+            }
+          }
+        }
+        if (style_sheet == nullptr) {
+          style_sheet = contents->ClientInTreeScope(element.GetTreeScope());
+        }
+      }
       selector_dict.Add("style_sheet_id",
                         IdentifiersFactory::IdForCSSStyleSheet(style_sheet));
     }
@@ -573,6 +602,8 @@ void inspector_style_invalidator_invalidate_event::SelectorPart(
         InvalidationSetToSelectorMap::SelectorFeatureType::kAttribute;
   } else if (reason == kInvalidationSetMatchedPart) {
     feature_type = InvalidationSetToSelectorMap::SelectorFeatureType::kPart;
+  } else if (reason == kInvalidationSetMatchedFocused) {
+    feature_type = InvalidationSetToSelectorMap::SelectorFeatureType::kFocused;
   } else if (reason == kInvalidationSetInvalidatesSubtree) {
     feature_type =
         InvalidationSetToSelectorMap::SelectorFeatureType::kWholeSubtree;

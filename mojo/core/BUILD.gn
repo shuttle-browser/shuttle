@@ -127,11 +127,14 @@ source_set("impl_for_embedder") {
   # ipcz_driver/base_shared_memory_service.cc.
   if (is_posix && !is_apple && !is_android) {
     sources += [
-      "broker.h",
       "broker_host.cc",
+      "broker_posix.cc",
+    ]
+
+    public += [
+      "broker.h",
       "broker_host.h",
       "broker_messages.h",
-      "broker_posix.cc",
     ]
   }
 
@@ -173,6 +176,11 @@ source_set("test_sources") {
     "trap_unittest.cc",
   ]
 
+  # Keep in sync with the condition guarding the broker sources above.
+  if (is_posix && !is_apple && !is_android) {
+    sources += [ "broker_unittest.cc" ]
+  }
+
   if (use_blink) {
     sources += [
       "data_pipe_unittest.cc",
@@ -198,10 +206,6 @@ source_set("test_sources") {
     "//testing/gtest",
     "//third_party/ipcz/src:ipcz",
   ]
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 
 group("core_impl_for_fuzzers") {

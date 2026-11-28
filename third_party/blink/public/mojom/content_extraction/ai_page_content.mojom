@@ -193,12 +193,6 @@ enum AIPageContentClickabilityReason {
   // The node has mouse event handlers like mouseup and mousedown.
   kMouseClick,
 
-  // DEPRECATED: Replaced by kMouseEnter and kMouseOver. Maintained only for
-  // backward compatibility with older serialized page content.
-  // TODO(crbug.com/576774954): Remove once older serialized page content is no
-  // longer supported.
-  kMouseHover,
-
   // The node has a non-bubbling mouseenter event handler.
   kMouseEnter,
 
@@ -257,6 +251,15 @@ enum AIPageContentInteractionDisabledReason {
   kCursorNotAllowed,
   kAriaHidden,
   kAriaRolePresentational,
+
+  // The node or an ancestor has `pointer-events: none` or is marked inert.
+  kPointerEventsNone,
+
+  // The node has no visible pixels and cannot be scrolled into view, either
+  // because an `overflow: hidden` ancestor clips it out (e.g.
+  // `max-height: 0; overflow: hidden`) or because it is anchored outside the
+  // scrollable bounds (e.g. `left: -9999px` or off-viewport `position: fixed`).
+  kVisuallyUnreachable,
 };
 
 struct AIPageContentNodeInteractionInfo {
@@ -400,6 +403,11 @@ struct AIPageContentImageInfo {
   // The MIME type of the image. Common MIME types include image/jpeg,
   // image/png, image/gif, image/webp, and image/svg+xml.
   string? mime_type;
+
+  // Whether the image contains an embedded C2PA manifest. If unset, it is
+  // unknown whether the image contains a C2PA manifest (for example, if C2PA
+  // manifest detection is not supported for the image format).
+  bool? has_c2pa_manifest;
 };
 
 struct AIPageContentSvgRootData {

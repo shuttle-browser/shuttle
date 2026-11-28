@@ -83,6 +83,7 @@ component("gtk") {
     "gtk_ui_platform_stub.h",
     "gtk_util.h",
     "native_theme_gtk.h",
+    "nav_button_provider_gtk.h",
     "os_settings_provider_gtk.h",
     "select_file_dialog_linux_gtk.h",
   ]
@@ -191,10 +192,8 @@ component("gtk") {
   }
 
   if (ozone_platform_wayland) {
-    sources += [
-      "wayland/gtk_ui_platform_wayland.cc",
-      "wayland/gtk_ui_platform_wayland.h",
-    ]
+    public += [ "wayland/gtk_ui_platform_wayland.h" ]
+    sources += [ "wayland/gtk_ui_platform_wayland.cc" ]
   }
 
   # TODO: This should be removed.

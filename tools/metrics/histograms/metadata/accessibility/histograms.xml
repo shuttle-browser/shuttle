@@ -583,7 +583,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Accessibility.Android.RunningAccessibilityTools"
-    enum="AccessibilityAndroidAccessibilityTools" expires_after="2027-02-28">
+    enum="AccessibilityAndroidAccessibilityTools" expires_after="2027-05-02">
   <owner>aaronmoss@google.com</owner>
   <owner>davidsegovia@google.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
@@ -1299,7 +1299,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Accessibility.CrosDisableTouchpad" enum="BooleanEnabled"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>lkupo@chromium.org</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <summary>
@@ -2242,6 +2242,25 @@ recorded in the same way, even if they fit the naming pattern. -->
   </summary>
 </histogram>
 
+<histogram name="Accessibility.LiveCaption.SodaTfLiteDelegateStatus"
+    enum="SodaTfLiteDelegateStatus" expires_after="2027-05-03">
+  <owner>handellm@google.com</owner>
+  <owner>evliu@google.com</owner>
+  <owner>chrome-media-ux@google.com</owner>
+  <summary>
+    Whether the TFLite sessions in the Speech On-Device API (SODA) speech
+    recognition pipeline run on a TFLite delegate. &quot;Not delegated&quot;
+    means Chrome did not request a delegate in the SODA config. &quot;Delegate
+    success&quot; means the delegate was requested and every TFLite session runs
+    on it. &quot;Delegate fallback&quot; means the delegate was requested but at
+    least one TFLite session runs TFLite's built-in kernels instead. The
+    delegation failure rate is Fallback / (Success + Fallback). Logged once per
+    SODA pipeline load, at the first recognition session, by any speech
+    recognition client using SODA. Not logged when the pipeline reports no
+    TFLite sessions.
+  </summary>
+</histogram>
+
 <histogram
     name="Accessibility.LiveCaption.SodaVerificationFailureMissingIndicatorFile"
     enum="Boolean" expires_after="2027-04-20">
@@ -2350,7 +2369,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 </histogram>
 
 <histogram name="Accessibility.LiveTranslate.GetTranslation.TargetLanguage"
-    enum="LocaleCodeBCP47" expires_after="2027-02-28">
+    enum="LocaleCodeBCP47" expires_after="2027-05-02">
   <owner>danft@google.com</owner>
   <owner>evliu@google.com</owner>
   <owner>chrome-media-ux@google.com</owner>
@@ -2604,6 +2623,87 @@ recorded in the same way, even if they fit the naming pattern. -->
     Records the minimum font-size ratio (heading size divided by body baseline)
     observed on an individual page.
   </summary>
+</histogram>
+
+<histogram name="Accessibility.PdfHeuristics.ListEndReason"
+    enum="PdfAccessibilityListEndReason" expires_after="2027-08-01">
+  <owner>kristislee@google.com</owner>
+  <owner>komo-eng@google.com</owner>
+  <owner>chrome-a11y-core@google.com</owner>
+  <summary>
+    Records the reason a list ended in an untagged PDF document. Recorded once
+    per list (including nested lists) when it ends.
+  </summary>
+</histogram>
+
+<histogram name="Accessibility.PdfHeuristics.ListLastItemLengthRatio" units="%"
+    expires_after="2027-08-01">
+  <owner>kristislee@google.com</owner>
+  <owner>komo-eng@google.com</owner>
+  <owner>chrome-a11y-core@google.com</owner>
+  <summary>
+    Records the ratio of the last item length to the median of earlier items, in
+    characters, for a heuristic list in an untagged PDF document with at least
+    two items. Recorded once per list (including nested lists) when it ends.
+    High values suggest text after the list was absorbed into its last item.
+  </summary>
+</histogram>
+
+<histogram name="Accessibility.PdfHeuristics.ListMaxNestingDepth"
+    units="levels" expires_after="2027-08-01">
+  <owner>kristislee@google.com</owner>
+  <owner>komo-eng@google.com</owner>
+  <owner>chrome-a11y-core@google.com</owner>
+  <summary>
+    Records the maximum nesting depth reached by a top-level list in an untagged
+    PDF document. Recorded once per top-level list when the list ends.
+  </summary>
+</histogram>
+
+<histogram name="Accessibility.PdfHeuristics.ListStartReason"
+    enum="PdfAccessibilityListStartReason" expires_after="2027-08-01">
+  <owner>kristislee@google.com</owner>
+  <owner>komo-eng@google.com</owner>
+  <owner>chrome-a11y-core@google.com</owner>
+  <summary>
+    Records the reason a list was created in an untagged PDF document. Recorded
+    once per list (including nested lists) when it is created.
+  </summary>
+</histogram>
+
+<histogram name="Accessibility.PdfHeuristics.OrderedListLookaheadLines"
+    units="lines" expires_after="2027-04-01">
+  <owner>kristislee@google.com</owner>
+  <owner>komo-eng@google.com</owner>
+  <owner>chrome-a11y-core@google.com</owner>
+  <summary>
+    Records the number of intervening lines scanned by the ordered list
+    lookahead when it confirms a new ordered list in an untagged PDF document.
+    The overflow bucket (50) means it reached its line limit (15 lines) without
+    confirming. Recorded once per candidate marker; not recorded when the
+    lookahead rejects the candidate for another reason.
+  </summary>
+</histogram>
+
+<histogram name="Accessibility.PdfHeuristics.{Depth}{ListType}ListItemCount"
+    units="items" expires_after="2027-08-01">
+  <owner>kristislee@google.com</owner>
+  <owner>komo-eng@google.com</owner>
+  <owner>chrome-a11y-core@google.com</owner>
+  <summary>
+    Records the number of items in a heuristically detected {Depth} {ListType}
+    list in an untagged PDF document. Recorded once per list when it ends. A
+    nested list's items don't count toward its parent's count. Note that page
+    breaks split lists right now.
+  </summary>
+  <token key="Depth">
+    <variant name="Nested" summary="nested"/>
+    <variant name="TopLevel" summary="top-level"/>
+  </token>
+  <token key="ListType">
+    <variant name="Ordered" summary="ordered"/>
+    <variant name="Unordered" summary="unordered"/>
+  </token>
 </histogram>
 
 <histogram name="Accessibility.PdfHeuristics.{Role}Repetition"
@@ -3116,7 +3216,6 @@ recorded in the same way, even if they fit the naming pattern. -->
   <owner>lucasradaelli@google.com</owner>
   <owner>javiercon@microsoft.com</owner>
   <owner>janewman@microsoft.com</owner>
-  <owner>benjamin.beaudry@microsoft.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <summary>
     The time to execute a call to the UMA_API_ELEMENT_PROVIDER_FROM_POINT method
@@ -3325,7 +3424,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 </histogram>
 
 <histogram name="Accessibility.ReadAnything.EntryPointAfterOmnibox"
-    enum="ReadAnythingOpenTrigger" expires_after="2027-02-28">
+    enum="ReadAnythingOpenTrigger" expires_after="2027-05-02">
   <owner>kristislee@google.com</owner>
   <owner>komo-eng@google.com</owner>
   <summary>
@@ -3469,7 +3568,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 </histogram>
 
 <histogram name="Accessibility.ReadAnything.MathML.DistillationStatus"
-    enum="ReadAnythingMathMlDistillationStatus" expires_after="2027-03-01">
+    enum="ReadAnythingMathMlDistillationStatus" expires_after="2027-05-02">
   <owner>lwinston@google.com</owner>
   <owner>komo-eng@google.com</owner>
   <summary>
@@ -3480,7 +3579,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 </histogram>
 
 <histogram name="Accessibility.ReadAnything.MathML.PresentOnPage"
-    enum="Boolean" expires_after="2027-03-01">
+    enum="Boolean" expires_after="2027-05-02">
   <owner>lwinston@google.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <summary>
@@ -3609,7 +3708,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 </histogram>
 
 <histogram name="Accessibility.ReadAnything.Readability.EarlySelection"
-    enum="ReadAnythingEarlySelection" expires_after="2027-03-01">
+    enum="ReadAnythingEarlySelection" expires_after="2027-05-02">
   <owner>gusmartin@google.com</owner>
   <owner>chrome-irm-devs@google.com</owner>
   <summary>
@@ -3852,7 +3951,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 </histogram>
 
 <histogram name="Accessibility.ReadAnything.SpeechError"
-    enum="ReadAnythingSpeechError" expires_after="2027-02-28">
+    enum="ReadAnythingSpeechError" expires_after="2027-05-02">
   <owner>lwinston@google.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <summary>
@@ -3952,7 +4051,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 
 <histogram
     name="Accessibility.ReadAnything.TimeFromStartDistillationToOnArticleReady"
-    units="ms" expires_after="2027-03-01">
+    units="ms" expires_after="2027-05-02">
   <owner>martinglopez@google.com</owner>
   <owner>chrome-irm-devs@google.com</owner>
   <summary>
@@ -3964,7 +4063,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 
 <histogram
     name="Accessibility.ReadAnything.TimeFromTreeChangedToDistillationComplete"
-    units="ms" expires_after="2027-03-01">
+    units="ms" expires_after="2027-05-02">
   <owner>gusmartin@google.com</owner>
   <owner>chrome-irm-devs@google.com</owner>
   <summary>
@@ -4032,7 +4131,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 </histogram>
 
 <histogram name="Accessibility.ReadAnything.Words{Action}" units="words"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>kristislee@google.com</owner>
   <owner>lwinston@google.com</owner>
   <owner>ammedina@google.com</owner>
@@ -4592,7 +4691,6 @@ recorded in the same way, even if they fit the naming pattern. -->
 <histogram name="Accessibility.Win.ActiveClientApis" enum="ActiveClientApi"
     expires_after="2027-04-17">
   <owner>lucasradaelli@google.com</owner>
-  <owner>benjamin.beaudry@microsoft.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <owner>janewman@microsoft.com</owner>
   <summary>
@@ -4607,7 +4705,6 @@ recorded in the same way, even if they fit the naming pattern. -->
 <histogram name="Accessibility.Win.RequestedClientApis" enum="ActiveClientApi"
     expires_after="2027-04-17">
   <owner>lucasradaelli@google.com</owner>
-  <owner>benjamin.beaudry@microsoft.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <owner>janewman@microsoft.com</owner>
   <summary>
@@ -4642,7 +4739,6 @@ recorded in the same way, even if they fit the naming pattern. -->
     expires_after="2026-12-06">
   <owner>lucasradaelli@google.com</owner>
   <owner>almaher@microsoft.com</owner>
-  <owner>benjamin.beaudry@microsoft.com</owner>
   <owner>janewman@microsoft.com</owner>
   <owner>javiercon@microsoft.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
@@ -4665,7 +4761,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 <!-- expires-never: usage drives a11y prioritization in browser and content. -->
 
   <owner>lucasradaelli@google.com</owner>
-  <owner>benjamin.beaudry@microsoft.com</owner>
+  <owner>janewman@microsoft.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <summary>
     Tracks if the JAWS version predates the fix for Chrome’s UIA support. True
@@ -4679,7 +4775,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 <!-- expires-never: usage drives a11y prioritization in browser and content. -->
 
   <owner>lucasradaelli@google.com</owner>
-  <owner>benjamin.beaudry@microsoft.com</owner>
+  <owner>janewman@microsoft.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <summary>
     Tracks the major version of JAWS detected. Recorded when the AXMode in the
@@ -4693,7 +4789,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 <!-- expires-never: usage drives a11y prioritization in browser and content. -->
 
   <owner>lucasradaelli@google.com</owner>
-  <owner>benjamin.beaudry@microsoft.com</owner>
+  <owner>janewman@microsoft.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <summary>
     Tracks the major version of NVDA detected. Recorded when the AXMode in the
@@ -4717,7 +4813,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 <histogram name="Accessibility.WinUIA.ClientDisconnected"
     enum="UiaClientProcess" expires_after="2027-04-28">
   <owner>lucasradaelli@google.com</owner>
-  <owner>benjamin.beaudry@microsoft.com</owner>
+  <owner>janewman@microsoft.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <summary>
     Records the base::PersistentHash of the lowercased process name of a UIA
@@ -4731,7 +4827,7 @@ recorded in the same way, even if they fit the naming pattern. -->
 <histogram name="Accessibility.WinUIA.ClientProcess.{AXModeFlag}"
     enum="UiaClientProcess" expires_after="2027-04-28">
   <owner>lucasradaelli@google.com</owner>
-  <owner>benjamin.beaudry@microsoft.com</owner>
+  <owner>janewman@microsoft.com</owner>
   <owner>chrome-a11y-core@google.com</owner>
   <summary>
     Records the base::PersistentHash of each distinct lowercased UIA client

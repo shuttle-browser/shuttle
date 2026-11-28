@@ -53,8 +53,10 @@ source_set("enterprise") {
     "//components/url_matcher",
     "//content/public/browser",
     "//extensions/buildflags",
+    "//google_apis",
     "//services/data_decoder/public/cpp",
     "//ui/base/idle",
+    "//ui/base/unowned_user_data",
     "//url",
   ]
 
@@ -143,7 +145,6 @@ source_set("impl") {
     "//components/certificate_matching",
     "//components/content_settings/core/browser",
     "//components/device_event_log",
-    "//components/dom_distiller/core",
     "//components/enterprise",
     "//components/enterprise/browser/identifiers",
     "//components/enterprise/common:files_scan_data",
@@ -162,7 +163,9 @@ source_set("impl") {
     "//components/safe_browsing/core/common/proto:csd_proto",
     "//components/sessions",
     "//components/user_prefs",
+    "//components/web_distiller/core",
     "//crypto",
+    "//google_apis",
     "//ui/base/unowned_user_data",
     "//ui/message_center/public/cpp",
   ]

@@ -20,7 +20,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_popup_view.h"
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
 #include "chrome/browser/ui/ui_features.h"
-#include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_base.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter_service.h"
 #include "chrome/browser/ui/webui/omnibox_popup/full_webui_omnibox_layout_helper.h"
@@ -31,6 +30,7 @@
 #include "chrome/browser/ui/webui/searchbox/webui_omnibox_handler.h"
 #include "chrome/browser/ui/webui/theme_colors_source_manager.h"
 #include "chrome/browser/ui/webui/theme_colors_source_manager_factory.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_profile.h"
 #include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_user_profile.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/webui_url_constants.h"
@@ -45,18 +45,6 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/webui/webui_util.h"
-
-namespace {
-
-// Returns whether the WebUIDataSource of `web_ui` is shared by the windows of
-// all profiles, i.e. it is in TopChromeWebUIProfile. If so, the loadTimeData
-// values that depend on the profile are passed to each frame instead of being
-// in the data source.
-bool IsWebUIDataSourceShared(content::WebUI* web_ui) {
-  return Profile::FromWebUI(web_ui)->IsTopChromeWebUIProfile();
-}
-
-}  // namespace
 
 bool OmniboxPopupUIConfig::IsWebUIEnabled(
     content::BrowserContext* browser_context) {
@@ -73,9 +61,10 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
     : TopChromeWebUIController(web_ui,
                                /*enable_chrome_send=*/true,
                                /*enable_chrome_histograms=*/true),
-      profile_(Profile::FromWebUI(web_ui)) {
+      content::WebContentsObserver(web_ui->GetWebContents()),
+      profile_(webui::GetUserProfile(web_ui->GetWebContents())) {
   content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
-      profile_, chrome::kChromeUIOmniboxPopupHost);
+      Profile::FromWebUI(web_ui), chrome::kChromeUIOmniboxPopupHost);
 
   source->AddLocalizedStrings(
       SearchboxHandler::GetProfileIndependentWebUIDataSourceDict(
@@ -83,9 +72,16 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
   // The values that depend on the profile. If the data source is shared by the
   // windows of all profiles, WebUIRenderFrameCreated() passes them to each
   // frame instead.
-  if (!IsWebUIDataSourceShared(web_ui)) {
+  if (!webui::IsWebUIDataSourceShared(web_ui)) {
     source->AddLocalizedStrings(GetProfileLoadTimeData(profile_));
   }
+
+  // Default search engine placeholders, see
+  // `omnibox_popup::mojom::PlaceholderType`. `$1` is the search engine name.
+  source->AddLocalizedString("omniboxSearchOrTypeUrlPlaceholder",
+                             IDS_OMNIBOX_PLACEHOLDER_TEXT);
+  source->AddLocalizedString("omniboxAskOrTypeUrlPlaceholder",
+                             IDS_WEBUI_OMNIBOX_PLACEHOLDER_TEXT);
 
   source->AddBoolean("isTopChromeSearchbox", true);
   FullWebUIOmniboxLayoutHelper::PopulateLoadTimeData(source);
@@ -133,11 +129,16 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
       network::mojom::CSPDirectiveName::MediaSrc,
       "media-src blob: data: 'self';");
 
-  content::URLDataSource::Add(profile_,
-                              std::make_unique<SanitizedImageSource>(profile_));
-  content::URLDataSource::Add(
-      profile_, std::make_unique<FaviconSource>(
-                    profile_, chrome::FaviconUrlFormat::kFavicon2));
+  {
+    // The URL data sources are added to the profile of the WebUI, which is
+    // shared by the windows of all profiles in TopChromeWebUIProfile.
+    Profile* webui_profile = Profile::FromWebUI(web_ui);
+    content::URLDataSource::Add(
+        webui_profile, std::make_unique<SanitizedImageSource>(webui_profile));
+    content::URLDataSource::Add(
+        webui_profile, std::make_unique<FaviconSource>(
+                           webui_profile, chrome::FaviconUrlFormat::kFavicon2));
+  }
 }
 
 OmniboxPopupUI::~OmniboxPopupUI() = default;
@@ -152,20 +153,24 @@ base::DictValue OmniboxPopupUI::GetProfileLoadTimeData(Profile* profile) {
       SearchboxHandler::GetProfileDependentWebUIDataSourceDict(
           profile, {.session_allows_drag_and_drop = false});
 
+  // We lack `WebContents` `ColorProvider` context to fetch theme from.
+  // Default to light mode; `OmniboxPopupHandler` will push the correct themed
+  // icon upon connection.
   dict.Set("searchboxDefaultIcon",
            GetDefaultSearchProviderIcon(
-               TemplateURLServiceFactory::GetForProfile(profile)));
+               TemplateURLServiceFactory::GetForProfile(profile),
+               /*is_dark_mode=*/false));
   return dict;
 }
 
 void OmniboxPopupUI::WebUIRenderFrameCreated(
     content::RenderFrameHost* render_frame_host) {
   // If the data source isn't shared, the constructor added these values to it.
-  if (!IsWebUIDataSourceShared(web_ui())) {
+  if (!webui::IsWebUIDataSourceShared(web_ui())) {
     return;
   }
-  if (std::optional<std::string> json = base::WriteJson(GetProfileLoadTimeData(
-          webui::GetUserProfile(web_ui()->GetWebContents())))) {
+  if (std::optional<std::string> json =
+          base::WriteJson(GetProfileLoadTimeData(profile_))) {
     render_frame_host->SetWebUIProperty("profileLoadTimeData", *json);
   }
 }
@@ -184,6 +189,12 @@ void OmniboxPopupUI::PopulateLocalResourceLoaderConfig(
   }
   theme_colors_manager->PopulateLocalResourceLoaderConfig(
       config, requesting_origin, web_ui()->GetWebContents());
+}
+
+void OmniboxPopupUI::OnColorProviderChanged() {
+  if (popup_handler_) {
+    popup_handler_->NotifyDefaultSearchProviderChanged();
+  }
 }
 
 void OmniboxPopupUI::BindInterface(
@@ -212,15 +223,15 @@ void OmniboxPopupUI::CreatePageHandler(
         static_cast<ChromeOmniboxClient*>(omnibox_controller->client());
     CHECK(client);
     omnibox_handler_ = std::make_unique<WebuiOmniboxFullHandler>(
-        std::move(pending_page_handler), std::move(page),
-        Profile::FromWebUI(web_ui()), web_ui()->GetWebContents(),
+        std::move(pending_page_handler), std::move(page), profile_,
+        web_ui()->GetWebContents(),
         std::make_unique<ChromeOmniboxClient>(
             client->GetLocationBar(), client->browser(), client->profile()));
   } else {
     omnibox_handler_ = std::make_unique<WebuiOmniboxHandler>(
         std::move(pending_page_handler), std::move(page),
         metrics_reporter_service->metrics_reporter(), omnibox_controller,
-        web_ui());
+        profile_, web_ui()->GetWebContents());
   }
 }
 
@@ -253,6 +264,45 @@ void OmniboxPopupUI::CreatePageHandler(
   }
 }
 
-void OmniboxPopupUI::SetPresenterDelegate(OmniboxPopupPresenterBase* delegate) {
-  presenter_delegate_ = delegate;
+void OmniboxPopupUI::SetSearchboxHandlerDelegate(
+    SearchboxHandler::Delegate* delegate) {
+  searchbox_handler_delegate_ = delegate;
+}
+
+void OmniboxPopupUI::DetachFromWindow() {
+  if (omnibox_handler_) {
+    // The full WebUI popup's handler is bound to one window.
+    CHECK(!omnibox::ShouldUseWebUIOmniboxFullHandler());
+    static_cast<WebuiOmniboxHandler*>(omnibox_handler_.get())
+        ->DetachFromOmniboxController();
+  }
+  if (popup_handler_) {
+    popup_handler_->DetachFromOmniboxController();
+  }
+  // Leaves no pointer into the old window, which may close before the popup
+  // is attached to another one.
+  OmniboxPopupWebContentsHelper::GetOrCreateForWebContents(
+      web_ui()->GetWebContents())
+      ->set_omnibox_controller(nullptr);
+}
+
+void OmniboxPopupUI::AttachToWindow(OmniboxController* omnibox_controller) {
+  CHECK(omnibox_controller);
+  // The handlers read the controller from the helper.
+  OmniboxPopupWebContentsHelper::GetOrCreateForWebContents(
+      web_ui()->GetWebContents())
+      ->set_omnibox_controller(omnibox_controller);
+  if (omnibox_handler_) {
+    static_cast<WebuiOmniboxHandler*>(omnibox_handler_.get())
+        ->AttachToOmniboxController(omnibox_controller);
+  }
+  if (popup_handler_) {
+    popup_handler_->AttachToOmniboxController(omnibox_controller);
+  }
+}
+
+bool OmniboxPopupUI::CanMoveToAnotherWindow() const {
+  // Shuttle: the AI Mode popup and Drive uploads are removed, so there is no
+  // per-window work a move could lose.
+  return true;
 }

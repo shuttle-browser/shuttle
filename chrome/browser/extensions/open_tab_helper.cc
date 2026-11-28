@@ -6,6 +6,7 @@
 
 #include "base/memory/weak_ptr.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/time/time.h"
 #include "base/types/expected_macros.h"
 #include "chrome/browser/extensions/api/tabs/tabs_constants.h"
 #include "chrome/browser/extensions/browser_window_util.h"
@@ -30,8 +31,8 @@
 #include "extensions/common/extension_features.h"
 #include "extensions/common/manifest_handlers/incognito_info.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -192,9 +193,9 @@ base::expected<content::WebContents*, std::string> OpenTabHelper::OpenTab(
 
   NavigateParams navigate_params(&browser, validated_url,
                                  ui::PAGE_TRANSITION_LINK);
-  navigate_params.disposition = active
-                                    ? WindowOpenDisposition::kNewForegroundTab
-                                    : WindowOpenDisposition::kNewBackgroundTab;
+  navigate_params.disposition =
+      active ? ui::mojom::WindowOpenDisposition::kNewForegroundTab
+             : ui::mojom::WindowOpenDisposition::kNewBackgroundTab;
 
   // If splitWithTabId is specified, determine the relative positioning of the
   // new tab. Defaults to the right of the target tab if index is not specified.

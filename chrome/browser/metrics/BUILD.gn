@@ -224,6 +224,10 @@ source_set("metrics") {
     public += [ "chrome_metrics_service_crash_reporter.h" ]
   }
 
+  if (is_posix) {
+    public += [ "client_id_backup_correctness_fix_field_trial.h" ]
+  }
+
   if (enable_extensions_core) {
     public += [ "extensions_metrics_provider.h" ]
   }
@@ -283,16 +287,19 @@ source_set("impl") {
     "//chrome/browser/resource_coordinator:mojo_bindings",
     "//chrome/browser/resource_coordinator:utils",
     "//chrome/browser/safe_browsing",
+    "//chrome/browser/search",
     "//chrome/browser/site_isolation",
     "//chrome/browser/subscription_eligibility",
     "//chrome/browser/tracing",
     "//chrome/browser/ui:browser_otr_state",
     "//chrome/browser/ui:recently_audible_helper",
     "//chrome/browser/ui:ui_features",
+    "//chrome/browser/ui/tab_contents",
     "//chrome/browser/upgrade_detector",
     "//components/crash/core/app",
     "//components/language/core/browser",
     "//components/metrics:component_metrics",
+    "//components/metrics:system_profile_user_stream",
     "//components/metrics/demographics",
     "//components/metrics/private_metrics",
     "//components/metrics/private_metrics:dwa_recorder",
@@ -327,6 +334,7 @@ source_set("impl") {
     ]
     deps += [
       "//chrome/browser/notifications:jni_headers",
+      "//chrome/browser/ui/browser_window",
     ]
     if (current_cpu == "arm") {
       deps += [ "//third_party/cpu_features:ndk_compat" ]
@@ -412,7 +420,6 @@ source_set("impl") {
     ]
     deps += [
       "//chrome/browser/ash/arc",
-      "//chrome/browser/ash/arc/vmm",
       "//chrome/browser/ash/login/demo_mode",
       "//chrome/browser/ash/multidevice_setup",
       "//chrome/browser/ash/printing",
@@ -490,6 +497,10 @@ source_set("impl") {
     sources += [ "chrome_metrics_service_crash_reporter.cc" ]
   }
 
+  if (is_posix) {
+    sources += [ "client_id_backup_correctness_fix_field_trial.cc" ]
+  }
+
   if (enable_extensions_core) {
     sources += [ "extensions_metrics_provider.cc" ]
     deps += [ "//chrome/browser/extensions" ]
@@ -530,9 +541,15 @@ if (is_android) {
       "//components/metrics/private_metrics:dwa_recorder",
       "//components/metrics/private_metrics:private_metrics_features",
       "//components/metrics/structured",
+      "//components/policy:generated",
+      "//components/policy/core/browser",
+      "//components/policy/core/common",
+      "//components/policy/core/common:test_support",
       "//components/ukm:ukm_test_helper",
       "//components/webui/chrome_urls",
       "//content/test:test_support",
+      "//extensions/buildflags",
+      "//testing/gmock",
       "//testing/gtest",
       "//third_party/federated_compute:confidential_compute",
       "//third_party/federated_compute:confidential_compute_crypto_test_util",

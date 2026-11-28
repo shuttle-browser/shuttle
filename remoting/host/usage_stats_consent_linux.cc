@@ -19,6 +19,7 @@
 #include "remoting/base/branding.h"
 #include "remoting/base/file_path_util_linux.h"
 #include "remoting/base/is_google_email.h"
+#include "remoting/base/fqdn.h"
 #include "remoting/host/config_file_watcher.h"
 #include "remoting/host/host_config.h"
 
@@ -70,8 +71,6 @@ bool GetUsageStatsConsentFromFile(const base::FilePath& path,
 }  // namespace
 
 bool GetUsageStatsConsent(bool* allowed, bool* set_by_policy) {
-  std::string consent_content;
-
   // We don't know if the host is single-process or multi-process, so we always
   // check the consent file first.
   if (base::PathExists(GetMultiProcessHostUsageStatsConsentFile())) {

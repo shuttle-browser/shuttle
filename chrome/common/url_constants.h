@@ -542,19 +542,6 @@ inline constexpr char kComposeLearnMorePageURL[] =
 inline constexpr char kComposeLearnMorePageManagedURL[] =
     "https://support.google.com/chrome/a?p=help_me_write_settings";
 
-// The URL for the "Learn more" links for pages related to History search.
-inline constexpr char kHistorySearchLearnMorePageURL[] =
-    "https://support.google.com/chrome?p=ai_history_search";
-
-// The URL for the "Learn more" links for pages related to History search for
-// managed users.
-inline constexpr char kHistorySearchLearnMorePageManagedURL[] =
-    "https://support.google.com/chrome/a?p=search_history";
-
-// The URL for the Settings page to enable history search.
-inline constexpr char16_t kHistorySearchSettingURL[] =
-    u"chrome://settings/ai/historySearch";
-
 // The URL for the "Learn more" page for Wallpaper Search.
 inline constexpr char kWallpaperSearchLearnMorePageURL[] =
     "https://support.google.com/chrome?p=create_themes_with_ai";
@@ -595,10 +582,6 @@ inline constexpr char kPrivacyPolicyURL[] =
 // The URL path to Google's Privacy Policy page for users in China.
 inline constexpr char kPrivacyPolicyURLChina[] =
     "https://policies.google.cn/privacy";
-
-// The URL path to Google's Embedded Privacy Policy page.
-inline constexpr char kPrivacyPolicyOnlineURLPath[] =
-    "https://policies.google.com/privacy/embedded";
 
 // The URL path to Google's Embedded Privacy Policy page for users in China.
 inline constexpr char kPrivacyPolicyEmbeddedURLPathChina[] =

@@ -113,7 +113,10 @@ def cq_build_perf_builder(description_html, **kwargs):
     # Run the extra missing-deps check build (crbug.com/346429448) on all
     # platforms by default; builders can opt out by passing
     # enable_missing_deps_check = False in properties.
-    props = {"enable_missing_deps_check": True}
+    props = {
+        "enable_missing_deps_check": True,
+        "enable_step_weights": True,
+    }
     props.update(kwargs.pop("properties", {}))
     return ci.builder(
         description_html = description_html + "<br>Build stats are shown in <a href=\"http://shortn/_wiYV1BraSr\">http://shortn/_wiYV1BraSr</a>.",
@@ -277,7 +280,14 @@ cq_build_perf_builder(
     properties = {
         # Only the baseline clean and incremental build times matter here.
         "enable_missing_deps_check": False,
+        "enable_step_weights": False,
     },
+    # Link locally on 384 vCPUs + NVMe RAID-0 instead of downloading linked
+    # binaries back from CAS.
+    siso_configs = ["builder"],
+    # Enable fast-local as linux-build-perf-developer does while Siso racing
+    # can drop inputs on context cancellation (https://crbug.com/579630786).
+    siso_disable_batch_mode = True,
     # On 384 vCPUs siso exhausts the Cloud Trace write quota within minutes,
     # and the backed-up exporter then blocks every clog call behind its
     # bundler mutex, which stalls the build (http://b/575633282).
@@ -319,7 +329,12 @@ cq_build_perf_builder(
     properties = {
         # Only the baseline clean and incremental build times matter here.
         "enable_missing_deps_check": False,
+        "enable_step_weights": False,
     },
+    # Link locally on 192 vCPUs + local SSDs. Leave "racing" off until Siso's
+    # runStrategy honors strict_remote on clang-cl/cxx_module
+    # (https://crbug.com/477762548).
+    siso_configs = ["builder"],
     # Enabling local profiler hangs windows builders (http://b/476821630). So set cloud explicitly here.
     siso_profile_mode = "cloud",
 )
@@ -473,6 +488,7 @@ def developer_build_perf_builder(description_html, **kwargs):
         # Run the extra missing-deps check build (crbug.com/346429448) on all
         # platforms.
         "enable_missing_deps_check": True,
+        "enable_step_weights": True,
     }
     return ci.builder(
         description_html = description_html + "<br>Build stats are shown in <a href=\"http://shortn/_wiYV1BraSr\">http://shortn/_wiYV1BraSr</a>." +
@@ -676,7 +692,11 @@ This builder measures build performance for iOS developer builds, by simulating 
 # Experimental builder set up to track local CPU time for Chromium build. b/333389736
 ci.builder(
     name = "linux-build-perf-no-rbe",
-    description_html = "Monitoring CPU time to build `chrome` target locally without remote executions.<br>Build stats are shown in <a href=\"http://shortn/_wiYV1BraSr\">http://shortn/_wiYV1BraSr</a>.",
+    description_html = (
+        "Monitoring CPU time to build <code>chrome</code> target locally without remote execution.<br>" +
+        "Build actions run without network access during compile (Siso <code>--block_action_network_access</code>).<br>" +
+        "Build stats are shown in <a href=\"http://shortn/_wiYV1BraSr\">http://shortn/_wiYV1BraSr</a>."
+    ),
     executable = "recipe:chrome_build/build_perf_without_rbe",
     builder_spec = builder_config.builder_spec(
         gclient_config = builder_config.gclient_config(

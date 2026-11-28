@@ -94,9 +94,10 @@ def _get_json(path):
     """Reads a JSON file and records the path for depfile tracking."""
     path = os.path.join(_output_dir_path, path)
     _input_paths.append(path)
-    with open(path, encoding='utf-8') as f:
-        config = json.loads(f.read())
-    return config
+    # Unbuffered binary reads use fewer syscalls than text mode, which adds
+    # up when reading thousands of files.
+    with open(path, 'rb', buffering=0) as f:
+        return json.loads(f.readall())
 
 
 @functools.cache
@@ -140,25 +141,31 @@ def _topological_walk(top, deps_func):
 
 def _filter_deps(deps, restrict_to_resource_types=False):
     """Filters dependencies based on their type."""
+    # Checks are inlined rather than using helper methods since this is called
+    # on hundreds of thousands of deps for large targets.
     if restrict_to_resource_types:
         # Consider groups that set input_jars_paths() as java targets. This
         # prevents such groups from contributing to the classpath when they are
         # depended on via resource deps. Admittedly, a bit of a hack...
-        keep_func = lambda x: (  # noqa: E731
-            x.is_resource_type()
-            or (x.is_group() and not x.get('input_jars_paths'))
-        )
+        return [
+            d
+            for d in deps
+            if d.type in _RESOURCE_TYPES
+            or (d.type == 'group' and not d.get('input_jars_paths'))
+        ]
 
-    else:
-        keep_func = lambda x: not x.is_root_type()  # noqa: E731
-
-    return [d for d in deps if keep_func(d)]
+    return [d for d in deps if d.type not in _ROOT_TYPES]
 
 
 def _collect_public_deps(deps):
     """Recursively collects all public_deps from a list of dependencies."""
     # public_deps() contains public_deps of public_deps, so no need to recurse.
-    return list(itertools.chain.from_iterable(x.public_deps() for x in deps))
+    # De-duplicate since the public_deps of different deps overlap heavily.
+    return list(
+        dict.fromkeys(
+            itertools.chain.from_iterable(x.public_deps() for x in deps)
+        )
+    )
 
 
 def _deps_for_traversal(dep):
@@ -333,8 +340,11 @@ class ParamsJson(dict):
         self.path = path
         self.type = self['type']
 
-    def __hash__(self):
-        return id(self)
+    # Hash by identity. This cannot be omitted because dict sets __hash__ to
+    # None (as does defining __eq__). Uses object's C implementation rather than
+    # a Python method because this is called millions of times during graph
+    # traversal.
+    __hash__ = object.__hash__
 
     def __eq__(self, other):
         return self is other
@@ -361,10 +371,6 @@ class ParamsJson(dict):
         return get_build_config(
             self.build_config_path('.manifest.build_config.json')
         )
-
-    def is_root_type(self):
-        """Returns True if the target type is a "root" type (e.g., an APK)."""
-        return self.type in _ROOT_TYPES
 
     def collects_resources(self):
         """Returns True if the target type collects Android resources."""
@@ -517,7 +523,7 @@ class ParamsJson(dict):
             _collect_public_deps(deps),
             restrict_to_resource_types=self.is_resource_type(),
         )
-        return DepsList(deps, sealed=True)
+        return DepsList(dict.fromkeys(deps), sealed=True)
 
     @functools.cache
     def processor_deps(self):

@@ -14,3 +14,8 @@ include_rules = [
   "+components/visitedlink/core",
   "+crypto",
 ]
+
+specific_include_rules = {
+  "browsing_history_service.*": [
+  ],
+}

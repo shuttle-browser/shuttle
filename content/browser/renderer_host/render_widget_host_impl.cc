@@ -133,6 +133,7 @@
 #include "skia/ext/skia_utils_base.h"
 #include "storage/browser/file_system/isolated_context.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/input/synthetic_web_input_event_builders.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/common/widget/constants.h"
@@ -165,7 +166,6 @@
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/skbitmap_operations.h"
-#include "ui/gfx/switches.h"
 #include "ui/snapshot/snapshot.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -202,7 +202,7 @@ constexpr gfx::Rect kInvalidScreenRect(std::numeric_limits<int>::max(),
 
 #if BUILDFLAG(IS_LINUX)
 // Shuttle: how long a surface snapshot waits for its ForceRedraw before it
-// copies the newest surface anyway (headless only). Normal acks take tens of
+// copies the newest surface anyway (all of Linux). Normal acks take tens of
 // ms; the first frame of a fresh background tab can take ~2.5 s.
 constexpr base::TimeDelta kSurfaceSnapshotRedrawTimeout = base::Seconds(3);
 #endif
@@ -1661,6 +1661,8 @@ void RenderWidgetHostImpl::DidNavigate() {
     // script, which already reports the access over the renderer's own IPC.
     CancelNonEmptyCompositorFrameNotification();
   }
+
+  ClearExpectedUserActivationNotifications();
 }
 
 void RenderWidgetHostImpl::InitializePaintHolding(bool active) {
@@ -1947,6 +1949,7 @@ void RenderWidgetHostImpl::ForwardKeyboardEventWithCommands(
   if (touch_emulator && touch_emulator->HandleKeyboardEvent(key_event)) {
     return;
   }
+
   input::NativeWebKeyboardEventWithLatencyInfo key_event_with_latency(key_event,
                                                                       latency);
   key_event_with_latency.event.is_browser_shortcut = is_shortcut;
@@ -2149,11 +2152,12 @@ void RenderWidgetHostImpl::DragTargetDragEnterWithMetaData(
     DragOperationsMask operations_allowed,
     int key_modifiers,
     DragOperationCallback callback) {
+  const uint64_t drag_target_session_id = ++drag_target_session_id_;
   // TODO(crbug.com/40138933): Replace with a for_frame() check.
   if (blink_frame_widget_) {
-    DragOperationCallback callback_wrapper =
-        base::BindOnce(&RenderWidgetHostImpl::OnUpdateDragOperation,
-                       base::Unretained(this), std::move(callback));
+    DragOperationCallback callback_wrapper = base::BindOnce(
+        &RenderWidgetHostImpl::OnUpdateDragOperation, base::Unretained(this),
+        drag_target_session_id, std::move(callback));
     blink_frame_widget_->DragTargetDragEnter(
         DropMetaDataToDragData(metadata),
         ConvertWindowPointToViewport(client_pt), screen_pt, operations_allowed,
@@ -2173,13 +2177,15 @@ void RenderWidgetHostImpl::DragTargetDragOver(
         ConvertWindowPointToViewport(client_point), screen_point,
         operations_allowed, key_modifiers,
         base::BindOnce(&RenderWidgetHostImpl::OnUpdateDragOperation,
-                       base::Unretained(this), std::move(callback)));
+                       base::Unretained(this), drag_target_session_id_,
+                       std::move(callback)));
   }
 }
 
 void RenderWidgetHostImpl::DragTargetDragLeave(
     const gfx::PointF& client_point,
     const gfx::PointF& screen_point) {
+  ++drag_target_session_id_;
   // TODO(crbug.com/40138933): Replace with a for_frame() check.
   if (blink_frame_widget_) {
     blink_frame_widget_->DragTargetDragLeave(
@@ -2192,6 +2198,7 @@ void RenderWidgetHostImpl::DragTargetDrop(const DropData& drop_data,
                                           const gfx::PointF& screen_point,
                                           int key_modifiers,
                                           base::OnceClosure callback) {
+  ++drag_target_session_id_;
   // TODO(crbug.com/40138933): Replace with a for_frame() check.
   if (blink_frame_widget_) {
     DropData drop_data_with_permissions(drop_data);
@@ -2380,17 +2387,14 @@ void RenderWidgetHostImpl::GetSnapshotFromBrowser(
     } else {
       RequestForceRedraw(snapshot_id);
 #if BUILDFLAG(IS_LINUX)
-      // Shuttle: in headless mode on Linux, don't wait forever for the forced
-      // frame (ForceRedrawTimedOut). Elsewhere a slow renderer still gets the
-      // full wait, so a capture never returns an older frame there.
-      if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-              switches::kHeadless)) {
-        base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
-            FROM_HERE,
-            base::BindOnce(&RenderWidgetHostImpl::ForceRedrawTimedOut,
-                           weak_factory_.GetWeakPtr(), snapshot_id),
-            kSurfaceSnapshotRedrawTimeout);
-      }
+      // Shuttle: on Linux (headless, X11, Wayland), don't wait forever for the
+      // forced frame of a background tab (ForceRedrawTimedOut). The Mac keeps
+      // the full wait, so a capture there never returns an older frame.
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+          FROM_HERE,
+          base::BindOnce(&RenderWidgetHostImpl::ForceRedrawTimedOut,
+                         weak_factory_.GetWeakPtr(), snapshot_id),
+          kSurfaceSnapshotRedrawTimeout);
 #endif
     }
     return;
@@ -2432,12 +2436,16 @@ void RenderWidgetHostImpl::SelectionBoundsChanged(
 }
 
 void RenderWidgetHostImpl::OnUpdateDragOperation(
+    uint64_t drag_target_session_id,
     DragOperationCallback callback,
     ui::mojom::DragOperation current_op,
     bool document_is_handling_drag) {
-  RenderViewHostDelegateView* view = delegate_->GetDelegateView();
-  if (view) {
-    view->UpdateDragOperation(current_op, document_is_handling_drag, this);
+  if (!base::FeatureList::IsEnabled(features::kAuraDragDropSessionId) ||
+      drag_target_session_id == drag_target_session_id_) {
+    RenderViewHostDelegateView* view = delegate_->GetDelegateView();
+    if (view) {
+      view->UpdateDragOperation(current_op, document_is_handling_drag, this);
+    }
   }
   std::move(callback).Run(current_op, document_is_handling_drag);
 }
@@ -2536,7 +2544,7 @@ void RenderWidgetHostImpl::ImeSetComposition(
   GetWidgetInputHandler()->ImeSetComposition(
       text, ime_text_spans, replacement_range, selection_start, selection_end,
       ime_state, /*target_dom_node_id=*/blink::DOMNodeIdType(),
-      base::OnceClosure());
+      blink::mojom::WidgetInputHandler::ImeSetCompositionCallback());
 #if BUILDFLAG(IS_ANDROID)
   for (auto& observer : ime_input_event_observers_) {
     observer.OnImeSetComposingTextEvent(text);
@@ -2574,27 +2582,30 @@ void RenderWidgetHostImpl::ImeCancelComposition() {
   GetWidgetInputHandler()->ImeSetComposition(
       std::u16string(), std::vector<ui::ImeTextSpan>(),
       gfx::Range::InvalidRange(), 0, 0, blink::mojom::ImeState::kNone,
-      /*target_dom_node_id=*/blink::DOMNodeIdType(), base::OnceClosure());
+      /*target_dom_node_id=*/blink::DOMNodeIdType(),
+      blink::mojom::WidgetInputHandler::ImeSetCompositionCallback());
 }
 
 void RenderWidgetHostImpl::SetExternallySourcedComposition(
     const std::u16string& text,
     const std::vector<ui::ImeTextSpan>& ime_text_spans,
+    const gfx::Range& replacement_range,
     const GlobalDOMNodeId& target_dom_node_id,
-    base::OnceClosure on_complete) {
+    base::OnceCallback<void(const gfx::Range&)> on_complete) {
   int length = text.length();
   GetWidgetInputHandler()->ImeSetComposition(
-      text, ime_text_spans, gfx::Range::InvalidRange(), length, length,
+      text, ime_text_spans, replacement_range, length, length,
       blink::mojom::ImeState::kNone, target_dom_node_id.target_element_dom_id,
       std::move(on_complete));
 }
 
 void RenderWidgetHostImpl::CommitExternallySourcedComposition(
     const std::u16string& text,
+    const gfx::Range& replacement_range,
     const GlobalDOMNodeId& target_dom_node_id,
     base::OnceClosure on_complete) {
   GetWidgetInputHandler()->ImeCommitText(
-      text, std::vector<ui::ImeTextSpan>(), gfx::Range::InvalidRange(), 0,
+      text, std::vector<ui::ImeTextSpan>(), replacement_range, 0,
       target_dom_node_id.target_element_dom_id, std::move(on_complete));
 }
 
@@ -2979,6 +2990,10 @@ void RenderWidgetHostImpl::NotifyObserversOfInputEventWithSource(
   for (auto& observer : input_event_observers_) {
     observer.OnInputEvent(*this, event, source);
   }
+
+  // This call includes non-dispatched events, see the header file comment.
+  AddExpectedUserActivationNotification(event);
+
   if (dispatched_to_renderer) {
     delegate_->DidReceiveInputEvent(this, event);
   }
@@ -4735,6 +4750,37 @@ void RenderWidgetHostImpl::CompositorMetricRecorder::TryToRecordMetrics() {
         create_frame_sink_timestamp_ - swap_rfh_timestamp_,
         base::Milliseconds(1), base::Minutes(10), 50);
   }
+}
+
+void RenderWidgetHostImpl::AddExpectedUserActivationNotification(
+    const blink::WebInputEvent& event) {
+  if (base::FeatureList::IsEnabled(
+          blink::features::kTrustedUserActivationTriggers) &&
+      (event.GetType() == blink::WebInputEvent::Type::kMouseDown ||
+       event.GetType() == blink::WebInputEvent::Type::kKeyDown ||
+       event.GetType() == blink::WebInputEvent::Type::kRawKeyDown ||
+       event.GetType() == blink::WebInputEvent::Type::kTouchStart)) {
+    expected_user_activation_notification_timer_.Start(
+        FROM_HERE, kUserActivationVerificationTimeout,
+        base::BindOnce(
+            &RenderWidgetHostImpl::ClearExpectedUserActivationNotifications,
+            base::Unretained(this)));
+    expected_user_activation_notifications_++;
+  }
+}
+
+void RenderWidgetHostImpl::ClearExpectedUserActivationNotifications() {
+  expected_user_activation_notifications_ = 0;
+  expected_user_activation_notification_timer_.Stop();
+}
+
+bool RenderWidgetHostImpl::
+    RemoveExpectedUserActivationNotificationIfAvailable() {
+  if (expected_user_activation_notifications_ > 0) {
+    expected_user_activation_notifications_--;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace content

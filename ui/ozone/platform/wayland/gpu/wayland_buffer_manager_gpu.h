@@ -5,6 +5,7 @@
 #ifndef UI_OZONE_PLATFORM_WAYLAND_GPU_WAYLAND_BUFFER_MANAGER_GPU_H_
 #define UI_OZONE_PLATFORM_WAYLAND_GPU_WAYLAND_BUFFER_MANAGER_GPU_H_
 
+#include <atomic>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -63,11 +64,7 @@ class WaylandBufferManagerGpu : public ozone::mojom::WaylandBufferManagerGpu {
       mojo::PendingRemote<ozone::mojom::WaylandBufferManagerHost> remote_host,
       const base::flat_map<::viz::SharedImageFormat, std::vector<uint64_t>>&
           shared_image_formats_with_modifiers,
-      bool supports_dma_buf,
-      bool supports_viewporter,
-      bool supports_acquire_fence,
-      bool supports_overlays,
-      bool supports_single_pixel_buffer) override;
+      ozone::mojom::WaylandBufferManagerCapabilitiesPtr capabilities) override;
 
   // These two calls get the surface, which backs the |widget| and notifies it
   // about the submission and the presentation. After the surface receives the
@@ -98,7 +95,7 @@ class WaylandBufferManagerGpu : public ozone::mojom::WaylandBufferManagerGpu {
   // ui/ozone/platform/wayland/mojom/wayland_buffer_manager.mojom.
   //
   // Asks Wayland to create generic dmabuf-based wl_buffer.
-  void CreateDmabufBasedBuffer(base::ScopedFD dmabuf_fd,
+  void CreateDmabufBasedBuffer(std::vector<base::ScopedFD> dmabuf_fds,
                                gfx::Size size,
                                const std::vector<uint32_t>& strides,
                                const std::vector<uint32_t>& offsets,
@@ -163,6 +160,12 @@ class WaylandBufferManagerGpu : public ozone::mojom::WaylandBufferManagerGpu {
   bool supports_single_pixel_buffer() const {
     return supports_single_pixel_buffer_;
   }
+  bool compositor_tone_maps_using_clli() const {
+    return compositor_tone_maps_using_clli_;
+  }
+  bool compositor_tone_maps_using_mdcv() const {
+    return compositor_tone_maps_using_mdcv_;
+  }
   void set_drm_modifiers_filter(
       std::unique_ptr<DrmModifiersFilter> drm_modifiers_filter) {
     drm_modifiers_filter_ = std::move(drm_modifiers_filter);
@@ -186,6 +189,8 @@ class WaylandBufferManagerGpu : public ozone::mojom::WaylandBufferManagerGpu {
 
  private:
   FRIEND_TEST_ALL_PREFIXES(WaylandSurfaceFactoryTest, CreateSurfaceCheckGbm);
+  FRIEND_TEST_ALL_PREFIXES(WaylandSurfaceFactoryTest,
+                           ConcurrentBufferAllocationFailures);
   FRIEND_TEST_ALL_PREFIXES(WaylandSurfaceFactoryTest,
                            GbmSurfacelessWaylandCommitOverlaysCallbacksTest);
   FRIEND_TEST_ALL_PREFIXES(WaylandSurfaceFactoryTest,
@@ -227,7 +232,7 @@ class WaylandBufferManagerGpu : public ozone::mojom::WaylandBufferManagerGpu {
   void ProcessPendingTasks();
 
   // Internal methods that do calls to the |remote_host|.
-  void CreateDmabufBasedBufferTask(base::ScopedFD dmabuf_fd,
+  void CreateDmabufBasedBufferTask(std::vector<base::ScopedFD> dmabuf_fds,
                                    gfx::Size size,
                                    const std::vector<uint32_t>& strides,
                                    const std::vector<uint32_t>& offsets,
@@ -281,6 +286,11 @@ class WaylandBufferManagerGpu : public ozone::mojom::WaylandBufferManagerGpu {
   // protocol.
   bool supports_single_pixel_buffer_ = false;
 
+  // Whether the compositor tone maps using client-provided CLLI and MDCV HDR
+  // metadata, respectively.
+  bool compositor_tone_maps_using_clli_ = false;
+  bool compositor_tone_maps_using_mdcv_ = false;
+
   // Determines whether Wayland server supports Wayland protocols that allow to
   // export wl_buffers backed by dmabuf.
   bool supports_dmabuf_ = true;
@@ -331,7 +341,7 @@ class WaylandBufferManagerGpu : public ozone::mojom::WaylandBufferManagerGpu {
   base::Lock lock_;
 
   // Keeps track of the next unique buffer ID.
-  uint32_t next_buffer_id_ = 0;
+  std::atomic<uint32_t> next_buffer_id_ = 0;
 
   // The tasks that are blocked on a remote_host pipe becoming bound.
   std::vector<base::OnceClosure> pending_tasks_;

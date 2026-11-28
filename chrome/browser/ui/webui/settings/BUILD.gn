@@ -5,8 +5,21 @@
 import("//build/config/ozone.gni")
 import("//build/config/ui.gni")
 import("//components/signin/features.gni")
+import("//third_party/blink/public/public_features.gni")
 
 assert(is_win || is_mac || is_linux || is_chromeos)
+
+source_set("element_ids") {
+  sources = [
+    "settings_element_ids.cc",
+    "settings_element_ids.h",
+  ]
+
+  public_deps = [
+    "//base",
+    "//ui/base/interaction",
+  ]
+}
 
 source_set("settings") {
   sources = [
@@ -28,7 +41,6 @@ source_set("settings") {
     "search_engines_handler.h",
     "security_settings_provider.h",
     "settings_clear_browsing_data_handler.h",
-    "settings_element_ids.h",
     "settings_localized_strings_provider.h",
     "settings_media_devices_selection_handler.h",
     "settings_page_ui_handler.h",
@@ -44,6 +56,7 @@ source_set("settings") {
   ]
 
   public_deps = [
+    ":element_ids",
     "//base",
     "//chrome/browser:shell_integration",
     "//chrome/browser/engagement",
@@ -127,7 +140,6 @@ source_set("impl") {
     "search_engines_handler.cc",
     "security_settings_provider.cc",
     "settings_clear_browsing_data_handler.cc",
-    "settings_element_ids.cc",
     "settings_localized_strings_privacy_sandbox_provider.cc",
     "settings_localized_strings_provider.cc",
     "settings_media_devices_selection_handler.cc",
@@ -163,6 +175,7 @@ source_set("impl") {
     "//chrome/browser/content_settings:content_settings_util",
     "//chrome/browser/custom_handlers",
     "//chrome/browser/engagement",
+    "//chrome/browser/enterprise/browser_management:management_identity",
     "//chrome/browser/extensions",
     "//chrome/browser/file_system_access",
     "//chrome/browser/google",
@@ -258,6 +271,7 @@ source_set("impl") {
     "//components/user_manager:common",
     "//extensions/browser",
     "//services/device/public/cpp:device_features",
+    "//third_party/blink/public:buildflags",
     "//ui/base",
     "//ui/webui/tracked_element",
     "//v8:v8_version",
@@ -313,7 +327,6 @@ source_set("impl") {
       "//chrome/browser/ash/phonehub",
       "//chrome/browser/ash/profiles",
       "//chrome/browser/ash/tpm",
-      "//chrome/browser/smart_card",
       "//chrome/browser/ui/ash/system_web_apps",
       "//chrome/browser/ui/webui:plural_string_handler",
       "//chrome/browser/ui/webui/ash/extended_updates",

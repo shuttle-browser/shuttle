@@ -162,7 +162,6 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(kFedCmNavigationInterception);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kFedCmNativeIdPs);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kFileChooserMinWindowSize);
 #if BUILDFLAG(IS_ANDROID)
-CONTENT_EXPORT BASE_DECLARE_FEATURE(kFluidResize);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(
     kFocusRenderWidgetHostViewAndroidOnActionDown);
 #endif
@@ -248,9 +247,12 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(kNoSelectionMenuCaching);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kNoStatePrefetchHoldback);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kOriginIsolationHeader);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kOverscrollHistoryNavigation);
+CONTENT_EXPORT BASE_DECLARE_FEATURE(kPdfOpaqueOrigin);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPeriodicBackgroundSync);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPopulateUnattachedAuraScreenInfo);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPreconnectManagerDirectFastPath);
+CONTENT_EXPORT BASE_DECLARE_FEATURE(
+    kPreferWarmRendererProcessAvoidPrewarmContention);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrefetchActivationBeacon);
 
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrefetchAheadOfImminentNavigation);
@@ -271,13 +273,15 @@ CONTENT_EXPORT extern const base::FeatureParam<
     kPrefetchAheadOfImminentNavigationForceWaitNVSHeaderPolicy;
 CONTENT_EXPORT extern const base::FeatureParam<bool>
     kPrefetchAheadOfImminentNavigationUseBlockUntilHeadTimeout;
+CONTENT_EXPORT extern const base::FeatureParam<bool>
+    kPrefetchAheadOfImminentNavigationUsePrefetchLoaderTimeout;
 
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrefetchOffTheMainThread);
 CONTENT_EXPORT extern const base::FeatureParam<bool>
     kPrefetchOffTheMainThreadUpdateMissingHeaderCache;
 CONTENT_EXPORT extern const base::FeatureParam<bool>
     kPrefetchOffTheMainThreadCheckWillCreateURLLoaderFactory;
-CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrefetchPrerenderIntegration);
+CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrefetchPrivacyHeaders);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrefetchProxy);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrefetchRequestStatusListenerAsync);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kPrefetchUseContentRefactor);
@@ -360,6 +364,7 @@ CONTENT_EXPORT BASE_DECLARE_FEATURE(kSuppressDifferentOriginSubframeJSDialogs);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kSyntheticPointerActions);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kTouchDragAndContextMenu);
 CONTENT_EXPORT BASE_DECLARE_FEATURE(kTrackEmptyRendererProcessesForReuse);
+CONTENT_EXPORT BASE_DECLARE_FEATURE(kTriggerNetworkDataMigration);
 #if BUILDFLAG(IS_ANDROID)
 CONTENT_EXPORT extern const base::FeatureParam<int>
     kTouchDragMovementThresholdDip;

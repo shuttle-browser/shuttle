@@ -44,7 +44,7 @@ sessions::LiveTabContext* ChromeTabRestoreServiceClient::CreateLiveTabContext(
 #if BUILDFLAG(IS_ANDROID)
   // Android does not support creating a LiveTabContext here. Return the
   // existing context instead.
-  DCHECK(existing_context);
+  CHECK(existing_context, base::NotFatalUntil::M163);
   return existing_context;
 #else
   return BrowserLiveTabContext::Create(profile_, type, app_name, bounds,
@@ -68,7 +68,7 @@ ChromeTabRestoreServiceClient::FindLiveTabContextForTab(
 sessions::LiveTabContext*
 ChromeTabRestoreServiceClient::FindLiveTabContextWithID(SessionID desired_id) {
 #if BUILDFLAG(IS_ANDROID)
-  return AndroidLiveTabContext::FindContextWithID(desired_id);
+  return AndroidLiveTabContext::FindContextWithID(desired_id, profile_);
 #else
   return BrowserLiveTabContext::FindContextWithID(desired_id);
 #endif
@@ -120,7 +120,7 @@ bool ChromeTabRestoreServiceClient::HasLastSession() {
 
 void ChromeTabRestoreServiceClient::GetLastSession(
     sessions::GetLastSessionCallback callback) {
-  DCHECK(HasLastSession());
+  CHECK(HasLastSession(), base::NotFatalUntil::M163);
 #if BUILDFLAG(ENABLE_SESSION_SERVICE)
   // sessions::TabRestoreServiceClient is cross-platform and has no interest in
   // the restore's read status or replay result, so drop them here rather than

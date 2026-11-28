@@ -8,6 +8,8 @@
 #include <memory>
 #include <string>
 
+#include "base/containers/span.h"
+#include "chrome/browser/notifications/mac/notification_dispatcher_mac.h"
 #include "chrome/browser/notifications/notification_common.h"
 #include "chrome/browser/notifications/notification_platform_bridge.h"
 
@@ -46,12 +48,13 @@ class NotificationPlatformBridgeMac : public NotificationPlatformBridge {
   void DisplayServiceShutDown(Profile* profile) override;
 
  private:
+
   // Closes the notification with the given `notification_id` and `profile` in
-  // every dispatcher except `excluded_dispatcher`. Pass nullptr to
-  // `excluded_dispatcher` to close the notification everywhere.
+  // every dispatcher except those in `excluded_dispatchers`.
   void CloseImpl(Profile* profile,
                  const std::string& notification_id,
-                 NotificationDispatcherMac* excluded_dispatcher = nullptr);
+                 base::span<const NotificationDispatcherMac* const>
+                     excluded_dispatchers = {});
 
   // Closes all notifications for the given |profile|.
   void CloseAllNotificationsForProfile(Profile* profile);

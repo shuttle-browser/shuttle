@@ -729,7 +729,8 @@ void RemoteFrame::UpdateUserActivationState(
     case mojom::blink::UserActivationUpdateType::kClearActivation:
       ClearUserActivationInFrameTree();
       break;
-    default:
+    case mojom::blink::UserActivationUpdateType::
+        kNotifyActivationPendingBrowserVerification:
       NOTREACHED() << "Unexpected UserActivationUpdateType from browser";
   }
 }
@@ -776,14 +777,11 @@ void RemoteFrame::ScrollRectToVisible(
 void RemoteFrame::IntrinsicSizingInfoOfChildChanged(
     mojom::blink::IntrinsicSizingInfoPtr info) {
   FrameOwner* owner = Owner();
-  // Only communication from HTMLPluginElement-owned subframes is allowed
-  // at present. This includes <embed> and <object> tags.
-  if (!owner || (!owner->IsPlugin() &&
-                 !RuntimeEnabledFeatures::ResponsiveIframesEnabled())) {
+  if (!owner) {
     return;
   }
 
-  if (info->is_cleared && RuntimeEnabledFeatures::ResponsiveIframesEnabled()) {
+  if (info->is_cleared) {
     View()->ClearNaturalDimensions();
     owner->NaturalSizingInfoChanged();
     return;
@@ -928,7 +926,7 @@ void RemoteFrame::SetFrameSinkId(const viz::FrameSinkId& frame_sink_id,
 void RemoteFrame::ChildProcessGone() {
   remote_process_gone_ = true;
   compositing_helper_->ChildFrameGone(
-      ancestor_widget_->GetOriginalScreenInfo().device_scale_factor);
+      ancestor_widget_->GetOriginalDeviceScaleFactor());
 }
 
 bool RemoteFrame::IsIgnoredForHitTest() const {
@@ -1064,10 +1062,9 @@ void RemoteFrame::ResendVisualPropertiesInternal(
   SynchronizeVisualProperties(/*propagate=*/true, allow_paint_holding);
 }
 
-void RemoteFrame::DidUpdateVisualProperties(
-    const cc::RenderFrameMetadata& metadata) {
-  if (!parent_local_surface_id_allocator_->UpdateFromChild(
-          metadata.local_surface_id.value_or(viz::LocalSurfaceId()))) {
+void RemoteFrame::DidUpdateChildLocalSurfaceId(
+    const viz::LocalSurfaceId& local_surface_id) {
+  if (!parent_local_surface_id_allocator_->UpdateFromChild(local_surface_id)) {
     return;
   }
 

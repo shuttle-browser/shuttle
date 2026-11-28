@@ -265,10 +265,8 @@ String BuildElementErrorMessage(const String& error) {
   // collection and aggregation of UA-specific-error codes from
   // MediaError.message by web apps. WebMediaPlayer::GetErrorMessage() should
   // similarly conform to this format.
-  DEFINE_STATIC_LOCAL(const String, element_error_prefix,
-                      ("MEDIA_ELEMENT_ERROR: "));
   StringBuilder builder;
-  builder.Append(element_error_prefix);
+  builder.Append(String::FromLiteral<"MEDIA_ELEMENT_ERROR: ">());
   builder.Append(error);
   return builder.ToString();
 }
@@ -855,6 +853,16 @@ void HTMLMediaElement::ParseAttribute(
         params.reason == AttributeModificationReason::kByParser) {
       muted_ = true;
     }
+    // The simplest behavior would be if setting the muted content attribute
+    // always muted playback, but that may not be web compatible. Measure how
+    // often the content attribute is set by script and muted_ is still false at
+    // the next microtask checkpoint.
+    if (params.reason == AttributeModificationReason::kDirectly &&
+        !params.new_value.IsNull() && !muted_) {
+      GetDocument().GetAgent().event_loop()->EnqueueMicrotask(
+          BindOnce(&HTMLMediaElement::CheckMutedAttributeWouldMute,
+                   WrapWeakPersistent(this)));
+    }
   } else if (name == html_names::kLoadingAttr &&
              RuntimeEnabledFeatures::LazyLoadVideoAndAudioEnabled()) {
     // If the loading attribute's state changes to eager while deferred, load
@@ -869,6 +877,13 @@ void HTMLMediaElement::ParseAttribute(
     }
   } else {
     HTMLElement::ParseAttribute(params);
+  }
+}
+
+void HTMLMediaElement::CheckMutedAttributeWouldMute() {
+  if (FastHasAttribute(html_names::kMutedAttr) && !muted_) {
+    UseCounter::Count(GetDocument(),
+                      WebFeature::kHTMLMediaElementMutedAttributeWouldMute);
   }
 }
 

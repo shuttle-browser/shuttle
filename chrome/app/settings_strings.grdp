@@ -325,9 +325,6 @@
       Auto expand tabs on hover
     </message>
     <message name="IDS_SETTINGS_ALLOW_SPLIT_VIEW_DRAG_AND_DROP" desc="Label for the checkbox which enables or disables drag and drop for split view.">
-      Allow split view drag-and-drop on left or right edge of window
-    </message>
-    <message name="IDS_SETTINGS_ALLOW_SPLIT_VIEW_DRAG_AND_DROP_HORIZONTAL" desc="Label for the checkbox which enables or disables drag and drop for split view when top/bottom splits is enabled.">
       Allow split view drag-and-drop on left, right, or bottom edge of window
     </message>
     <message name="IDS_SETTINGS_HOVER_CARD_TITLE" desc="Title for the section in appearance settings for configuring what gets displayed in tab hovercards.">
@@ -530,6 +527,11 @@
     </message>
     <message name="IDS_SETTINGS_DOWNLOADS_SHOW_WHEN_FINISHED" desc="Label for the setting which enables the automatic showing of downloads when the downloads finish.">
       Show downloads when they're done
+    </message>
+
+    <!-- General Page -->
+    <message name="IDS_SETTINGS_GENERAL" desc="Name of the settings page which displays general preferences.">
+      General
     </message>
 
     <!-- On Startup Page -->
@@ -1107,6 +1109,9 @@
     <message name="IDS_SETTINGS_RESET" desc="Title for an item in the 'Reset and clean up' section of Chrome Settings. If the user clicks this option, browser settings will be returned to their default values, after a confirmation by the user." meaning="Chrome Cleanup feature. Try to use the same translation for 'Reset' in 'Reset and cleanup' string.">
       Reset settings
     </message>
+    <message name="IDS_SETTINGS_RESET_ALL_SETTINGS" desc="Text of the button on the General settings page that opens a dialog to reset browser settings back to their default values.">
+      Reset all settings
+    </message>
     <message name="IDS_SETTINGS_RESET_SETTINGS_TRIGGER" desc="The label describing the 'reset profile setting' feature">
       Restore settings to their original defaults
     </message>
@@ -1282,10 +1287,10 @@
     <message name="IDS_SETTINGS_SEARCH_ENGINES_PICKER_TITLE" desc="Title of the dialog, opened from the Search engine settings page, that lets the user pick their default search engine from a list of search engines that are popular in their region.">
       Default search engine
     </message>
-    <message name="IDS_SETTINGS_SEARCH_ENGINES_PICKER_SUBTITLE" desc="Subtitle of the default search engine picker dialog, shown below the dialog title, for users in countries where the list of search engines is displayed in random order (EEA). Explains that the listed search engines are popular in the user's region and are shown in random order.">
+    <message name="IDS_SETTINGS_SEARCH_ENGINES_PICKER_SUBTITLE_RANDOM_ORDER" desc="Subtitle of the default search engine picker dialog, shown below the dialog title, for users in countries where the list of search engines is displayed in random order. Explains that the listed search engines are popular in the user's region and are shown in random order.">
       Popular in your region (in random order)
     </message>
-    <message name="IDS_SETTINGS_SEARCH_ENGINES_PICKER_SUBTITLE_NON_EEA" desc="Subtitle of the default search engine picker dialog, shown below the dialog title, for users in countries where the list of search engines is not shown in random order (outside the EEA). Explains that the listed search engines are popular in the user's region.">
+    <message name="IDS_SETTINGS_SEARCH_ENGINES_PICKER_SUBTITLE_REGIONAL_ORDER" desc="Subtitle of the default search engine picker dialog, shown below the dialog title, for users in countries where the list of search engines is not shown in random order. Explains that the listed search engines are popular in the user's region.">
       Popular in your region
     </message>
     <message name="IDS_SETTINGS_SEARCH_ENGINES_MORE_OPTIONS" desc="Label of a button in the header of the default search engine picker dialog. Clicking it replaces the dialog with another dialog listing all the search engines the user can pick as their default search engine." meaning="Choices of search engines to pick from, not settings.">
@@ -1299,6 +1304,9 @@
     </message>
     <message name="IDS_SETTINGS_SEARCH_ENGINES_NO_SEARCH_RESULTS" desc="Message shown in the 'More search engines' dialog in place of the list of search engines when no search engine matches the text that the user typed in the search field.">
       No results found
+    </message>
+    <message name="IDS_SETTINGS_SEARCH_ENGINES_BACK_BUTTON" desc="Label of a button in the 'More search engines' dialog, opened from the default search engine picker dialog. Clicking it replaces the 'More search engines' dialog with the default search engine picker dialog again, without changing the default search engine." meaning="Navigation. Return to the previous step of the dialog.">
+      Back
     </message>
     <message name="IDS_SETTINGS_SEARCH_ENGINES_MAKE_DEFAULT" desc="Text of the button that makes the selected engine the default search engine">
       Make default
@@ -1629,27 +1637,29 @@
     <message name="IDS_SETTINGS_SITE_SETTINGS_HID_DEVICES_BLOCKED" desc="Label for the disabled option of the hid devices site setting.">
       Don't allow sites to connect to HID devices
     </message>
-    <message name="IDS_SITE_SETTINGS_SMART_CARD_READERS" desc="Main heading for the Smart Card Readers section in settings.">
-      Smart card readers
-    </message>
-    <message name="IDS_SITE_SETTINGS_SMART_CARD_READERS_DESCRIPTION" desc="Description of how isolated web apps interact with smart card readers.">
-      Isolated web apps control authentication devices and smart cards accessible to them. Smart cards usually contain identifiers used to authenticate you.
-    </message>
-    <message name="IDS_SITE_SETTINGS_SMART_CARDS_DEFAULT_DESCRIPTION" desc="Label indicating the default behavior for smart card access.">
-      Isolated web apps automatically follow this setting
-    </message>
-    <message name="IDS_SITE_SETTINGS_SMART_CARDS_ASK" desc="Option to allow isolated web apps to control smart card readers.">
-      Isolated web apps can ask to control smart card readers
-    </message>
-    <message name="IDS_SITE_SETTINGS_SMART_CARDS_BLOCKED" desc="Option to block isolated web apps from controlling smart card readers.">
-      Isolated web apps can’t control smart card readers
-    </message>
-    <message name="IDS_SITE_SETTINGS_NO_SMART_CARD_READERS_FOUND" desc="No smart card readers were found.">
-      No smart card readers found
-    </message>
-    <message name="IDS_SITE_SETTINGS_RESET_SMART_CARD_CONFIRMATION" desc="Confirmation for resetting smart card reader permissions.">
-      Reset all smart card reader permissions?
-    </message>
+    <if expr="enable_smart_card">
+      <message name="IDS_SITE_SETTINGS_SMART_CARD_READERS" desc="Main heading for the Smart Card Readers section in settings.">
+        Smart card readers
+      </message>
+      <message name="IDS_SITE_SETTINGS_SMART_CARD_READERS_DESCRIPTION" desc="Description of how isolated web apps interact with smart card readers.">
+        Isolated web apps control authentication devices and smart cards accessible to them. Smart cards usually contain identifiers used to authenticate you.
+      </message>
+      <message name="IDS_SITE_SETTINGS_SMART_CARDS_DEFAULT_DESCRIPTION" desc="Label indicating the default behavior for smart card access.">
+        Isolated web apps automatically follow this setting
+      </message>
+      <message name="IDS_SITE_SETTINGS_SMART_CARDS_ASK" desc="Option to allow isolated web apps to control smart card readers.">
+        Isolated web apps can ask to control smart card readers
+      </message>
+      <message name="IDS_SITE_SETTINGS_SMART_CARDS_BLOCKED" desc="Option to block isolated web apps from controlling smart card readers.">
+        Isolated web apps can’t control smart card readers
+      </message>
+      <message name="IDS_SITE_SETTINGS_NO_SMART_CARD_READERS_FOUND" desc="No smart card readers were found.">
+        No smart card readers found
+      </message>
+      <message name="IDS_SITE_SETTINGS_RESET_SMART_CARD_CONFIRMATION" desc="Confirmation for resetting smart card reader permissions.">
+        Reset all smart card reader permissions?
+      </message>
+    </if>
     <message name="IDS_SETTINGS_SITE_SETTINGS_IMAGES_DESCRIPTION" desc="Description of the images content setting.">
       Sites usually show images to provide illustration, like photos for online stores or news articles
     </message>
@@ -2570,7 +2580,6 @@
           =1 {1 cookie}
           other {{NUM_COOKIES} cookies}}
     </message>
-
 
 
 

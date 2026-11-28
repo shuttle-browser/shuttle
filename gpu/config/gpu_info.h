@@ -141,7 +141,14 @@ enum VideoCodecProfile {
   HEVCPROFILE_HIGH_THROUGHPUT_SCREEN_EXTENDED = 36,
   DOLBYVISION_PROFILE10 = 37,
   DOLBYVISION_PROFILE20 = 38,
-  VIDEO_CODEC_PROFILE_MAX = DOLBYVISION_PROFILE20,
+  AV2PROFILE_MAIN_420_10_IP0 = 39,
+  AV2PROFILE_MAIN_420_10_IP1 = 40,
+  AV2PROFILE_MAIN_420_10_IP2 = 41,
+  AV2PROFILE_MAIN_422_10_IP1 = 42,
+  AV2PROFILE_MAIN_444_10_IP1 = 43,
+  AV2PROFILE_MAIN_444C_12_IP2 = 44,
+  AV2PROFILE_CONFIGURABLE = 45,
+  VIDEO_CODEC_PROFILE_MAX = AV2PROFILE_CONFIGURABLE,
 };
 // clang-format off
 // LINT.ThenChange(//media/base/video_codecs.h:VideoCodecProfile, //tools/metrics/histograms/enums.xml:VideoCodecProfile)
@@ -294,6 +301,7 @@ struct GPU_CONFIG_EXPORT GPUInfo {
   // The currently active gpu.
   GPUDevice& active_gpu();
   const GPUDevice& active_gpu() const;
+  bool IsActiveGpuSpecified() const;
 
   bool IsInitialized() const;
 
@@ -335,10 +343,6 @@ struct GPU_CONFIG_EXPORT GPUInfo {
 
   // The version of the vertex shader used by the gpu.
   std::string vertex_shader_version;
-
-  // The maximum multisapling sample count, either through ES3 or
-  // EXT_multisampled_render_to_texture MSAA.
-  std::string max_msaa_samples;
 
   // The machine model identifier. They can contain any character, including
   // whitespaces.  Currently it is supported on MacOSX and Android.

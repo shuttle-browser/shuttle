@@ -13,7 +13,9 @@
 #include "build/branding_buildflags.h"
 #include "build/buildflag.h"
 #include "chrome/browser/devtools/devtools_window.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/omnibox/chrome_omnibox_client.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
@@ -21,9 +23,11 @@
 #include "chrome/browser/ui/omnibox/omnibox_popup_view.h"
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_placeholder_util.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_view_views.h"
 #include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_web_contents_helper.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_user_profile.h"
 #include "components/omnibox/browser/omnibox_logging_utils.h"
 #include "components/omnibox/browser/omnibox_popup_selection.h"
 #include "components/omnibox/browser/suggest_template_info_mojo_utils.h"
@@ -33,8 +37,12 @@
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/browser_context.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
+#include "ui/base/ime/text_input_type.h"
 #include "ui/base/models/menu_model.h"
 #include "ui/base/ui_base_features.h"
+#include "ui/color/color_provider.h"
+#include "ui/gfx/color_utils.h"
+#include "ui/views/widget/widget.h"
 
 OmniboxPopupHandler::OmniboxPopupHandler(
     mojo::PendingReceiver<omnibox_popup::mojom::PageHandler> receiver,
@@ -54,6 +62,22 @@ OmniboxPopupHandler::OmniboxPopupHandler(
 }
 
 OmniboxPopupHandler::~OmniboxPopupHandler() = default;
+
+void OmniboxPopupHandler::DetachFromOmniboxController() {
+  controller_ = nullptr;
+  // These describe the text in the old window's omnibox. The page reports new
+  // values on its next edit in the new window.
+  latest_selection_ = gfx::Range();
+  show_full_url_ = false;
+  can_undo_ = false;
+  can_redo_ = false;
+}
+
+void OmniboxPopupHandler::AttachToOmniboxController(
+    OmniboxController* controller) {
+  CHECK(controller);
+  controller_ = controller;
+}
 
 void OmniboxPopupHandler::ShowContextMenu(const gfx::Point& point) {
   if (embedder_) {
@@ -104,6 +128,16 @@ void OmniboxPopupHandler::Revert(uint32_t sequence_number) {
   show_full_url_ = false;
 }
 
+void OmniboxPopupHandler::RevertTemporaryText(uint32_t sequence_number) {
+  if (sequence_number < current_sequence_number_) {
+    return;
+  }
+  if (controller_ && controller_->edit_model() &&
+      controller_->edit_model()->has_temporary_text()) {
+    controller_->edit_model()->RevertTemporaryTextAndPopup();
+  }
+}
+
 void OmniboxPopupHandler::OnInputCleared(uint32_t sequence_number) {
   if (sequence_number < current_sequence_number_) {
     return;
@@ -121,6 +155,15 @@ void OmniboxPopupHandler::OnInputCleared(uint32_t sequence_number) {
           /*text=*/std::u16string(), /*caret_pos=*/0, /*update_popup=*/false,
           /*notify_text_changed=*/false);
     }
+  }
+}
+
+void OmniboxPopupHandler::StartUserInput(uint32_t sequence_number) {
+  if (sequence_number < current_sequence_number_) {
+    return;
+  }
+  if (controller_ && controller_->edit_model()) {
+    controller_->edit_model()->SetInputInProgress(true);
   }
 }
 
@@ -256,6 +299,14 @@ void OmniboxPopupHandler::SetInputState(
         current_match.GetVectorIcon(is_bookmarked, associated_keyword_turl));
     state->current_match = std::move(mojom_match);
   }
+  // The input language is the same for all widgets.
+  views::Widget* widget = web_contents_
+                              ? views::Widget::GetTopLevelWidgetForNativeView(
+                                    web_contents_->GetNativeView())
+                              : nullptr;
+  state->prefers_url_input = OmniboxViewViews::GetPreferredTextInputType(
+                                 widget ? widget->GetInputMethod() : nullptr) ==
+                             ui::TEXT_INPUT_TYPE_URL;
   // Extract active tab ID if in a Chrome browser window context.
   if (controller_ && controller_->client()->IsChromeOmniboxClient()) {
     auto* chrome_client =
@@ -300,7 +351,8 @@ void OmniboxPopupHandler::OnTemplateURLServiceShuttingDown() {
 }
 
 std::string GetDefaultSearchProviderIcon(
-    const TemplateURLService* template_url_service) {
+    const TemplateURLService* template_url_service,
+    bool is_dark_mode) {
   std::string default_icon_path =
       features::IsRoundedIconsEnabled()
           ? "//resources/cr_components/searchbox/icons/search_cr23.svg"
@@ -311,8 +363,14 @@ std::string GetDefaultSearchProviderIcon(
     is_google = search::DefaultSearchProviderIsGoogle(template_url_service);
 #endif
     if (is_google) {
+      // In dark mode, match steady-state omnibox
+      // (`OmniboxEditModel::GetSuperGIcon()`) by using the monochrome Super G
+      // icon rather than the 4-color gradient icon.
       default_icon_path =
-          "//resources/cr_components/searchbox/icons/google_g_gradient.svg";
+          is_dark_mode
+              ? "//resources/cr_components/searchbox/icons/google_g_cr23.svg"
+              : "//resources/cr_components/searchbox/icons/"
+                "google_g_gradient.svg";
     } else if (const auto* default_provider =
                    template_url_service->GetDefaultSearchProvider();
                default_provider &&
@@ -331,8 +389,31 @@ void OmniboxPopupHandler::NotifyDefaultSearchProviderChanged() {
   if (!page_.is_bound()) {
     return;
   }
-  page_->SetDefaultSearchProvider(GetDefaultSearchProviderIcon(
-      template_url_service_observation_.GetSource()));
+  const bool is_dark_mode =
+      web_contents_ &&
+      color_utils::IsDark(web_contents_->GetColorProvider().GetColor(
+          kColorOmniboxIconBackground));
+  const TemplateURLService* template_url_service =
+      template_url_service_observation_.GetSource();
+  const TemplateURL* default_provider =
+      template_url_service ? template_url_service->GetDefaultSearchProvider()
+                           : nullptr;
+  auto placeholder_type = omnibox_popup::mojom::PlaceholderType::kNone;
+  std::string search_engine_name;
+  if (default_provider) {
+    // Use the user profile, since the popup can be in TopChromeWebUIProfile,
+    // which is shared by the windows of all profiles.
+    Profile* profile =
+        web_contents_ ? webui::GetUserProfile(web_contents_) : nullptr;
+    placeholder_type =
+        omnibox::ShouldUseAskPlaceholderText(profile, template_url_service)
+            ? omnibox_popup::mojom::PlaceholderType::kAskOrTypeUrl
+            : omnibox_popup::mojom::PlaceholderType::kSearchOrTypeUrl;
+    search_engine_name = base::UTF16ToUTF8(default_provider->short_name());
+  }
+  page_->SetDefaultSearchProvider(
+      GetDefaultSearchProviderIcon(template_url_service, is_dark_mode),
+      placeholder_type, search_engine_name);
 }
 
 void OmniboxPopupHandler::LogEscapeAction(
@@ -390,7 +471,10 @@ void OmniboxPopupHandler::OnCutOrCopy(uint32_t sequence_number,
   bool is_cut_or_copy_allowed = !selection.is_empty();
   if (is_cut_or_copy_allowed) {
     ui::ScopedClipboardWriter writer(ui::ClipboardBuffer::kCopyPaste);
-    if (web_contents_ && web_contents_->GetBrowserContext()->IsOffTheRecord()) {
+    // Use the user profile, since the popup can be in TopChromeWebUIProfile,
+    // which is shared by the windows of all profiles.
+    if (web_contents_ &&
+        webui::GetUserProfile(web_contents_)->IsOffTheRecord()) {
       writer.MarkAsOffTheRecord();
     }
     writer.WriteText(u16_selected_text);

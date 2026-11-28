@@ -429,7 +429,8 @@ void ShuttleService::CloseAgentSessions(const std::string& agent_id) {
 
 std::string ShuttleService::AgentOfTab(
     content::WebContents* contents) const {
-  return sessions_->AgentOf(contents);
+  // A window with no active tab (closing) passes null.
+  return contents ? sessions_->AgentOf(contents) : std::string();
 }
 
 std::string ShuttleService::AgentOfGroup(

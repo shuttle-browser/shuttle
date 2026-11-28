@@ -19,10 +19,12 @@
 #include <memory>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
-#include "mediapipe/framework/port/status_macros.h"
+#include "absl/base/thread_annotations.h"  // from @com_google_absl
+#include "absl/log/absl_log.h"             // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
+#include "absl/status/status_macros.h"     // from @com_google_absl
+#include "absl/status/statusor.h"          // from @com_google_absl
+#include "absl/synchronization/mutex.h"    // from @com_google_absl
 #include "mediapipe/util/resource_cache.h"
 
 namespace mediapipe {
@@ -116,10 +118,12 @@ absl::StatusOr<Item> MultiPool<SimplePool, Spec, Item>::Get(const Spec& spec) {
   std::shared_ptr<SimplePool> pool = RequestPool(spec);
   if (pool) {
     // Note: we release our multipool lock before accessing the simple pool.
-    MP_ASSIGN_OR_RETURN(auto item, pool->GetBuffer());
+    VLOG(2) << "Getting buffer from pool for spec " << spec;
+    ABSL_ASSIGN_OR_RETURN(auto item, pool->GetBuffer());
     return Item(std::move(item));
   }
-  MP_ASSIGN_OR_RETURN(auto item, SimplePool::CreateBufferWithoutPool(spec));
+  VLOG(2) << "Creating buffer without pool for spec " << spec;
+  ABSL_ASSIGN_OR_RETURN(auto item, SimplePool::CreateBufferWithoutPool(spec));
   return Item(std::move(item));
 }
 

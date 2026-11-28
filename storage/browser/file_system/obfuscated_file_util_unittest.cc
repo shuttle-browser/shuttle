@@ -27,7 +27,6 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/run_loop.h"
-#include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/test/bind.h"
@@ -270,7 +269,6 @@ class ObfuscatedFileUtilTest : public testing::Test,
     base::test::TestFuture<QuotaErrorOr<BucketInfo>> default_future;
     quota_manager_->proxy()->UpdateOrCreateBucket(
         BucketInitParams::ForDefaultBucket(storage_key()),
-        base::SequencedTaskRunner::GetCurrentDefault(),
         default_future.GetCallback());
     QuotaErrorOr<BucketInfo> default_bucket = default_future.Take();
     CHECK(default_bucket.has_value());
@@ -281,9 +279,8 @@ class ObfuscatedFileUtilTest : public testing::Test,
     base::test::TestFuture<QuotaErrorOr<BucketInfo>> custom_future;
     BucketInitParams params = BucketInitParams::ForDefaultBucket(storage_key());
     params.name = "non-default bucket";
-    quota_manager_->proxy()->UpdateOrCreateBucket(
-        params, base::SequencedTaskRunner::GetCurrentDefault(),
-        custom_future.GetCallback());
+    quota_manager_->proxy()->UpdateOrCreateBucket(params,
+                                                  custom_future.GetCallback());
     QuotaErrorOr<BucketInfo> custom_bucket = custom_future.Take();
     CHECK(custom_bucket.has_value());
     custom_bucket_ = custom_bucket.value().ToBucketLocator();
@@ -293,8 +290,7 @@ class ObfuscatedFileUtilTest : public testing::Test,
     base::test::TestFuture<QuotaErrorOr<BucketInfo>> alternate_future;
     params.name = "alternate non-default bucket";
     quota_manager_->proxy()->UpdateOrCreateBucket(
-        params, base::SequencedTaskRunner::GetCurrentDefault(),
-        alternate_future.GetCallback());
+        params, alternate_future.GetCallback());
     QuotaErrorOr<BucketInfo> alternate_bucket = alternate_future.Take();
     CHECK(alternate_bucket.has_value());
     alternate_custom_bucket_ = alternate_bucket.value().ToBucketLocator();
@@ -906,6 +902,52 @@ class ObfuscatedFileUtilTest : public testing::Test,
     SandboxDirectoryDatabase* db2 =
         ofu()->GetDirectoryDatabase(url, false /* create */);
     ASSERT_EQ(db, db2);
+  }
+
+  void GetDirectoryDatabase_DefaultBucketWithDifferentIdsTestBody() {
+    // Simulate the default bucket being deleted and recreated with a new ID,
+    // while URLs with the old ID (e.g. from a FileSystemAccess handle obtained
+    // before the deletion) or a stale cached default bucket are still in use.
+    BucketLocator recreated_default_bucket = default_bucket_;
+    recreated_default_bucket.id =
+        BucketId::FromUnsafeValue(default_bucket_.id.value() + 1000);
+    ASSERT_TRUE(recreated_default_bucket.is_default);
+
+    FileSystemURL old_bucket_url = FileSystemURL::CreateForTest(
+        storage_key(), kFileSystemTypeTemporary, base::FilePath());
+    old_bucket_url.SetBucket(default_bucket_);
+    FileSystemURL new_bucket_url = FileSystemURL::CreateForTest(
+        storage_key(), kFileSystemTypeTemporary, base::FilePath());
+    new_bucket_url.SetBucket(recreated_default_bucket);
+    // URLs from the legacy FileSystem API don't have a bucket, and use the
+    // cached default bucket instead.
+    FileSystemURL no_bucket_url = FileSystemURL::CreateForTest(
+        storage_key(), kFileSystemTypeTemporary, base::FilePath());
+
+    SandboxDirectoryDatabase* old_bucket_db =
+        ofu()->GetDirectoryDatabase(old_bucket_url, /*create=*/true);
+    ASSERT_TRUE(old_bucket_db);
+    SandboxDirectoryDatabase* new_bucket_db =
+        ofu()->GetDirectoryDatabase(new_bucket_url, /*create=*/true);
+    ASSERT_TRUE(new_bucket_db);
+    SandboxDirectoryDatabase* no_bucket_db =
+        ofu()->GetDirectoryDatabase(no_bucket_url, /*create=*/true);
+    ASSERT_TRUE(no_bucket_db);
+
+    // The cached default bucket is the original one.
+    EXPECT_EQ(old_bucket_db, no_bucket_db);
+
+    if (is_third_party_context()) {
+      // Third-party default buckets use a different directory per bucket ID,
+      // so they should get separate databases.
+      EXPECT_NE(old_bucket_db, new_bucket_db);
+      EXPECT_EQ(2U, ofu()->directories_.size());
+    } else {
+      // First-party default buckets use the same directory regardless of the
+      // bucket ID, so there must only be one database for it.
+      EXPECT_EQ(old_bucket_db, new_bucket_db);
+      EXPECT_EQ(1U, ofu()->directories_.size());
+    }
   }
 
   int64_t ComputeCurrentUsage() {
@@ -2520,6 +2562,11 @@ TEST_P(ObfuscatedFileUtilTest, DestroyDirectoryDatabase_Isolated) {
 
 TEST_P(ObfuscatedFileUtilTest, GetDirectoryDatabase_Isolated) {
   GetDirectoryDatabase_IsolatedTestBody();
+}
+
+TEST_P(ObfuscatedFileUtilTest,
+       GetDirectoryDatabase_DefaultBucketWithDifferentIds) {
+  GetDirectoryDatabase_DefaultBucketWithDifferentIdsTestBody();
 }
 
 TEST_P(ObfuscatedFileUtilTest, OpenPathInNonDirectory) {

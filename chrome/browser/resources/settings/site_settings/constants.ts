@@ -55,7 +55,6 @@ export enum ContentSettingsTypes {
   SMART_CARD_READERS = 'smart-card-readers',
   SOUND = 'sound',
   STORAGE_ACCESS = 'storage-access',
-  TOP_LEVEL_STORAGE_ACCESS = 'top-level-storage-access',
   USB_DEVICES = 'usb-devices',
   VR = 'vr',
   WEB_APP_INSTALLATION = 'web-app-installation',
@@ -94,7 +93,7 @@ export enum ChooserType {
   SERIAL_PORTS = 'serial-ports-data',
   HID_DEVICES = 'hid-devices-data',
   BLUETOOTH_DEVICES = 'bluetooth-devices-data',
-  // <if expr="is_chromeos">
+  // <if expr="enable_smart_card">
   SMART_CARD_READERS_DEVICES = 'smart-card-readers-data',
   // </if>
 }

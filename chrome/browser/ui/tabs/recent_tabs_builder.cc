@@ -13,7 +13,9 @@
 #include <utility>
 #include <vector>
 
+#include "base/containers/span.h"
 #include "base/feature_list.h"
+#include "base/memory/raw_ptr.h"
 #include "base/notreached.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
@@ -86,8 +88,7 @@ RecentTabItem BuildTabItem(const sessions::tab_restore::Tab& tab,
   item.set_icon(favicon::GetDefaultFaviconModel());
   item.set_is_local(true);
 
-  if (show_group_minor_icon && tab.group_visual_data.has_value() &&
-      !tab.is_group_ephemeral) {
+  if (show_group_minor_icon && tab.group_visual_data.has_value()) {
     const ui::ColorId color_id =
         GetTabGroupContextMenuColorId(tab.group_visual_data.value().color());
     constexpr int kIconSize = 12;

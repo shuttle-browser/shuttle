@@ -12,8 +12,5 @@ source_set("browser_active_state_manager") {
     "//chrome/browser/ui/browser_window",
     "//ui/base/unowned_user_data",
   ]
-  deps = [
-    "//chrome/common:buildflags",
-  ]
 }
 

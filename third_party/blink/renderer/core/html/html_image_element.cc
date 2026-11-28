@@ -121,7 +121,6 @@ HTMLImageElement::HTMLImageElement(Document& document, bool created_by_parser)
       form_was_set_by_parser_(false),
       element_created_by_parser_(created_by_parser),
       is_fallback_image_(false),
-      is_legacy_format_or_unoptimized_image_(false),
       is_lcp_element_(false),
       is_auto_sized_(false),
       is_predicted_lcp_element_(false),
@@ -642,10 +641,22 @@ void HTMLImageElement::AttachLayoutTree(AttachContext& context) {
 
 Node::InsertionNotificationRequest HTMLImageElement::InsertedInto(
     ContainerNode& insertion_point) {
-  if (!form_was_set_by_parser_ ||
-      NodeTraversal::HighestAncestorOrSelf(insertion_point) !=
-          NodeTraversal::HighestAncestorOrSelf(*form_.Get()))
+  DCHECK(!form_was_set_by_parser_ || form_);
+  if (!form_was_set_by_parser_) {
     ResetFormOwner();
+  } else {
+    const Node& form_or_highest_ancestor =
+        NodeTraversal::HighestAncestorOrSelf(*this, /*limit=*/form_);
+    if (form_or_highest_ancestor != *form_) [[unlikely]] {
+      if (form_or_highest_ancestor ==
+          NodeTraversal::HighestAncestorOrSelf(*form_)) {
+        form_->DidAssociateNonDescendantByParser();
+      } else {
+        ResetFormOwner();
+      }
+    }
+  }
+
   if (listener_)
     GetDocument().GetMediaQueryMatcher().AddViewportListener(listener_);
   bool was_added_to_picture_parent = false;
@@ -1261,17 +1272,6 @@ bool HTMLImageElement::IsPrimaryContent() const {
   return layout_disposition_ == LayoutDisposition::kPrimaryContent;
 }
 
-void HTMLImageElement::SetAutoSizesUsecounter() {
-  if (listener_ && HasLazyLoadingAttribute()) {
-    UseCounter::Count(
-        GetDocument(),
-        HasSizesAttribute()
-            ? WebFeature::kViewportDependentLazyLoadedImageWithSizesAttribute
-            : WebFeature::
-                  kViewportDependentLazyLoadedImageWithoutSizesAttribute);
-  }
-}
-
 void HTMLImageElement::SetLayoutDisposition(
     LayoutDisposition layout_disposition,
     bool force_reattach) {
@@ -1329,11 +1329,14 @@ void HTMLImageElement::AdjustStyle(ComputedStyleBuilder& builder) {
 }
 
 void HTMLImageElement::AssociateWith(HTMLFormElement* form) {
+  // InsertedInto() detects non-descendant parser associations, so this must
+  // happen before the element is inserted into any tree.
+  DCHECK(!parentNode());
+  DCHECK(!form_);
   if (form && form->isConnected()) {
     form_ = form;
     form_was_set_by_parser_ = true;
     form_->Associate(*this);
-    form_->DidAssociateByParser();
   }
 }
 

@@ -8,10 +8,120 @@ found in the LICENSE file.
 
 <histograms>
 
+<!-- LINT.IfChange(ActorOtpFillOtpDurationOutcome) -->
+
+<variants name="ActorOtpFillOtpDurationOutcome">
+  <variant name="Error" summary="an error, including a fill timeout"/>
+  <variant name="Success" summary="success"/>
+</variants>
+
+<!-- LINT.ThenChange(//chrome/browser/autofill/actor/one_time_tokens/actor_one_time_token_filling_service_metrics.cc:ActorOtpFillOtpDurationOutcome) -->
+
+<!-- LINT.IfChange(ActorOtpRetrieveOtpDurationOutcome) -->
+
+<variants name="ActorOtpRetrieveOtpDurationOutcome">
+  <variant name="CacheMatch" summary="a cache match"/>
+  <variant name="Cancelled"
+      summary="Cancelled (the service was destroyed before completion)"/>
+  <variant name="Error" summary="an error"/>
+  <variant name="ReceivedMatch" summary="a received match"/>
+  <variant name="SenderDomainMismatch" summary="a sender-domain mismatch"/>
+  <variant name="Timeout" summary="a timeout"/>
+</variants>
+
+<!-- LINT.ThenChange(//chrome/browser/autofill/actor/one_time_tokens/actor_one_time_token_filling_service_metrics.cc:ActorOtpRetrieveOtpDurationOutcomeSuffix) -->
+
+<!-- LINT.IfChange(AttemptOtpFillingConsentFetchOutcome) -->
+
+<variants name="AttemptOtpFillingConsentFetchOutcome">
+  <variant name="Error" summary="an error"/>
+  <variant name="Success" summary="success"/>
+</variants>
+
+<!-- LINT.ThenChange(//chrome/browser/actor/tools/one_time_token/attempt_otp_filling_metrics.cc:AttemptOtpFillingConsentFetchOutcomeSuffix) -->
+
+<!-- LINT.IfChange(AttemptOtpFillingOptInState) -->
+
+<variants name="AttemptOtpFillingOptInState">
+  <variant name="AlreadyOptedIn" summary="when the user was already opted in"/>
+  <variant name="NewlyOptedIn"
+      summary="when the user opted in during this attempt"/>
+  <variant name="NotOptedIn" summary="when the user was not opted in"/>
+</variants>
+
+<!-- LINT.ThenChange(//chrome/browser/actor/tools/one_time_token/attempt_otp_filling_metrics.cc:AttemptOtpFillingOptInStateSuffix) -->
+
+<!-- LINT.IfChange(AttemptOtpFillingPredictedOtpType) -->
+
+<variants name="AttemptOtpFillingPredictedOtpType">
+  <variant name="AuthenticatorApp" summary="an authenticator app code"/>
+  <variant name="Email" summary="an email code"/>
+  <variant name="Sms" summary="an SMS code"/>
+  <variant name="Unknown" summary="of an unknown type"/>
+</variants>
+
+<!-- LINT.ThenChange(//chrome/browser/autofill/actor/one_time_tokens/actor_one_time_token_filling_service_metrics.cc:AttemptOtpFillingPredictedOtpTypeSuffix) -->
+
+<!-- LINT.IfChange(AttemptOtpFillingStep) -->
+
+<variants name="AttemptOtpFillingStep">
+  <variant name="AfterConfirmation"
+      summary="third, only if confirmation is required, after the user
+               approves it"/>
+  <variant name="AfterOtpRetrieved"
+      summary="second, after the OTP is retrieved, before the confirmation
+               dialog or filling"/>
+  <variant name="TimeOfUse" summary="first, before the OTP is requested"/>
+</variants>
+
+<!-- LINT.ThenChange(//chrome/browser/actor/tools/one_time_token/attempt_otp_filling_metrics.cc:AttemptOtpFillingStepSuffix) -->
+
+<!-- LINT.IfChange(GmailOtpFlowType) -->
+
+<variants name="GmailOtpFlowType">
+  <variant name="GmailActor"
+      summary="the actor flow, where an agent task fills the OTP"/>
+  <variant name="GmailAutofill"
+      summary="the autofill flow, which offers the OTP as a suggestion"/>
+</variants>
+
+<!-- LINT.ThenChange(//components/one_time_tokens/core/browser/gmail_otp_sender_domain_metrics.cc:GmailOtpFlowType) -->
+
 <variants name="GmailOtpTokenSource">
   <variant name="Cached" summary="a cached"/>
   <variant name="Received" summary="a received (fresh)"/>
 </variants>
+
+<histogram
+    name="OneTimeTokens.Actor.AttemptOtpFilling.GmailAndGoogleSmartFeaturesConsent"
+    enum="ActorOtpGmailAndGoogleSmartFeaturesConsent"
+    expires_after="2027-06-30">
+  <owner>salmaabdelaziz@google.com</owner>
+  <owner>passwordmanager-mobile-eng@google.com</owner>
+  <summary>
+    Records the combination of the Gmail (comms_apps) and Google (google_apps)
+    Smart Features consent states, with one bucket per combination. Recorded at
+    most once per AttemptOtpFilling attempt, when the consent fetch succeeds.
+    Not recorded when the tool is destroyed before the response or a mock OTP is
+    used. Fetch failures are not recorded here; they are recorded as
+    OneTimeTokens.Actor.AttemptOtpFilling.ToolInvocation bucket
+    UnableToRetrieveGmailAndGoogleSmartFeaturesConsent.
+  </summary>
+</histogram>
+
+<histogram
+    name="OneTimeTokens.Actor.AttemptOtpFilling.GmailAndGoogleSmartFeaturesConsent.Duration.{Outcome}"
+    units="ms" expires_after="2027-06-30">
+  <owner>salmaabdelaziz@google.com</owner>
+  <owner>passwordmanager-mobile-eng@google.com</owner>
+  <summary>
+    Time from requesting the Gmail and Google Smart Features consent states in
+    AttemptOtpFilling Validate until the response ({Outcome}). Recorded once per
+    consent fetch. Not recorded for mock OTP runs or if the tool is destroyed
+    before the response.
+  </summary>
+  <token key="Outcome" variants="AttemptOtpFillingConsentFetchOutcome"/>
+</histogram>
 
 <histogram
     name="OneTimeTokens.Actor.AttemptOtpFilling.GmailOtpConfirmationDialogInteraction"
@@ -19,11 +129,12 @@ found in the LICENSE file.
   <owner>ioanap@chromium.org</owner>
   <owner>trangm@google.com</owner>
   <summary>
-    Records user interactions with the Gmail OTP confirmation dialog during the
-    AttemptOtpFilling tool execution, such as whether permission was granted,
-    denied, or if an error occurred. Recorded once when the dialog is requested
-    to be shown, when there's an error, the user approves or declines the
-    confirmation dialog.
+    Records the user's interaction with the Gmail OTP confirmation dialog during
+    the AttemptOtpFilling tool execution: permission granted, permission denied,
+    an error response, or Cancelled when the tool is destroyed after the dialog
+    is requested and before a response is received (e.g. the task is stopped,
+    paused or cancelled, or the tab is closed). Recorded once per dialog
+    request. Nothing is recorded if the tool never requests the dialog.
   </summary>
 </histogram>
 
@@ -33,11 +144,12 @@ found in the LICENSE file.
   <owner>ioanap@chromium.org</owner>
   <owner>sdrab@google.com</owner>
   <summary>
-    Records user interactions with the Gmail OTP opt-in dialog card during the
-    AttemptOtpFilling tool execution, such as whether permission was granted,
-    denied, or if an error occurred. Recorded once when the dialog is requested
-    to be shown, when there's an error, the user approves or declines the opt-in
-    dialog.
+    Records the user's interaction with the Gmail OTP opt-in card during the
+    AttemptOtpFilling tool execution: permission granted, permission denied, an
+    error response, or Cancelled when the tool is destroyed after the card is
+    requested and before a response is received (e.g. the task is stopped,
+    paused or cancelled, or the tab is closed). Recorded once per card request.
+    Nothing is recorded if the tool never requests the card.
   </summary>
 </histogram>
 
@@ -58,11 +170,45 @@ found in the LICENSE file.
   <owner>ioanap@chromium.org</owner>
   <owner>sdrab@google.com</owner>
   <summary>
-    Records events during the execution of the AttemptOtpFilling tool by the
-    actor, such as the start of an attempt, OTP retrieval status, consent
-    checks, and whether OTP filling succeeded or failed. This metric spans
-    across the lifecycle methods Validate, TimeOfUseValidation and Invoke.
+    Records the terminal outcome of a single AttemptOtpFilling tool attempt by
+    the actor: success, a specific failure (e.g. OTP retrieval, consent checks
+    or filling), or the step during which the attempt was cancelled. This metric
+    spans across the lifecycle methods Validate, TimeOfUseValidation and Invoke.
+    The CancelledDuring* buckets are recorded when the tool is destroyed (e.g.
+    the task is stopped, paused or cancelled, or the tab is closed) before the
+    named asynchronous step completes. Recorded at most once per attempt.
   </summary>
+</histogram>
+
+<histogram
+    name="OneTimeTokens.Actor.AttemptOtpFilling.ToolInvocation.{OptInState}"
+    enum="AttemptOtpFillingEvent" expires_after="2027-06-30">
+  <owner>salmaabdelaziz@google.com</owner>
+  <owner>passwordmanager-mobile-eng@google.com</owner>
+  <summary>
+    Same as OneTimeTokens.Actor.AttemptOtpFilling.ToolInvocation, sliced by the
+    Gmail OTP opt-in state for {OptInState}. Recorded alongside the base
+    histogram, at most once per attempt. Not recorded when a mock OTP is used.
+  </summary>
+  <token key="OptInState" variants="AttemptOtpFillingOptInState"/>
+</histogram>
+
+<histogram
+    name="OneTimeTokens.Actor.AttemptOtpFilling.ValidateFormFillingContext.{Step}"
+    enum="ActorOtpFormFillingContextValidationResult"
+    expires_after="2027-06-30">
+  <owner>salmaabdelaziz@google.com</owner>
+  <owner>passwordmanager-mobile-eng@google.com</owner>
+  <summary>
+    Records the outcome of the form filling context validation that the
+    AttemptOtpFilling tool runs {Step}: Secure, or the first check that failed
+    (e.g. no tab, an insecure page, a missing form or trigger field, a form that
+    submits to an insecure action, OTP fields from different origins, or a frame
+    that is missing or may not be filled). Recorded once per validation. Not
+    recorded when the attempt ends before reaching this validation, e.g. when an
+    earlier validation or the OTP retrieval fails.
+  </summary>
+  <token key="Step" variants="AttemptOtpFillingStep"/>
 </histogram>
 
 <histogram name="OneTimeTokens.Actor.AttemptOtpFilling.VerifyIsActorLoginFlow"
@@ -83,11 +229,26 @@ found in the LICENSE file.
   <owner>ioanap@chromium.org</owner>
   <owner>sdrab@google.com</owner>
   <summary>
-    Records events during OTP filling operations of the
-    ActorOneTimeTokenFillingService. Recorded at the start of FillOtp
-    invocations, and when filling outcomes or error conditions (e.g. invalid
-    tab, missing form structure, or successful fill) are determined.
+    Records the outcome of a single FillOtp request in
+    ActorOneTimeTokenFillingService: a pre-fill error (e.g. a null tab, no
+    trigger fields, a concurrent call, no autofill manager, a missing form or
+    trigger field, or empty fill data), the renderer fill result (success or
+    error), or Cancelled if the service is destroyed while the fill is pending
+    (e.g. the actor task ends or the browser shuts down). Recorded once per
+    request.
   </summary>
+</histogram>
+
+<histogram
+    name="OneTimeTokens.Actor.OneTimeTokenFillingService.FillOtp.Duration.{Outcome}"
+    units="ms" expires_after="2027-06-30">
+  <owner>ioanap@chromium.org</owner>
+  <owner>salmaabdelaziz@google.com</owner>
+  <summary>
+    Time from triggering a single OTP fill until the ActorFillingObserver
+    reported {Outcome}. Recorded once per fill that reaches the observer.
+  </summary>
+  <token key="Outcome" variants="ActorOtpFillOtpDurationOutcome"/>
 </histogram>
 
 <histogram name="OneTimeTokens.Actor.OneTimeTokenFillingService.RetrieveOtp"
@@ -96,11 +257,48 @@ found in the LICENSE file.
   <owner>ioanap@chromium.org</owner>
   <owner>sdrab@google.com</owner>
   <summary>
-    Records events during OTP retrieval operations of the
-    ActorOneTimeTokenFillingService. Recorded at the start of RetrieveOtp
-    invocations, and when retrieval outcomes or error conditions (e.g. cache
-    hits, mock OTPs, or superseded callbacks) are determined.
+    Records the outcome of a single OTP retrieval request in
+    ActorOneTimeTokenFillingService: a null tab, no backend, a mock OTP, a cache
+    or received match, a timeout, a sender-domain mismatch, a backend error, or
+    Cancelled if the service is destroyed while the retrieval is pending (e.g.
+    the actor task ends or the browser shuts down). Recorded once per request.
+    Not recorded for a request that is superseded by a newer request.
+    GmailOtpSenderDomainMismatch is recorded when the subscription timed out
+    after at least one token delivered via the subscription was rejected for
+    sender-domain mismatch. If the AttemptOtpFilling tool is destroyed while a
+    retrieval is pending, the retrieval continues and its outcome is still
+    recorded.
   </summary>
+</histogram>
+
+<histogram
+    name="OneTimeTokens.Actor.OneTimeTokenFillingService.RetrieveOtp.Duration.{Outcome}"
+    units="ms" expires_after="2027-06-30">
+  <owner>salmaabdelaziz@google.com</owner>
+  <owner>passwordmanager-mobile-eng@google.com</owner>
+  <summary>
+    Time from the start of a single OTP retrieval via GmailOtpRetriever until it
+    ended with {Outcome}. Recorded once per request that reaches the retriever.
+    Not recorded for requests that fail before the retriever starts (null tab,
+    no backend, mock OTP) or that are superseded.
+  </summary>
+  <token key="Outcome" variants="ActorOtpRetrieveOtpDurationOutcome"/>
+</histogram>
+
+<histogram
+    name="OneTimeTokens.Actor.OneTimeTokenFillingService.RetrieveOtp.{PredictedOtpType}"
+    enum="ActorOneTimeTokenFillingServiceRetrieveOtpEvent"
+    expires_after="2027-06-30">
+  <owner>salmaabdelaziz@google.com</owner>
+  <owner>passwordmanager-mobile-eng@google.com</owner>
+  <summary>
+    Records the outcome of a single OTP retrieval request in
+    ActorOneTimeTokenFillingService for a request where the model predicted the
+    OTP to be {PredictedOtpType}. Uses the outcome buckets of
+    OneTimeTokens.Actor.OneTimeTokenFillingService.RetrieveOtp and is recorded
+    alongside it, once per request when the request ends.
+  </summary>
+  <token key="PredictedOtpType" variants="AttemptOtpFillingPredictedOtpType"/>
 </histogram>
 
 <histogram
@@ -117,27 +315,358 @@ found in the LICENSE file.
   </summary>
 </histogram>
 
+<histogram name="OneTimeTokens.Backend.Gmail.AuthLatency" units="ms"
+    expires_after="2027-05-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the duration of the OAuth token fetch for the Gmail OTP backend.
+    Recorded when the access token fetch completes.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Backend.Gmail.ErrorCode"
+    enum="GmailOneTimeTokensBackendErrorCode" expires_after="2027-05-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the error encountered while attempting to retrieve Gmail one time
+    tokens. Recorded when a retrieval attempt fails.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Backend.Gmail.ErrorLatency" units="ms"
+    expires_after="2027-05-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Real-time duration of the asynchronous attempt to retrieve a Gmail one time
+    token from the backend. Recorded when the asynchronous job failed.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Backend.Gmail.HasActiveSubscription"
+    enum="Boolean" expires_after="2027-05-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records whether a subscription was already active when a Gmail OTP
+    notification arrived. Recorded when an incoming Gmail OTP backend
+    notification is received. True if a subscription was active (immediate hit),
+    false if the notification had to wait for a subscription.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Backend.Gmail.NetworkLatency" units="ms"
+    expires_after="2027-05-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the duration of the network request to the OneTimeTokenService to
+    fetch a Gmail one time token. Recorded when the response is received.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Backend.Gmail.QueueLatency" units="ms"
+    expires_after="2027-05-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the duration a Gmail OTP notification spent in the pending queue
+    before being processed. Recorded when a notification is popped from the
+    pending queue to be processed.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Backend.Gmail.QueueSize" units="count"
+    expires_after="2027-05-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Recorded when a notification enters the coordinator; monitors the depth of
+    the pending queue.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Backend.Gmail.SubscriptionWaitLatency"
+    units="ms" expires_after="2027-05-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the duration a Gmail OTP notification spent in the opportunistic
+    cache waiting for a subscription, from when the notification is received to
+    when it is retrieved from the cache. Recorded when a notification is
+    retrieved from the opportunistic cache.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Backend.Gmail.Success" enum="Boolean"
+    expires_after="2027-05-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records whether the attempt to retrieve a Gmail one time token from the
+    backend succeeds. Recorded when the asynchronous job has returned.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Backend.Gmail.SuccessLatency" units="ms"
+    expires_after="2027-05-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Real-time duration of the asynchronous attempt to retrieve a Gmail one time
+    token from the backend. The latency is measured from when the incoming
+    notification enters the pending queue to when the response from the Gmail
+    backend is received. Recorded when the asynchronous job succeeded.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.EmailReceivedToTickleLatency" units="ms"
+    expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the latency between an OTP email being received by the Gmail SMTP
+    edge server and Chrome receiving the push notification (tickle) from the
+    backend. Recorded upon tickle arrival.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.EmailSavedToTickleLatency" units="ms"
+    expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the latency between an OTP email appearing in the user's inbox
+    (stored in the mail store) and Chrome receiving the push notification
+    (tickle) from the backend. Recorded upon tickle arrival.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.FieldDetectionToOtpSuggestionReadyLatency"
+    units="ms" expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the latency between detecting an OTP field on a web page and the
+    Gmail OTP suggestion becoming ready to be offered. Recorded once per origin
+    listening session when the Gmail OTP push notification arrives after field
+    detection.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.FieldDetectionToTickleLatency" units="ms"
+    expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the latency between detecting an OTP field on a web page and
+    receiving a push notification (tickle) from the backend. Recorded when a
+    tickle arrives after an OTP field was detected.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.OptIn.BubbleResult"
+    enum="GmailOtpOptInResult" expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>trangm@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the outcome of the Gmail OTP opt-in bubble. Recorded once when the
+    opt-in bubble finishes its lifecycle (without being re-queued for reshow) or
+    is discarded.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.OptIn.LearnMoreClicked"
+    enum="BooleanClicked" expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>trangm@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records a click on the Learn more link in the Gmail OTP opt-in bubble, which
+    opens settings in a new tab. Only true is recorded. Recorded each time the
+    link is clicked, so there can be several samples per bubble.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.OptIn.SettingsChange"
+    enum="GmailOtpSettingsChangeOutcome" expires_after="2027-08-01">
+  <owner>trangm@google.com</owner>
+  <owner>sdrab@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the outcome when the user toggles Gmail OTP filling on the
+    chrome://settings contact info page, including turn-on attempts blocked by
+    missing account consents or a failed consent fetch. Opt-ins from the opt-in
+    bubble and the actor card are not recorded here.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.OptIn.State" enum="GmailOtpOptInState"
+    expires_after="2027-08-01">
+  <owner>trangm@google.com</owner>
+  <owner>kazinova@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the user's Gmail OTP opt-in state when a tab sees both a Gmail
+    tickle and an OTP field detection within 3 minutes of each other, in either
+    order. Recorded in each such tab, so one tickle can be recorded more than
+    once. If several states apply, records the first one in this order: bubble
+    already showing, opted in, declined cool-off, session cool-off. Not decided
+    means the opt-in bubble will be shown;
+    OneTimeTokens.Gmail.OptIn.BubbleResult records its outcome.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.PageLanguage.{Outcome}"
+    enum="LocaleCodeBCP47" expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Captures the page language distribution across different OTP outcomes and
+    arrival sequences to identify locales with high win rates or missing backend
+    push support. Recorded for {Outcome}.
+  </summary>
+  <token key="Outcome">
+    <variant name="NoFieldDetected"
+        summary="tickles where no OTP field was detected within 3 minutes of
+                 arrival. The language is logged speculatively from the page
+                 open when the tickle was received."/>
+    <variant name="NoTickleReceived"
+        summary="OTP forms where no tickle was received within 3 minutes of
+                 field detection."/>
+    <variant name="TickleAfterUserInteraction"
+        summary="OTP forms where a tickle arrived after user interaction."/>
+    <variant name="TickleBeforeUserInteraction"
+        summary="OTP forms where a tickle arrived before user interaction."/>
+  </token>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.Tickle.Arrival"
+    enum="OneTimeTokensTickleArrival" expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Measures push notification delivery dynamics relative to form
+    classification. Records the arrival order and timing of push notifications
+    relative to OTP form detection on a web page.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.Tickle.FormOutcome"
+    enum="OneTimeTokensTickleFormOutcome" expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Measures the outcome of every detected OTP form on a web page relative to
+    push notification delivery and user interaction. Recorded either when a push
+    notification arrives (before or after user interaction) or after 3 minutes
+    have elapsed without receiving a push notification for this form.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.TickleToFieldDetectionLatency" units="ms"
+    expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the latency between receiving a push notification (tickle) from the
+    backend and detecting an OTP field on a web page. Recorded when an OTP field
+    is detected on a page after a tickle was already received.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.Gmail.TickleTransmissionLatency" units="ms"
+    expires_after="2027-08-01">
+  <owner>kazinova@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Recorded upon tickle arrival to evaluate how long tickle travels from the
+    server to the client, namely the diff between
+    OneTimeTokenBackendNotification::notification_sent_timestamp and
+    OneTimeTokenBackendNotification::notification_received_timestamp.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.ProactiveTrigger.Outcome"
+    enum="OtpProactiveTriggerOutcome" expires_after="2027-08-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records the outcome of a proactive OTP suggestion trigger, i.e. Chrome
+    opening the OTP suggestion popup on an OTP field without user interaction. A
+    trigger is attempted when a verified OTP arrives, when an OTP field is
+    detected while a verified OTP is available, or when a deferred trigger is
+    retried. Recorded at most once per (OTP field, OTP candidate) pair per page
+    visit, where a candidate is one received OTP message, so a re-sent code and
+    the SMS and Gmail copies of one code are separate candidates. A pair may be
+    recorded again after the page is restored from the back/forward cache.
+    &quot;Suppressed&quot; is recorded when the trigger is blocked at the
+    proactive trigger stage (see
+    OneTimeTokens.ProactiveTrigger.SuppressionReason). &quot;Triggered and
+    suggestions shown&quot; is recorded when an OTP suggestion popup with the
+    triggered value is shown on the field within 5 seconds of the trigger being
+    dispatched to the renderer; on Android, this is when the keyboard accessory
+    receives the suggestions, which does not guarantee that they are visible.
+    Attribution is time-based, so an OTP popup with that value that the user
+    opens on the field within this window is also counted. Nothing is recorded
+    for triggers deferred while the tab is hidden or the window is unfocused
+    (only the outcome of the retry is recorded), or for dispatched triggers
+    whose popup is not shown within 5 seconds. Only recorded on desktop and
+    Android while the AutofillOtpCoordinator feature is enabled.
+  </summary>
+</histogram>
+
+<histogram name="OneTimeTokens.ProactiveTrigger.SuppressionReason"
+    enum="OtpProactiveTriggerSuppressionReason" expires_after="2027-08-01">
+  <owner>koerber@google.com</owner>
+  <owner>src/components/one_time_tokens/OWNERS</owner>
+  <summary>
+    Records why a proactive OTP suggestion trigger was suppressed for an OTP
+    candidate that had already passed delivery verification. Recorded together
+    with the &quot;Suppressed&quot; bucket of
+    OneTimeTokens.ProactiveTrigger.Outcome, at most once per (OTP field, OTP
+    candidate) pair per page visit. If several checks fail, only the first
+    failing check is recorded, in the order applied by
+    OtpCoordinator::TryProactiveTrigger(): deduplication, then
+    OtpDeliveryPolicy::Evaluate(), then the different OTP field check.
+    &quot;WebOTP blocked&quot; and &quot;User not opted in to Gmail OTP
+    filling&quot; are edge cases where a delivery precondition stopped holding
+    after verification, e.g. while the trigger was deferred. &quot;Target OTP
+    field not focused on Android&quot; and &quot;Keyboard not visible on
+    Android&quot; are only recorded on Android; &quot;Different OTP field
+    focused&quot; is only recorded on other platforms. &quot;Frame
+    inactive&quot; and &quot;Keyboard not visible on Android&quot;
+    (crbug.com/451991285) are currently never recorded. Only recorded on desktop
+    and Android while the AutofillOtpCoordinator feature is enabled.
+  </summary>
+</histogram>
+
 <histogram
-    name="OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType.{Source}"
+    name="OneTimeTokens.{Type}.SenderDomainMatchAcceptedMatchType.{Source}"
     enum="GmailOtpSenderDomainMatchType" expires_after="2027-06-30">
   <owner>ioanap@chromium.org</owner>
   <owner>sdrab@google.com</owner>
   <summary>
     Records the match type for an accepted sender domain match for {Source} OTP
-    in GmailOtpRetriever. Recorded only when a token is accepted.
+    in {Type}. Recorded only when a token is accepted.
   </summary>
+  <token key="Type" variants="GmailOtpFlowType"/>
   <token key="Source" variants="GmailOtpTokenSource"/>
 </histogram>
 
 <histogram
-    name="OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason.{Source}"
+    name="OneTimeTokens.{Type}.SenderDomainMatchRejectionReason.{Source}"
     enum="GmailOtpSenderDomainMatchType" expires_after="2027-06-30">
   <owner>ioanap@chromium.org</owner>
   <owner>sdrab@google.com</owner>
   <summary>
     Records the reason why a sender domain match was rejected for {Source} OTP
-    in GmailOtpRetriever. Recorded only when a token is rejected.
+    in {Type}. Recorded only when a token is rejected.
   </summary>
+  <token key="Type" variants="GmailOtpFlowType"/>
   <token key="Source" variants="GmailOtpTokenSource"/>
 </histogram>
 

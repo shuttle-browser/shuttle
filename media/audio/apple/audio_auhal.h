@@ -107,9 +107,6 @@ class AUHALStream : public AudioOutputStream {
 
   AudioDeviceID device_id() const { return device_; }
   size_t requested_buffer_size() const { return params_.frames_per_buffer(); }
-  AudioUnit audio_unit() const {
-    return audio_unit_ ? audio_unit_->audio_unit() : nullptr;
-  }
 
  private:
   // AUHAL callback.
@@ -131,9 +128,6 @@ class AUHALStream : public AudioOutputStream {
 
   // Creates the AUHAL, sets its stream format, buffer-size, etc.
   bool ConfigureAUHAL();
-
-  // Creates the input and output buses.
-  void CreateIOBusses();
 
   // Returns the playout time for a given AudioTimeStamp.
   base::TimeTicks GetPlayoutTime(const AudioTimeStamp* output_time_stamp);

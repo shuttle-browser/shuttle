@@ -2005,8 +2005,8 @@ ci.thin_tester(
 
 ci.thin_tester(
     name = "Linux FYI Release (Intel UHD 770)",
-    description_html = "Runs release GPU tests on stable Linux/Intel UHD 630 configs",
-    parent = "GPU FYI Linux Builder",
+    description_html = "Runs release GPU tests with Wayland enabled on stable Linux/Intel UHD 770 configs",
+    parent = "GPU FYI Linux Wayland Builder",
     builder_spec = gpu_fyi_thin_tester_builder_spec(
         gclient_config = builder_config.gclient_config(
             config = "chromium",
@@ -2024,10 +2024,10 @@ ci.thin_tester(
     targets = targets.bundle(
         targets = [
             "gpu_all_linux_release_gtests",
-            "gpu_all_linux_release_telemetry_tests",
+            "gpu_all_linux_wayland_release_telemetry_tests",
         ],
         mixins = [
-            "linux_intel_uhd_770_stable",
+            "linux_intel_uhd_770_wayland_stable",
         ],
         per_test_modifications = {
             "gl_tests_passthrough": targets.mixin(
@@ -2045,7 +2045,7 @@ ci.thin_tester(
         os_type = targets.os_type.LINUX,
     ),
     console_view_entry = consoles.console_view_entry(
-        category = "Linux|Intel",
+        category = "Linux|Wayland|Intel",
         short_name = "770",
     ),
 )
@@ -2690,13 +2690,6 @@ ci.thin_tester(
                     "gpu bots once the Windows OS supports HW secure decryption.",
                 ],
             ),
-
-            # TODO(crbug.com/380431384): Re-enable when fixed
-            "webgl_conformance_vulkan_passthrough_tests": targets.remove(
-                reason = [
-                    "crbug.com/380431384 flaky crashes in random tests",
-                ],
-            ),
         },
     ),
     targets_settings = targets.settings(
@@ -3006,9 +2999,6 @@ ci.thin_tester(
             "screenshot_sync_passthrough_graphite_tests": targets.remove(
                 reason = "crbug.com/541312843 enable these tests after the test bundle standardization lands",
             ),
-            "webgl_conformance_vulkan_passthrough_tests": targets.remove(
-                reason = "crbug.com/541312843 enable these tests after the test bundle standardization lands",
-            ),
         },
     ),
     targets_settings = targets.settings(
@@ -3221,12 +3211,6 @@ ci.thin_tester(
                     "gpu bots once the Windows OS supports HW secure decryption.",
                 ],
             ),
-            # TODO(crbug.com/380431384): Re-enable when fixed
-            "webgl_conformance_vulkan_passthrough_tests": targets.remove(
-                reason = [
-                    "crbug.com/380431384 flaky crashes in random tests",
-                ],
-            ),
             "pixel_skia_gold_passthrough_graphite_test": targets.per_test_modification(
                 mixins = targets.mixin(
                     args = [
@@ -3351,9 +3335,6 @@ ci.thin_tester(
                 reason = "crbug.com/541312843 enable these tests after the test bundle standardization lands",
             ),
             "screenshot_sync_passthrough_graphite_tests": targets.remove(
-                reason = "crbug.com/541312843 enable these tests after the test bundle standardization lands",
-            ),
-            "webgl_conformance_vulkan_passthrough_tests": targets.remove(
                 reason = "crbug.com/541312843 enable these tests after the test bundle standardization lands",
             ),
         },
@@ -3514,9 +3495,6 @@ ci.thin_tester(
                 reason = "crbug.com/541312843 enable these tests after the test bundle standardization lands",
             ),
             "screenshot_sync_passthrough_graphite_tests": targets.remove(
-                reason = "crbug.com/541312843 enable these tests after the test bundle standardization lands",
-            ),
-            "webgl_conformance_vulkan_passthrough_tests": targets.remove(
                 reason = "crbug.com/541312843 enable these tests after the test bundle standardization lands",
             ),
         },
@@ -3722,12 +3700,6 @@ ci.thin_tester(
                     "gpu bots once the Windows OS supports HW secure decryption.",
                 ],
             ),
-            # TODO(crbug.com/380431384): Re-enable when fixed
-            "webgl_conformance_vulkan_passthrough_tests": targets.remove(
-                reason = [
-                    "crbug.com/380431384 flaky crashes in random tests",
-                ],
-            ),
             "pixel_skia_gold_passthrough_graphite_test": targets.per_test_modification(
                 mixins = targets.mixin(
                     args = [
@@ -3798,12 +3770,6 @@ ci.thin_tester(
             "win11_qualcomm_snapdragon_x_elite_stable",
         ],
         per_test_modifications = {
-            "context_lost_passthrough_graphite_tests": targets.remove(
-                reason = "Graphite on ARM is currently not supported.",
-            ),
-            "expected_color_pixel_passthrough_graphite_test": targets.remove(
-                reason = "Graphite on ARM is currently not supported.",
-            ),
             "gl_tests_passthrough": targets.mixin(
                 args = [
                     "--test-launcher-filter-file=../../testing/buildbot/filters/win.qualcomm.snapdragon_x_elite.gl_tests_passthrough.filter",
@@ -3813,12 +3779,6 @@ ci.thin_tester(
                 args = [
                     "--test-launcher-filter-file=../../testing/buildbot/filters/win.qualcomm.snapdragon_x_elite.gl_unittests.filter",
                 ],
-            ),
-            "pixel_skia_gold_passthrough_graphite_test": targets.remove(
-                reason = "Graphite on ARM is currently not supported.",
-            ),
-            "screenshot_sync_passthrough_graphite_tests": targets.remove(
-                reason = "Graphite on ARM is currently not supported.",
             ),
             "services_webnn_unittests": targets.mixin(
                 args = [

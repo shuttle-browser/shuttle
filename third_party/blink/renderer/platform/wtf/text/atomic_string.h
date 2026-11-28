@@ -70,6 +70,20 @@ class WTF_EXPORT AtomicString {
 
   // Factories ------------------------------------------------------
 
+  // Interns a compile-time `.rodata` StaticAsciiStringImpl in
+  // AtomicStringTable without allocating on the heap (unless an AtomicString
+  // with the same characters is already alive in AtomicStringTable, in which
+  // case the existing entry is reused). Intended primarily for static
+  // initialization (such as DEFINE_STATIC_LOCAL).
+  template <StaticStringLiteral Str>
+  static AtomicString FromLiteral() {
+    if constexpr (StaticAsciiLiteral<Str>::kLength == 0) {
+      return AtomicString(&StringImpl::g_global_empty, StaticAtomTag{});
+    } else {
+      return AddStaticLiteral(StaticAsciiLiteral<Str>::AtomicImpl());
+    }
+  }
+
   // AtomicString::FromUtf8 will return a null string if the input data
   // contains invalid UTF-8 sequences.
   static AtomicString FromUtf8(base::span<const uint8_t>);
@@ -88,7 +102,11 @@ class WTF_EXPORT AtomicString {
 
   // [string.cons] --------------------------------------------------
 
-  AtomicString() = default;
+  constexpr AtomicString() = default;
+  struct StaticAtomTag {};
+  constexpr AtomicString(const StringImpl* static_impl, StaticAtomTag)
+      : string_(static_impl, String::StaticImplTag{}) {}
+  AtomicString(String string, StaticAtomTag) : string_(std::move(string)) {}
   explicit AtomicString(const char* chars) {
     if (!chars) {
       return;
@@ -99,8 +117,8 @@ class WTF_EXPORT AtomicString {
     }
     // SAFETY: The below span creation is safe if `chars` points to a
     // NUL-terminated string.
-    *this = AtomicString(base::as_bytes(UNSAFE_BUFFERS(
-        base::span(base::unchecked, chars, strlen(chars)))));
+    *this = AtomicString(base::as_bytes(
+        UNSAFE_BUFFERS(base::span(base::unchecked, chars, strlen(chars)))));
   }
   explicit AtomicString(base::span<const LChar> chars);
   explicit AtomicString(
@@ -124,8 +142,8 @@ class WTF_EXPORT AtomicString {
 
   size_type length() const { return string_.length(); }
   bool empty() const { return string_.empty(); }
-  explicit operator bool() const { return !IsNull(); }
-  bool IsNull() const { return string_.IsNull(); }
+  constexpr explicit operator bool() const { return !IsNull(); }
+  constexpr bool IsNull() const { return string_.IsNull(); }
 
   size_t CharactersSizeInBytes() const {
     return string_.CharactersSizeInBytes();
@@ -140,10 +158,10 @@ class WTF_EXPORT AtomicString {
   // [string.operations] --------------------------------------------
 
   bool Is8Bit() const { return string_.Is8Bit(); }
-  StringImpl* Impl() const { return string_.Impl(); }
+  constexpr StringImpl* Impl() const { return string_.Impl(); }
 
-  operator const String&() const { return string_; }
-  const String& GetString() const { return string_; }
+  constexpr operator const String&() const { return string_; }
+  constexpr const String& GetString() const { return string_; }
 
   uint32_t Hash() const { return string_.Impl()->ExistingHash(); }
 
@@ -322,6 +340,7 @@ class WTF_EXPORT AtomicString {
   static String AddSlowCase(String&&);
   static String AddSlowCase(StringImpl*);
   static String AddSlowCase(const StringView&);
+  static AtomicString AddStaticLiteral(const StringImpl*);
 };
 
 inline bool operator==(const AtomicString& a, const AtomicString& b) {
@@ -344,14 +363,14 @@ inline bool operator==(const char* a, const AtomicString& b) {
 
 // Define external global variables for the commonly used atomic strings.
 // These are only usable from the main thread.
-WTF_EXPORT extern const AtomicString& g_null_atom;
-WTF_EXPORT extern const AtomicString& g_empty_atom;
-WTF_EXPORT extern const AtomicString& g_star_atom;
-WTF_EXPORT extern const AtomicString& g_xml_atom;
-WTF_EXPORT extern const AtomicString& g_xmlns_atom;
-WTF_EXPORT extern const AtomicString& g_xlink_atom;
-WTF_EXPORT extern const AtomicString& g_http_atom;
-WTF_EXPORT extern const AtomicString& g_https_atom;
+WTF_EXPORT extern const AtomicString g_null_atom;
+WTF_EXPORT extern const AtomicString g_empty_atom;
+WTF_EXPORT extern const AtomicString g_star_atom;
+WTF_EXPORT extern const AtomicString g_xml_atom;
+WTF_EXPORT extern const AtomicString g_xmlns_atom;
+WTF_EXPORT extern const AtomicString g_xlink_atom;
+WTF_EXPORT extern const AtomicString g_http_atom;
+WTF_EXPORT extern const AtomicString g_https_atom;
 
 // Pretty printer for gtest and base/logging.*.  It prepends and appends
 // double-quotes, and escapes characters other than ASCII printables.

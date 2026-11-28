@@ -33,7 +33,7 @@
 #include "cc/animation/animation_id_provider.h"
 #include "cc/animation/keyframe_model.h"
 #include "cc/base/features.h"
-#include "cc/input/browser_controls_offset_manager.h"
+#include "cc/input/browser_controls_offset_manager_interface.h"
 #include "cc/input/input_handler.h"
 #include "cc/input/main_thread_scrolling_reason.h"
 #include "cc/input/page_scale_animation.h"
@@ -54,6 +54,7 @@
 #include "cc/layers/viewport.h"
 #include "cc/metrics/compositor_frame_reporting_controller.h"
 #include "cc/metrics/frame_info.h"
+#include "cc/metrics/scroll_timing_buffer.h"
 #include "cc/resources/ui_resource_bitmap.h"
 #include "cc/resources/ui_resource_manager.h"
 #include "cc/test/animation_test_common.h"
@@ -2939,6 +2940,135 @@ TEST_P(LayerTreeHostImplTest, OverscrollBehaviorChainPropagatesScroll) {
   GetInputHandler().ScrollEnd(/*should_snap=*/false, std::nullopt);
   EXPECT_POINTF_EQ(gfx::PointF(20, 20), CurrentScrollOffset(scroll_layer));
   EXPECT_POINTF_EQ(gfx::PointF(0, 0), CurrentScrollOffset(overflow));
+}
+
+// Tests for the scroll nodes of ::-internal-overscroll-area-parent elements
+// reparented above the outer viewport.
+class OverscrollAreaParentLayerTreeHostImplTest : public LayerTreeHostImplTest {
+ protected:
+  enum class AreaPosition { kAbove, kBelow };
+
+  // Adds the scroll node of a ::-internal-overscroll-area-parent reparented
+  // above the outer viewport scroll node. It has a 100x100 scroll container and
+  // 100x200 contents, with the overscroll area in one half of the contents. The
+  // overscroll area is closed, i.e. the other half of the contents is visible
+  // and hit-testing hits the outer viewport rather than the overscroll area.
+  LayerImpl* AddClosedOverscrollAreaParent(AreaPosition area_position) {
+    LayerImpl* area_parent = AddScrollableLayer(
+        OuterViewportScrollLayer(), gfx::Size(100, 100), gfx::Size(100, 200));
+    area_parent->SetHitTestOpaqueness(HitTestOpaqueness::kTransparent);
+    const gfx::RectF top_half(0, 0, 100, 100);
+    const gfx::RectF bottom_half(0, 100, 100, 100);
+    const bool area_above = area_position == AreaPosition::kAbove;
+    const gfx::RectF& area_rect = area_above ? top_half : bottom_half;
+    const gfx::RectF& closed_rect = area_above ? bottom_half : top_half;
+
+    // As in blink::SnapCoordinator::AddOverscrollSnapAreas, the first snap
+    // area is the initial scroll position, where the overscroll area is
+    // closed.
+    SnapContainerData snap_data(
+        ScrollSnapType(false, SnapAxis::kPair, SnapStrictness::kMandatory),
+        gfx::RectF(0, 0, 100, 100), /*max=*/gfx::PointF(0, 100));
+    const ScrollSnapAlign center(SnapAlignment::kCenter,
+                                 SnapAlignment::kCenter);
+    snap_data.AddSnapAreaData(
+        SnapAreaData(center, closed_rect, SnapStop::kAlways,
+                     /*has_focus_within=*/false, ElementId(10)));
+    snap_data.AddSnapAreaData(SnapAreaData(center, area_rect, SnapStop::kNormal,
+                                           /*has_focus_within=*/false,
+                                           ElementId(20)));
+
+    ScrollNode* scroll_node = GetScrollNode(area_parent);
+    scroll_node->snap_container_data.emplace(std::move(snap_data));
+    ScrollNode* outer_viewport_scroll =
+        GetScrollNode(OuterViewportScrollLayer());
+    scroll_node->parent_id = outer_viewport_scroll->parent_id;
+    outer_viewport_scroll->parent_id = scroll_node->id;
+    SetScrollOffset(area_parent, closed_rect.origin());
+    return area_parent;
+  }
+
+  // Scrolls by |delta| with a mouse wheel at (50, 50).
+  void WheelScroll(const gfx::Vector2dF& delta) {
+    const gfx::Point position(50, 50);
+    const ui::ScrollInputType type = ui::ScrollInputType::kWheel;
+    EXPECT_EQ(ScrollThread::kScrollOnImplThread,
+              GetInputHandler()
+                  .ScrollBegin(BeginState(position, delta, type).get(), type)
+                  .thread);
+    GetInputHandler().ScrollUpdate(UpdateState(position, delta, type));
+    GetInputHandler().ScrollEnd(/*should_snap=*/false, std::nullopt);
+  }
+};
+
+INSTANTIATE_COMMIT_TO_TREE_TEST_P(OverscrollAreaParentLayerTreeHostImplTest);
+
+// A closed overscroll area parent lets the viewport scroll first, and latches
+// when the viewport cannot scroll.
+TEST_P(OverscrollAreaParentLayerTreeHostImplTest, ClosedChainsAfterViewport) {
+  SetupViewportLayersOuterScrolls(gfx::Size(100, 100), gfx::Size(100, 400));
+  SetScrollOffset(OuterViewportScrollLayer(), gfx::PointF(0, 30));
+  LayerImpl* area_parent = AddClosedOverscrollAreaParent(AreaPosition::kAbove);
+  DrawFrame();
+
+  // The viewport can scroll up, so it scrolls first.
+  WheelScroll(gfx::Vector2dF(0, -50));
+  EXPECT_POINTF_EQ(gfx::PointF(0, 0),
+                   CurrentScrollOffset(OuterViewportScrollLayer()));
+  EXPECT_POINTF_EQ(gfx::PointF(0, 100), CurrentScrollOffset(area_parent));
+
+  // At the top of the viewport, the overscroll area parent latches.
+  WheelScroll(gfx::Vector2dF(0, -50));
+  EXPECT_POINTF_EQ(gfx::PointF(0, 0),
+                   CurrentScrollOffset(OuterViewportScrollLayer()));
+  EXPECT_POINTF_EQ(gfx::PointF(0, 50), CurrentScrollOffset(area_parent));
+}
+
+// An open overscroll area is hit-testable (via its area or backdrop) and closes
+// before the viewport scrolls.
+TEST_P(OverscrollAreaParentLayerTreeHostImplTest, OpenScrollsBeforeViewport) {
+  SetupViewportLayersOuterScrolls(gfx::Size(100, 100), gfx::Size(100, 400));
+  SetScrollOffset(OuterViewportScrollLayer(), gfx::PointF(0, 30));
+  LayerImpl* area_parent = AddClosedOverscrollAreaParent(AreaPosition::kAbove);
+  // Open the overscroll area fully, making it hit-testable in the viewport.
+  area_parent->SetHitTestOpaqueness(HitTestOpaqueness::kOpaque);
+  SetScrollOffset(area_parent, gfx::PointF(0, 0));
+  DrawFrame();
+
+  // The viewport can scroll down, but the overscroll area parent scrolls
+  // toward its closed position first.
+  WheelScroll(gfx::Vector2dF(0, 50));
+  EXPECT_POINTF_EQ(gfx::PointF(0, 30),
+                   CurrentScrollOffset(OuterViewportScrollLayer()));
+  EXPECT_POINTF_EQ(gfx::PointF(0, 50), CurrentScrollOffset(area_parent));
+}
+
+// When the viewport cannot scroll, the first closed overscroll area parent in
+// scroll chain order that can consume the delta latches.
+TEST_P(OverscrollAreaParentLayerTreeHostImplTest,
+       ClosedLatchInScrollChainOrder) {
+  // The viewport cannot scroll.
+  SetupViewportLayersOuterScrolls(gfx::Size(100, 100), gfx::Size(100, 100));
+  // The outer overscroll area parent can only scroll down.
+  LayerImpl* outer_area_parent =
+      AddClosedOverscrollAreaParent(AreaPosition::kBelow);
+  // The inner overscroll area parent can only scroll up.
+  LayerImpl* inner_area_parent =
+      AddClosedOverscrollAreaParent(AreaPosition::kAbove);
+  DrawFrame();
+
+  // The inner overscroll area parent comes first, and can scroll up.
+  WheelScroll(gfx::Vector2dF(0, -50));
+  EXPECT_POINTF_EQ(gfx::PointF(0, 0), CurrentScrollOffset(outer_area_parent));
+  EXPECT_POINTF_EQ(gfx::PointF(0, 50), CurrentScrollOffset(inner_area_parent));
+
+  // Close the inner overscroll area again. It cannot scroll down, so the outer
+  // overscroll area parent latches.
+  SetScrollOffset(inner_area_parent, gfx::PointF(0, 100));
+  DrawFrame();
+  WheelScroll(gfx::Vector2dF(0, 50));
+  EXPECT_POINTF_EQ(gfx::PointF(0, 50), CurrentScrollOffset(outer_area_parent));
+  EXPECT_POINTF_EQ(gfx::PointF(0, 100), CurrentScrollOffset(inner_area_parent));
 }
 
 TEST_P(LayerTreeHostImplTest, ScrollWithUserUnscrollableLayers) {
@@ -15653,15 +15783,25 @@ TEST_P(LayerTreeHostImplTest,
           .get(),
       ui::ScrollInputType::kTouchscreen);
 
-  EXPECT_THAT(
-      ScrollUpdateAndGetObservations(
-          host_impl_.get(),
-          UpdateState(gfx::Point(50, 50), gfx::Vector2dF(0, 10),
-                      ui::ScrollInputType::kTouchscreen),
-          ui::ScrollInputType::kTouchscreen),
-      ElementsAre(
-          Field(&ScrollUpdateEventMetrics::AppliedScrollObservation::element_id,
-                child_scroller->element_id())));
+  const auto observations = ScrollUpdateAndGetObservations(
+      host_impl_.get(),
+      UpdateState(gfx::Point(50, 50), gfx::Vector2dF(0, 10),
+                  ui::ScrollInputType::kTouchscreen),
+      ui::ScrollInputType::kTouchscreen);
+  if (settings.trees_in_viz_in_viz_process ||
+      settings.TreesInVizInClientProcess()) {
+    EXPECT_THAT(observations, IsEmpty());
+    EXPECT_FALSE(host_impl_->compositor_frame_reporting_controller()
+                     ->has_scroll_timing_buffer());
+  } else {
+    EXPECT_THAT(
+        observations,
+        ElementsAre(Field(
+            &ScrollUpdateEventMetrics::AppliedScrollObservation::element_id,
+            child_scroller->element_id())));
+    EXPECT_TRUE(host_impl_->compositor_frame_reporting_controller()
+                    ->has_scroll_timing_buffer());
+  }
 
   GetInputHandler().ScrollEnd(/*should_snap=*/false, std::nullopt);
 }
@@ -15700,6 +15840,8 @@ TEST_P(LayerTreeHostImplTest,
   LayerTreeSettings settings = DefaultSettings();
   settings.enable_scroll_performance_timing = false;
   CreateHostImpl(settings, CreateLayerTreeFrameSink());
+  EXPECT_FALSE(host_impl_->compositor_frame_reporting_controller()
+                   ->has_scroll_timing_buffer());
   SetupViewportLayersOuterScrolls(gfx::Size(100, 100), gfx::Size(1000, 1000));
   DrawFrame();
 
@@ -15745,6 +15887,95 @@ TEST_P(LayerTreeHostImplTest,
                    CurrentScrollOffset(OuterViewportScrollLayer()));
 
   GetInputHandler().ScrollEnd(/*should_snap=*/false, std::nullopt);
+}
+
+TEST_P(
+    LayerTreeHostImplTest,
+    ScrollPerformanceTimingRetainsRecordsAcrossTreeResetAndVisibilityChanges) {
+  LayerTreeSettings settings = DefaultSettings();
+  if (settings.trees_in_viz_in_viz_process ||
+      settings.TreesInVizInClientProcess()) {
+    GTEST_SKIP();
+  }
+  settings.enable_scroll_performance_timing = true;
+  CreateHostImpl(settings, CreateLayerTreeFrameSink());
+  auto* controller = host_impl_->compositor_frame_reporting_controller();
+  const auto consumer = ScrollTimingBufferConsumer::Create(
+      host_impl_->TakeScrollTimingBufferRegion());
+  ASSERT_TRUE(consumer);
+  base::SimpleTestTickClock clock;
+  clock.SetNowTicks(base::TimeTicks::Now());
+  controller->set_tick_clock(&clock);
+  base::ScopedClosureRunner restore_clock(
+      base::BindLambdaForTesting([controller] {
+        controller->set_tick_clock(base::DefaultTickClock::GetInstance());
+      }));
+  EventMetricsTestCreator creator;
+  const auto start_time = clock.NowTicks() + base::Milliseconds(1);
+  const auto scroll_id = start_time + base::Milliseconds(1);
+  clock.Advance(base::Milliseconds(16));
+  const auto args = viz::CreateBeginFrameArgsForTesting(
+      BEGINFRAME_FROM_HERE, /*source_id=*/1, /*sequence_number=*/1,
+      clock.NowTicks());
+  controller->WillBeginImplFrame(args, /*will_throttle_main=*/false);
+  EventMetrics::List events;
+  events.push_back(
+      creator.FirstGestureScrollUpdateBuilder()
+          .SetTimestamp(start_time + base::Milliseconds(2))
+          .SetDelta(1)
+          .SetDidScroll(true)
+          .SetDispatchArgs(
+              ScrollEventMetrics::DispatchBeginFrameArgs::From(args))
+          .SetScrollBeginGeneratedTimestamp(start_time)
+          .SetScrollBeginArrivalTimestamp(scroll_id)
+          .AddAppliedScrollObservation(ElementId(11))
+          .Build());
+  clock.Advance(base::Milliseconds(1));
+  controller->OnFinishImplFrame(args.frame_id, /*waiting_for_main=*/false);
+  SubmitInfo submit_info = {1, clock.NowTicks()};
+  submit_info.events_metrics.impl_event_metrics = std::move(events);
+  controller->DidSubmitCompositorFrame(submit_info, args.frame_id,
+                                       viz::BeginFrameId());
+  clock.Advance(base::Milliseconds(1));
+  viz::FrameTimingDetails details;
+  details.presentation_feedback.timestamp = clock.NowTicks();
+  controller->DidPresentCompositorFrame(/*frame_token=*/1, details);
+
+  controller->OnStoppedRequestingBeginFrames();
+  const ScrollTimingInfo expected_info{
+      .start_time = start_time,
+      .end_time = details.presentation_feedback.timestamp,
+      .input_type = ui::ScrollInputType::kTouchscreen,
+      .element_id = ElementId(11),
+  };
+  // Published records belong to the compositor, not its layer trees.
+  host_impl_->ResetTreesForTesting();
+  host_impl_->SetVisible(false);
+  host_impl_->SetVisible(true);
+
+  const auto retained_snapshot = consumer->ReadRecords();
+  EXPECT_THAT(retained_snapshot.records, ElementsAre(expected_info));
+  EXPECT_EQ(retained_snapshot.overwritten_count, 0u);
+}
+
+TEST_P(LayerTreeHostImplTest,
+       ScrollPerformanceTimingHasNoBufferForScheduledSingleThreadedMode) {
+  LayerTreeSettings settings = DefaultSettings();
+  settings.enable_scroll_performance_timing = true;
+  settings.single_thread_proxy_scheduler = true;
+  CreateHostImpl(settings, CreateLayerTreeFrameSink());
+  EXPECT_FALSE(host_impl_->compositor_frame_reporting_controller()
+                   ->has_scroll_timing_buffer());
+}
+
+TEST_P(LayerTreeHostImplTest,
+       ScrollPerformanceTimingHasNoBufferForUiCompositor) {
+  LayerTreeSettings settings = DefaultSettings();
+  settings.enable_scroll_performance_timing = true;
+  settings.is_layer_tree_for_ui = true;
+  CreateHostImpl(settings, CreateLayerTreeFrameSink());
+  EXPECT_FALSE(host_impl_->compositor_frame_reporting_controller()
+                   ->has_scroll_timing_buffer());
 }
 
 class ConcurrentImplOnlyScrollAnimationsTest : public LayerTreeHostImplTest {
@@ -15916,7 +16147,7 @@ class ConcurrentSnapAnimationsTest : public LayerTreeHostImplTest {
         gfx::RectF(0, 0, 100, 100), gfx::PointF(0, 4900));
     SnapContainerData container2(
         ScrollSnapType(false, SnapAxis::kY, SnapStrictness::kMandatory),
-        gfx::RectF(100, 100, 100, 100), gfx::PointF(0, 4900));
+        gfx::RectF(0, 100, 100, 100), gfx::PointF(0, 4900));
 
     // Add snap areas to both snap containers.
     ScrollSnapAlign start_alignment = ScrollSnapAlign(SnapAlignment::kStart);

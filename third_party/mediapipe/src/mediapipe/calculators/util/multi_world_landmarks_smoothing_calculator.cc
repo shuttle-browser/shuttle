@@ -19,6 +19,8 @@
 #include <optional>
 #include <vector>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/util/landmarks_smoothing_calculator.pb.h"
 #include "mediapipe/calculators/util/landmarks_smoothing_calculator_utils.h"
 #include "mediapipe/framework/api2/node.h"
@@ -74,15 +76,15 @@ class MultiWorldLandmarksSmoothingCalculatorImpl
         object_scale = GetObjectScale(object_scale_roi_vec.value()[i]);
       }
 
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto* landmarks_filter,
           multi_filters_.GetOrCreate(
               tracking_ids[i],
               cc->Options<LandmarksSmoothingCalculatorOptions>()));
 
       LandmarkList out_landmarks;
-      MP_RETURN_IF_ERROR(landmarks_filter->Apply(in_landmarks, timestamp,
-                                                 object_scale, out_landmarks));
+      ABSL_RETURN_IF_ERROR(landmarks_filter->Apply(
+          in_landmarks, timestamp, object_scale, out_landmarks));
 
       out_landmarks_vec.push_back(std::move(out_landmarks));
     }

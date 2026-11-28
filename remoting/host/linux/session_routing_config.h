@@ -39,17 +39,35 @@ class SessionRoutingConfig {
   static base::FilePath GetDefaultConfigFilePath();
 
   // Synchronously loads and validates the config file from `path`.
-  // - Returns `base::ok(std::nullopt)` if the file does not exist (`ENOENT`).
+  // - Returns `base::ok(std::nullopt)` if the file or its parent directory
+  //   does not exist.
   // - Returns `base::ok(SessionRoutingConfig)` if the file is secure and valid.
-  // - Returns `base::unexpected(Loggable)` if the file exists on disk but fails
-  //   ownership/permission/symlink security checks, contains malformed JSON, or
-  //   violates the schema.
+  // - Returns `base::unexpected(Loggable)` if the file or its parent directory
+  //   fails the ownership/permission/symlink security checks of
+  //   ReadSecureFile(), or if the file contains malformed JSON or violates the
+  //   schema.
   // `is_corp_host` selects the routing mode when `sessionUser` is not set:
   // `kMatchCorpClientUsername` on corp hosts, `kRejectAll` otherwise.
   static base::expected<std::optional<SessionRoutingConfig>, Loggable>
   LoadAndValidate(const base::FilePath& path = GetDefaultConfigFilePath(),
                   bool is_corp_host = false,
                   uid_t expected_owner_uid = 0);
+
+  // Atomically writes a session routing config file to `path` with mode 0644.
+  // The file is owned by the effective user (root in production), and the
+  // parent directory of `path` must already exist, be owned by the effective
+  // user, and not be writable by group or others, so that LoadAndValidate()
+  // accepts the file. An empty `session_user` omits the `sessionUser` field,
+  // and `create_remote_user_sessions` is only written if it is true, so
+  // `WriteToFile(path, "", false)` writes `{}`.
+  // Returns an error without writing anything if `session_user` is not a valid
+  // username or the parent directory fails the checks above. Also returns an
+  // error if writing the file fails or the written file can't be loaded back.
+  // Performs blocking file I/O.
+  static base::expected<void, Loggable> WriteToFile(
+      const base::FilePath& path,
+      std::string_view session_user,
+      bool create_remote_user_sessions);
 
   SessionRoutingConfig();
   SessionRoutingConfig(RoutingMode mode,
@@ -79,8 +97,10 @@ class SessionRoutingConfig {
 
   // Returns whether the host should create a new remote session for the
   // resolved user, if supported, when the user has no graphical session.
-  // Created sessions are not terminated when the client disconnects or the
-  // host stops, and are reused by the next connection. Defaults to `false`.
+  // Created sessions are not terminated when the client disconnects, and are
+  // reused by the next connection, including across host upgrades and daemon
+  // crashes. They are terminated when the host service is stopped. Defaults to
+  // `false`.
   bool create_remote_user_sessions() const {
     return create_remote_user_sessions_;
   }

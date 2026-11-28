@@ -255,10 +255,12 @@ class CONTENT_EXPORT RenderWidgetHostImpl
   void SetExternallySourcedComposition(
       const std::u16string& text,
       const std::vector<ui::ImeTextSpan>& ime_text_spans,
+      const gfx::Range& replacement_range,
       const GlobalDOMNodeId& target_dom_node_id,
-      base::OnceClosure on_complete) override;
+      base::OnceCallback<void(const gfx::Range&)> on_complete) override;
   void CommitExternallySourcedComposition(
       const std::u16string& text,
+      const gfx::Range& replacement_range,
       const GlobalDOMNodeId& target_dom_node_id,
       base::OnceClosure on_complete) override;
   void PasteIntoNode(const std::u16string& text,
@@ -967,6 +969,12 @@ class CONTENT_EXPORT RenderWidgetHostImpl
   // Marks all views in the frame tree as evicted.
   std::vector<viz::SurfaceId> CollectSurfaceIdsForEviction();
 
+  // Validates a renderer's attempt to notify user activation in a frame. It
+  // removes one expected user activation notification if available and returns
+  // true; otherwise, it returns false. See
+  // `AddExpectedUserActivationNotification()`.
+  bool RemoveExpectedUserActivationNotificationIfAvailable();
+
   const mojo::AssociatedRemote<blink::mojom::FrameWidget>&
   GetAssociatedFrameWidget();
 
@@ -1185,6 +1193,8 @@ class CONTENT_EXPORT RenderWidgetHostImpl
                            ScrollBubblingWithTouchMoveInjection);
   FRIEND_TEST_ALL_PREFIXES(RenderWidgetHostTest, EventDispatchPostDetach);
   FRIEND_TEST_ALL_PREFIXES(RenderWidgetHostTest, InputEventRWHLatencyComponent);
+  FRIEND_TEST_ALL_PREFIXES(RenderWidgetHostTest,
+                           ExpectedUserActivationNotification);
   FRIEND_TEST_ALL_PREFIXES(DevToolsAgentHostImplTest,
                            NoUnresponsiveDialogInInspectedContents);
   FRIEND_TEST_ALL_PREFIXES(RenderWidgetHostViewMacTest,
@@ -1240,7 +1250,8 @@ class CONTENT_EXPORT RenderWidgetHostImpl
   // IPC message handlers
   void OnClose();
   void OnUpdateScreenRectsAck();
-  void OnUpdateDragOperation(DragOperationCallback callback,
+  void OnUpdateDragOperation(uint64_t drag_target_session_id,
+                             DragOperationCallback callback,
                              ui::mojom::DragOperation current_op,
                              bool document_is_handling_drag);
 
@@ -1369,6 +1380,38 @@ class CONTENT_EXPORT RenderWidgetHostImpl
   // tests.
   void OnFirstVisuallyNonEmptyCompositorFrame();
 
+  void UpdateFullscreenGrantCount();
+
+  // Adds one to `expected_user_activation_notifications_` when forwarding
+  // selected input events, and also sets a timer that allows a renderer to
+  // "claim" the expected activation notification within a limited time
+  // (`kUserActivationVerificationTimeout`).
+  //
+  // This deliberately tracks the earliest event in a touch sequence (to be
+  // precise, touch start instead of touch end as per the user activation spec)
+  // to support long-press and also a legacy notification call from a
+  // gesture-tap-down handler. This would cause a false notification rejection
+  // after a very-long press lasting beyond
+  // `kUserActivationVerificationTimeout`, which is a corner case we can ignore.
+  //
+  // Because of the above, we need to call this even for the events that are not
+  // dispatched to the renderer. The browser may not dispatch the earliest event
+  // in the sequence as an optimization (e.g. because there is no event
+  // listener), but a notification call from a latter event could still be
+  // expected.
+  //
+  // TODO(https://crbug.com/40091540): WebContentsImpl has a "parallel" user
+  // activation tracker through HandleUserInteractionForInputEvent which is
+  // primarily used for OS clipboard messages. We need to consolidate that
+  // tracker into RenderWidgetHostImpl. Not sure why gesture scroll begin events
+  // are included there, this is incompatible with the web exposed user
+  // activation state here.
+  void AddExpectedUserActivationNotification(const blink::WebInputEvent& event);
+
+  // Clears `expected_user_activation_notifications_`. This is called after
+  // navigations or timeouts.
+  void ClearExpectedUserActivationNotifications();
+
   raw_ptr<FrameTree> frame_tree_;
 
   // RenderWidgetHost are either:
@@ -1488,7 +1531,6 @@ class CONTENT_EXPORT RenderWidgetHostImpl
   // increments `fullscreen_grant_count_` each time fullscreen is entered so
   // that fullscreen transitions coalesced while waiting for a visual properties
   // ack are still detected.
-  void UpdateFullscreenGrantCount();
   bool was_fullscreen_ = false;
   uint64_t fullscreen_grant_count_ = 0;
 
@@ -1712,6 +1754,10 @@ class CONTENT_EXPORT RenderWidgetHostImpl
       this};
   mojo::AssociatedRemote<blink::mojom::FrameWidget> blink_frame_widget_;
 
+  // Identifies the current renderer drag-target session. Enter starts a new
+  // session, while leave and drop invalidate pending enter/over replies.
+  uint64_t drag_target_session_id_ = 0;
+
   // If this is initialized with a popup this member will be valid and
   // manages the lifecycle of the popup in blink.
   mojo::AssociatedReceiver<blink::mojom::PopupWidgetHost>
@@ -1739,6 +1785,20 @@ class CONTENT_EXPORT RenderWidgetHostImpl
   std::optional<InitialFrameSinkPipes> initial_frame_sink_pipes_;
 
   std::optional<GlobalRenderFrameHostId> popup_creator_frame_id_;
+
+  // The time limit for browser verification of user activation notification
+  // signal from the renderer, counting from the latest dispatch of a relevant
+  // input event to the renderer.
+  static constexpr base::TimeDelta kUserActivationVerificationTimeout =
+      base::Seconds(30);
+
+  // Counter for expected user activation notification calls.
+  //
+  // TODO(https://crbug.com/577959346): Prevent unlimited accumulation of this.
+  int expected_user_activation_notifications_ = 0;
+
+  // Timer to reset `expected_user_activation_notifications_` after a delay.
+  base::OneShotTimer expected_user_activation_notification_timer_;
 
   base::WeakPtrFactory<RenderWidgetHostImpl> weak_factory_{this};
 };

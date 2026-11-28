@@ -17,49 +17,53 @@ function getSignatureDialog(): ViewerSignatureDialogElement|null {
       'viewer-signature-dialog');
 }
 
-suite('Ink2SignatureDialogTest', () => {
-  test('OpenAndCloseSignatureDialog', async () => {
+async function openSignatureDialog(): Promise<ViewerSignatureDialogElement> {
+  const whenOpen = eventToPromise('cr-dialog-open', viewer);
+  viewer.$.toolbar.setAnnotationMode(AnnotationMode.SIGNATURE);
+  await whenOpen;
+  await microtasksFinished();
+  const dialog = getSignatureDialog();
+  assertTrue(!!dialog);
+  return dialog;
+}
+
+suite('Ink2SignatureDialogTest', function() {
+  setup(async function() {
+    viewer.$.toolbar.setAnnotationMode(AnnotationMode.OFF);
+    await microtasksFinished();
+  });
+
+  test('OpenAndCloseSignatureDialog', async function() {
     assertEquals(AnnotationMode.OFF, viewer.$.toolbar.annotationMode);
     assertFalse(!!getSignatureDialog());
 
     // Entering signature mode opens the signature dialog.
-    const whenOpen = eventToPromise('cr-dialog-open', viewer);
-    viewer.$.toolbar.setAnnotationMode(AnnotationMode.SIGNATURE);
-    await whenOpen;
-    await microtasksFinished();
-
+    let dialog = await openSignatureDialog();
     assertEquals(AnnotationMode.SIGNATURE, viewer.$.toolbar.annotationMode);
-    const dialog = getSignatureDialog();
-    assertTrue(!!dialog);
     assertTrue(dialog.$.dialog.open);
-    assertTrue(isVisible(dialog.$.close));
+    assertTrue(isVisible(dialog.$.canvas));
     assertTrue(isVisible(dialog.$.clear));
     assertTrue(isVisible(dialog.$.create));
 
     // Clicking the close button closes the dialog while staying in signature
     // mode.
+    const closeButton =
+        dialog.$.dialog.shadowRoot.querySelector<HTMLElement>('#close');
+    assertTrue(!!closeButton);
     const whenClosed = eventToPromise('close', dialog);
-    dialog.$.close.click();
+    closeButton.click();
     await whenClosed;
     await microtasksFinished();
 
     assertFalse(!!getSignatureDialog());
     assertEquals(AnnotationMode.SIGNATURE, viewer.$.toolbar.annotationMode);
-  });
 
-  test('ReopenSignatureDialog', async () => {
+    // Exiting and re-entering signature mode opens the dialog again.
     viewer.$.toolbar.setAnnotationMode(AnnotationMode.OFF);
     await microtasksFinished();
     assertFalse(!!getSignatureDialog());
 
-    // Re-entering signature mode opens the dialog again.
-    const whenOpen = eventToPromise('cr-dialog-open', viewer);
-    viewer.$.toolbar.setAnnotationMode(AnnotationMode.SIGNATURE);
-    await whenOpen;
-    await microtasksFinished();
-
-    const dialog = getSignatureDialog();
-    assertTrue(!!dialog);
+    dialog = await openSignatureDialog();
     assertTrue(dialog.$.dialog.open);
   });
 });

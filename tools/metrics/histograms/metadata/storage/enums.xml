@@ -36,16 +36,6 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//net/cookies/cookie_util.h:ActivateStorageAccessLoadOutcome) -->
 
-<!-- LINT.IfChange(BlobSideDataAccessType) -->
-
-<enum name="BlobSideDataAccessType">
-  <int value="0" label="Blob URL loaded without side data"/>
-  <int value="1" label="Blob URL loaded with side data"/>
-  <int value="2" label="CacheStorage side data read"/>
-</enum>
-
-<!-- LINT.ThenChange(//storage/browser/blob/blob_side_data_access_type.h:BlobSideDataAccessType) -->
-
 <!-- LINT.IfChange(BlobUuidAccess) -->
 
 <enum name="BlobUuidAccess">
@@ -606,22 +596,6 @@ chromium-metrics-reviews@google.com.
   <int value="0" label="Not provided"/>
   <int value="1" label="Not persisted"/>
   <int value="2" label="Persisted"/>
-</enum>
-
-<enum name="TopLevelStorageAccessRequestOutcome">
-  <summary>
-    Possible outcomes of a Top-Level Storage Access API permission request.
-  </summary>
-  <int value="0" label="Granted by First-Party Set"/>
-  <int value="1" label="(Obsolete) Granted by implicit grant allowance"/>
-  <int value="2" label="(Obsolete) Granted by user"/>
-  <int value="3" label="Denied by First-Party Set"/>
-  <int value="4" label="(Obsolete) Denied by user"/>
-  <int value="5"
-      label="Denied by missing prerequisite (user gesture, feature enabled)"/>
-  <int value="6" label="(Obsolete) Dismissed by user"/>
-  <int value="7" label="(Obsolete) Reused previous decision (made by user)"/>
-  <int value="8" label="Access was denied through cookie settings"/>
 </enum>
 
 </enums>

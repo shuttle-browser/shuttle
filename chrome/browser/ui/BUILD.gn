@@ -195,12 +195,16 @@ if (!is_android) {
     deps = [
       "//chrome/app:generated_resources",
       "//chrome/browser/favicon",
+      "//chrome/browser/profiles:profile",
       "//chrome/browser/resource_coordinator:mojo_bindings",
+      "//chrome/browser/search",
       "//chrome/browser/sessions",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/tabs:features",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/common:constants",
+      "//components/favicon/core",
+      "//components/favicon_base",
       "//components/security_interstitials/content:security_interstitial_page",
       "//components/tabs:public",
       "//content/public/common",
@@ -292,7 +296,11 @@ if (!is_android) {
       "//chrome/browser/ui/webui/util",
       "//components/profile_metrics",
       "//components/spellcheck/browser",
+      "//extensions/buildflags",
     ]
+    if (enable_extensions) {
+      deps += [ "//chrome/browser/ui/extensions" ]
+    }
     if (is_mac) {
       deps += [
         ":browser_commands_mac",
@@ -303,6 +311,7 @@ if (!is_android) {
       deps += [
         ":browser_commands_chromeos",
         "//chrome/browser/ui/ash/multi_user",
+        "//chromeos/strings",
       ]
     }
   }
@@ -339,31 +348,12 @@ if (!is_android) {
       "//base",
       "//chrome/browser/content_settings:content_settings_util",
       "//chrome/browser/ui:chrome_pages",
-      "//chrome/browser/ui:tab_dialogs",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/tabs:tab_strip",
+      "//chrome/browser/ui/views/site_data",
       "//chrome/common:constants",
       "//components/subresource_filter/core/browser",
       "//ui/base",
-    ]
-  }
-
-  source_set("browser_window_theme_observer") {
-    public = [ "browser_window_theme_observer.h" ]
-    public_deps = [
-      "//base",
-      "//chrome/browser/themes",
-      "//ui/base/unowned_user_data",
-    ]
-  }
-
-  source_set("browser_window_theme_observer_impl") {
-    sources = [ "browser_window_theme_observer.cc" ]
-    public_deps = [ ":browser_window_theme_observer" ]
-    deps = [
-      ":browser_window_header",
-      "//chrome/browser/themes",
-      "//chrome/browser/ui/browser_window",
     ]
   }
 
@@ -604,7 +594,6 @@ if (!is_android) {
       "//chrome/browser/ui/webui/inspect",
       "//chrome/browser/ui/webui/util",
       "//chrome/browser/ui/window_feature_controller",
-      "//components/dom_distiller/core",
       "//components/input",
       "//components/lens:buildflags",
       "//components/live_caption",
@@ -616,6 +605,7 @@ if (!is_android) {
       "//components/search",
       "//components/signin/public/base",
       "//components/user_manager",
+      "//components/web_distiller/core",
       "//content/public/browser",
       "//content/public/common",
       "//extensions/buildflags",
@@ -743,7 +733,6 @@ if (!is_android) {
       "//chrome/common",
       "//chrome/common:constants",
       "//components/browsing_data/content",
-      "//components/dom_distiller/core",
       "//components/embedder_support:user_agent",
       "//components/favicon/core",
       "//components/find_in_page",
@@ -758,6 +747,7 @@ if (!is_android) {
       "//components/sessions",
       "//components/tab_groups",
       "//components/tabs:public",
+      "//components/web_distiller/core",
       "//components/web_modal",
       "//components/zoom",
       "//content/public/browser",
@@ -1421,6 +1411,7 @@ if (!is_android) {
       "//extensions/browser",
       "//extensions/common",
       "//net",
+      "//third_party/blink/public:buildflags",
       "//ui/base",
       "//url",
     ]

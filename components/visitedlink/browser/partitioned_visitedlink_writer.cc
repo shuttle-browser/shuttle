@@ -7,7 +7,7 @@
 #include <algorithm>
 #include <array>
 
-#include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/feature_list.h"
 #include "base/logging.h"
 #include "base/memory/read_only_shared_memory_region.h"
@@ -275,7 +275,6 @@ bool PartitionedVisitedLinkWriter::CreateVisitedLinkTable(int32_t num_entries) {
       CreateVisitedLinkTableHelper(num_entries, &table_memory)) {
     mapped_table_memory_ = std::move(table_memory);
     hash_table_ = GetHashTableFromMapping(mapped_table_memory_.mapping);
-    table_length_ = num_entries;
     used_items_ = 0;
     return true;
   }
@@ -317,7 +316,7 @@ bool PartitionedVisitedLinkWriter::CreateVisitedLinkTableHelper(
 }
 
 bool PartitionedVisitedLinkWriter::ResizeTableIfNecessary() {
-  DCHECK(table_length_ > 0) << "Must have a table";
+  DCHECK(table_length() > 0) << "Must have a table";
 
   // Load limits for good performance/space. We are pretty conservative about
   // keeping the table not very full. This is because we use linear probing
@@ -328,14 +327,14 @@ bool PartitionedVisitedLinkWriter::ResizeTableIfNecessary() {
 
   float load = ComputeTableLoad();
   if (load < kMaxTableLoad &&
-      (table_length_ <= kDefaultTableSize || load > kMinTableLoad)) {
+      (table_length() <= kDefaultTableSize || load > kMinTableLoad)) {
     return false;
   }
 
   // Table needs to grow or shrink.
   int32_t new_size = NewTableSizeForCount(used_items_);
   DCHECK(new_size > used_items_);
-  DCHECK(load <= kMinTableLoad || new_size > table_length_);
+  DCHECK(load <= kMinTableLoad || new_size > table_length());
   ResizeTable(new_size);
   return true;
 }
@@ -349,23 +348,17 @@ void PartitionedVisitedLinkWriter::ResizeTable(int32_t new_size) {
 #endif
 
   auto old_hash_table_mapping = std::move(mapped_table_memory_.mapping);
-  int32_t old_table_length = table_length_;
   if (!CreateVisitedLinkTable(new_size)) {
     // Restore modified members.
     mapped_table_memory_.mapping = std::move(old_hash_table_mapping);
     return;
   }
 
-  {
-    Fingerprint* old_hash_table =
-        GetHashTableFromMapping(old_hash_table_mapping);
-    // Now we have two tables, our local copy which is the old one, and the new
-    // one loaded into this object where we need to copy the data.
-    for (int32_t i = 0; i < old_table_length; i++) {
-      Fingerprint cur = UNSAFE_TODO(old_hash_table[i]);
-      if (cur) {
-        AddFingerprint(cur, false);
-      }
+  // Now we have two tables, our local copy which is the old one, and the new
+  // one loaded into this object where we need to copy the data.
+  for (Fingerprint cur : GetHashTableFromMapping(old_hash_table_mapping)) {
+    if (cur) {
+      AddFingerprint(cur, false);
     }
   }
   // Send an update notification to all child processes so they read the new
@@ -391,16 +384,17 @@ bool PartitionedVisitedLinkWriter::BuildTableFromDelegate() {
 VisitedLinkWriter::Hash PartitionedVisitedLinkWriter::AddFingerprint(
     Fingerprint fingerprint,
     bool send_notifications) {
-  if (!hash_table_ || table_length_ == 0) {
+  if (hash_table_.empty()) {
     base::UmaHistogramEnumeration("History.VisitedLinks.TryToAddFingerprint",
                                   AddFingerprint::kTableError);
     NOTREACHED();  // Not initialized.
   }
 
+  base::span<Fingerprint> hash_table = GetHashTable();
   Hash cur_hash = HashFingerprint(fingerprint);
   Hash first_hash = cur_hash;
   while (true) {
-    Fingerprint cur_fingerprint = FingerprintAt(cur_hash);
+    Fingerprint& cur_fingerprint = hash_table[cur_hash];
     if (cur_fingerprint == fingerprint) {
       base::UmaHistogramEnumeration("History.VisitedLinks.TryToAddFingerprint",
                                     AddFingerprint::kAlreadyVisited);
@@ -409,7 +403,7 @@ VisitedLinkWriter::Hash PartitionedVisitedLinkWriter::AddFingerprint(
 
     if (cur_fingerprint == kNullFingerprint) {
       // End of probe sequence found, insert here.
-      UNSAFE_TODO(hash_table_[cur_hash]) = fingerprint;
+      cur_fingerprint = fingerprint;
       used_items_++;
       // If allowed, notify listener that a new visited link was added.
       if (send_notifications) {
@@ -446,7 +440,7 @@ void PartitionedVisitedLinkWriter::DeleteFingerprintsFromCurrentTable(
 }
 
 bool PartitionedVisitedLinkWriter::DeleteFingerprint(Fingerprint fingerprint) {
-  if (!hash_table_ || table_length_ == 0) {
+  if (hash_table_.empty()) {
     NOTREACHED();  // Not initialized.
   }
   if (!IsVisited(fingerprint)) {
@@ -461,13 +455,14 @@ bool PartitionedVisitedLinkWriter::DeleteFingerprint(Fingerprint fingerprint) {
   // fingerprint. These are things that could be affected by the change in
   // the hash table. Since we use linear probing, anything after the deleted
   // item up until an empty item could be affected.
+  base::span<Fingerprint> hash_table = GetHashTable();
   Hash end_range = deleted_hash;
   while (true) {
     Hash next_hash = IncrementHash(end_range);
     if (next_hash == deleted_hash) {
       break;  // We wrapped around and the whole table is full.
     }
-    if (!UNSAFE_TODO(hash_table_[next_hash])) {
+    if (!hash_table[next_hash]) {
       break;  // Found the last spot.
     }
     end_range = next_hash;
@@ -480,8 +475,7 @@ bool PartitionedVisitedLinkWriter::DeleteFingerprint(Fingerprint fingerprint) {
   absl::InlinedVector<Fingerprint, 32> shuffled_fingerprints;
   Hash stop_loop = IncrementHash(end_range);  // The end range is inclusive.
   for (Hash i = deleted_hash; i != stop_loop; i = IncrementHash(i)) {
-    auto this_fingerprint =
-        std::exchange(UNSAFE_TODO(hash_table_[i]), kNullFingerprint);
+    auto this_fingerprint = std::exchange(hash_table[i], kNullFingerprint);
     if (this_fingerprint != fingerprint) {
       // Don't save the one we're deleting!
       shuffled_fingerprints.push_back(this_fingerprint);
@@ -671,7 +665,7 @@ VisitedLinkWriter::Hash PartitionedVisitedLinkWriter::TryToAddVisitedLink(
   // This can happen if we get thousands of new URLs and something causes
   // the table resizing to fail. This check prevents a hang in that case. Note
   // that this is *not* the resize limit, this is just a sanity check.
-  if (used_items_ / 8 > table_length_ / 10) {
+  if (used_items_ / 8 > table_length() / 10) {
     return kNullHash;  // Table is more than 80% full.
   }
 
@@ -685,8 +679,7 @@ void PartitionedVisitedLinkWriter::DeleteAllVisitedLinks() {
 
   // Clear the hash table.
   used_items_ = 0;
-  UNSAFE_TODO(
-      memset(hash_table_, 0, this->table_length_ * sizeof(Fingerprint)));
+  std::ranges::fill(GetHashTable(), kNullFingerprint);
 
   // Resize it if it is now too empty. Resize may write the new table out for
   // us, otherwise, schedule writing the new table to disk ourselves.
@@ -796,14 +789,21 @@ std::optional<uint64_t> PartitionedVisitedLinkWriter::GetOrAddOriginSalt(
   return it->second;
 }
 
+base::span<VisitedLinkCommon::Fingerprint>
+PartitionedVisitedLinkWriter::GetHashTable() {
+  return GetHashTableFromMapping(mapped_table_memory_.mapping);
+}
+
 // static
-VisitedLinkCommon::Fingerprint*
+base::span<VisitedLinkCommon::Fingerprint>
 PartitionedVisitedLinkWriter::GetHashTableFromMapping(
     base::WritableSharedMemoryMapping& hash_table_mapping) {
+  static_assert(sizeof(PartitionedSharedHeader) % sizeof(Fingerprint) == 0,
+                "Header size must be a multiple of Fingerprint size");
   DCHECK(hash_table_mapping.IsValid());
   // Our table pointer is just the data immediately following the header.
-  return reinterpret_cast<Fingerprint*>(
-      UNSAFE_TODO(hash_table_mapping.data() + sizeof(PartitionedSharedHeader)));
+  return hash_table_mapping.GetMemoryAsSpan<Fingerprint>()
+      .subspan<sizeof(PartitionedSharedHeader) / sizeof(Fingerprint)>();
 }
 
 void PartitionedVisitedLinkWriter::AddPseudoPartitionedVisitedLink(

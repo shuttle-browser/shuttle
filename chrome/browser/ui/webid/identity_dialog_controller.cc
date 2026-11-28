@@ -4,10 +4,13 @@
 
 #include "chrome/browser/ui/webid/identity_dialog_controller.h"
 
+#include <cstddef>
 #include <memory>
 #include <utility>
 
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
@@ -36,7 +39,8 @@ using content::webid::FederatedLoginResult;
 
 IdentityDialogController::IdentityDialogController(
     content::WebContents* rp_web_contents)
-    : rp_web_contents_(rp_web_contents),
+    : content::WebContentsObserver(rp_web_contents),
+      rp_web_contents_(rp_web_contents),
       // Shuttle: the segmentation platform (UI volume recommendation) is
       // removed; passive mode always uses the default volume.
       passive_dialog_volume_(PassiveDialogVolume::kDefault) {}
@@ -286,8 +290,12 @@ bool IdentityDialogController::ShowLoadingDialog(
   // Because the loading dialog is not interactable, we do not count it for
   // did_show_ui_, as it is not useful for IDPs in calculating a click-through
   // rate.
-  return account_view_->ShowLoadingDialog(rp_data, idp_for_display, rp_context,
-                                          rp_mode);
+  if (account_view_->ShowLoadingDialog(rp_data, idp_for_display, rp_context,
+                                       rp_mode)) {
+    did_show_loading_ui_ = true;
+    return true;
+  }
+  return false;
 }
 
 bool IdentityDialogController::ShowVerifyingDialog(
@@ -299,6 +307,8 @@ bool IdentityDialogController::ShowVerifyingDialog(
     AccountsDisplayedCallback accounts_displayed_callback) {
   on_accounts_displayed_ = std::move(accounts_displayed_callback);
   rp_mode_ = rp_mode;
+  is_auto_reauthn_ =
+      (sign_in_mode == content::IdentityRequestAccount::SignInMode::kAuto);
 
   // If the dialog is triggered in active mode and the FedCM UI should not be
   // shown, early return as if successful so the flow continues.
@@ -311,9 +321,13 @@ bool IdentityDialogController::ShowVerifyingDialog(
     return false;
   }
   // Do not modify any member variables if the verifying dialog is not shown
-  // because the caller may have destroyed this object.
+  // or if showing it destroyed this object, e.g. because the dialog was
+  // dismissed right away.
+  base::WeakPtr<IdentityDialogController> weak_this =
+      weak_ptr_factory_.GetWeakPtr();
   if (account_view_->ShowVerifyingDialog(rp_data, idp_data, account,
-                                         sign_in_mode, rp_mode)) {
+                                         sign_in_mode, rp_mode) &&
+      weak_this) {
     DidInvokeShowUi();
     return true;
   }
@@ -428,6 +442,8 @@ void IdentityDialogController::OnDismiss(DismissReason dismiss_reason) {
     return;
   }
 
+  chooser_survey_data_.reset();
+  is_auto_reauthn_ = false;
   on_account_selection_.Reset();
   on_native_result_.Reset();
   std::move(on_dismiss_).Run(dismiss_reason);
@@ -450,6 +466,14 @@ gfx::NativeView IdentityDialogController::GetNativeView() {
 
 content::WebContents* IdentityDialogController::GetWebContents() {
   return rp_web_contents_;
+}
+
+void IdentityDialogController::OnFedCmFederatedLogin(bool success) {
+  // Shuttle: no HaTS surveys (removed), so the login result only ends the
+  // flow.
+  // Clear transient flow state once the login event has been handled.
+  chooser_survey_data_.reset();
+  is_auto_reauthn_ = false;
 }
 
 void IdentityDialogController::ShowUrl(LinkType type, const GURL& url) {

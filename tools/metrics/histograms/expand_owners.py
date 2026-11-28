@@ -23,6 +23,7 @@ _OWNERS = 'OWNERS'
 # may not be src depending on the machine running the code, is up three
 # directory levels from the histograms directory.
 SRC = 'src/'
+_DEPOT_TOOLS_PATH = path_util.CHROMIUM_SRC_PATH / 'third_party' / 'depot_tools'
 
 
 class Error(Exception):
@@ -311,21 +312,21 @@ def ExtractComponentViaDirmd(path):
   dirmd_exe = 'dirmd'
   if sys.platform == 'win32':
     dirmd_exe = 'dirmd.bat'
-  dirmd_path = str(
-    path_util.CHROMIUM_SRC_PATH / 'third_party' / 'depot_tools' / dirmd_exe
-  )
+  dirmd_path = str(_DEPOT_TOOLS_PATH / dirmd_exe)
   dirmd_command = [dirmd_path, 'read', '-form', 'sparse', root_path, path]
-  dirmd = subprocess.Popen(
-    dirmd_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-  )
-  if dirmd.wait() != 0:
+  # Use subprocess.run() so stdout and stderr are drained while dirmd runs.
+  # Waiting for dirmd to exit before reading its output deadlocks once the
+  # output exceeds the OS pipe buffer (e.g. for directories that include large
+  # mixins).
+  dirmd = subprocess.run(dirmd_command, capture_output=True, check=False)
+  if dirmd.returncode != 0:
     raise Error(
       'dirmd failed: "'
       + ' '.join(dirmd_command)
       + '": '
-      + dirmd.stderr.read().decode('utf-8')
+      + dirmd.stderr.decode('utf-8')
     )
-  json_out = json.load(dirmd.stdout)
+  json_out = json.loads(dirmd.stdout)
   # On Windows, dirmd output still uses Unix path separators.
   if sys.platform == 'win32':
     subpath = subpath.replace('\\', '/')

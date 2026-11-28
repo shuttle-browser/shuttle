@@ -45,8 +45,6 @@
 
 namespace blink {
 
-enum class DetachReason;
-
 #if INSIDE_BLINK
 class Frame;
 #endif
@@ -98,11 +96,6 @@ class BLINK_EXPORT WebFrame {
           receiver,
       mojom::FrameReplicationStatePtr replicated_state,
       const std::optional<base::UnguessableToken>& devtools_frame_token);
-
-  // This method closes and deletes the WebFrame. This is typically called by
-  // the embedder in response to a frame detached callback to the WebFrame
-  // client.
-  virtual void Close(DetachReason detach_reason);
 
   // Called by the embedder when it needs to detach the subtree rooted at this
   // frame.
@@ -188,6 +181,10 @@ class BLINK_EXPORT WebFrame {
   // Returns the frame inside a given frame or iframe element. Returns 0 if
   // the given node is not a frame, iframe or if the frame is empty.
   static WebFrame* FromFrameOwnerElement(const WebNode&);
+
+  // Returns the frame associated with a window or window proxy object. Returns
+  // nullptr if the given value is not a window or if the frame has detached.
+  static WebFrame* FromWindow(v8::Isolate* isolate, v8::Local<v8::Value> value);
 
   // Whether the owner element of this frame is in the document tree or the
   // shadow tree, per https://w3c.github.io/webcomponents/spec/shadow/.

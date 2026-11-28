@@ -121,7 +121,6 @@ HTMLFormElement::HTMLFormElement(Document& document)
       image_elements_are_dirty_(false),
       has_elements_associated_by_parser_(false),
       has_elements_associated_by_form_attribute_(false),
-      did_finish_parsing_children_(false),
       is_in_reset_function_(false),
       is_connected_nested_form_(false),
       rel_list_(MakeGarbageCollected<RelList>(this)) {
@@ -996,21 +995,11 @@ void HTMLFormElement::ScheduleFormSubmission(const Event* event,
   FormSubmission* form_submission =
       FormSubmission::Create(this, attributes_, event, submitter);
   if (!form_submission) {
-    // Form submission is not allowed for some NavigationPolicies, e.g. Link
-    // Preview. If an user triggered such user event for form submission, just
-    // ignores it.
+    // Form submission was canceled (e.g. a 'formdata' event handler
+    // disconnected the form or detached the frame).
     return;
   }
   Frame* target_frame = form_submission->TargetFrame();
-
-  // 'formdata' event handlers might disconnect the form.
-  if (!isConnected()) {
-    GetDocument().AddConsoleMessage(MakeGarbageCollected<ConsoleMessage>(
-        mojom::ConsoleMessageSource::kJavaScript,
-        mojom::ConsoleMessageLevel::kWarning,
-        "Form submission canceled because the form is not connected"));
-    return;
-  }
 
   if (form_submission->Method() == FormSubmission::kDialogMethod) {
     SubmitDialog(form_submission);
@@ -1299,9 +1288,7 @@ void HTMLFormElement::Disassociate(HTMLImageElement& e) {
   RemoveFromPastNamesMap(e);
 }
 
-void HTMLFormElement::DidAssociateByParser() {
-  if (!did_finish_parsing_children_)
-    return;
+void HTMLFormElement::DidAssociateNonDescendantByParser() {
   has_elements_associated_by_parser_ = true;
   UseCounter::Count(GetDocument(), WebFeature::kFormAssociationByParser);
 }
@@ -1675,7 +1662,6 @@ bool HTMLFormElement::HasRel(RelAttribute relation) const {
 void HTMLFormElement::FinishParsingChildren() {
   HTMLElement::FinishParsingChildren();
   GetDocument().EnsureFormController().RestoreControlStateIn(*this);
-  did_finish_parsing_children_ = true;
 }
 
 void HTMLFormElement::ChildrenChanged(const ChildrenChange& change) {
