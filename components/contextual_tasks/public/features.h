@@ -211,6 +211,30 @@ BASE_DECLARE_FEATURE(kAllowSignedOutUserInDesktopAndroid);
 // Desktop Android.
 bool IsAllowSignedOutUserInDesktopAndroidEnabled();
 
+// Enables Contextual Search ("Ask Google") entry points on Desktop Android,
+// including page context menu, app menu, image context menu, toolbar button,
+// and omnibox suggestions.
+BASE_DECLARE_FEATURE(kContextualTasksEntryPoints);
+
+extern const base::FeatureParam<bool>
+    kContextualTasksEntryPointsPageContextMenu;
+extern const base::FeatureParam<bool> kContextualTasksEntryPointsAppMenu;
+extern const base::FeatureParam<bool>
+    kContextualTasksEntryPointsImageContextMenu;
+extern const base::FeatureParam<bool> kContextualTasksEntryPointsToolbarButton;
+extern const base::FeatureParam<bool>
+    kContextualTasksEntryPointsForceToolbarButton;
+extern const base::FeatureParam<bool> kContextualTasksEntryPointsOmnibox;
+// Whether contextual zero-prefix suggestions are requested without Lens and
+// fulfilled in the Contextual Tasks side panel. Separate from `omnibox`, which
+// controls the static "Ask Google about this page" action.
+extern const base::FeatureParam<bool>
+    kContextualTasksEntryPointsOmniboxContextualSuggestions;
+
+// Returns whether Contextual Search entry points are enabled on Desktop
+// Android.
+bool IsContextualTasksEntryPointsEnabled();
+
 // When enabled, tracks cross-tab ABA search journeys (Tab A -> Search in Tab B
 // -> Return to Tab A) to trigger an in-product help promo for Contextual Tasks.
 BASE_DECLARE_FEATURE(kABASearchJourneys);
@@ -723,6 +747,11 @@ extern bool IsContextualTasksTabBasedSuggestionsEnabled();
 extern bool IsContextualTasksUnboundedMenuEnabled();
 extern bool IsContextualTasksSingleTabMenuItemEnabled();
 
+// Returns whether the Contextual Tasks side panel toolbar and the tab picker
+// show a button that opens a form to file dogfood feedback. Controlled by the
+// `ContextualTasks_DogfoodFeedback` param of `kContextualTasks`.
+extern bool IsContextualTasksDogfoodFeedbackEnabled();
+
 inline constexpr char kContextualTasksSearchCapabilitiesHeaderName[] =
     "Chrome-Search-Capabilities-Version";
 // The default version for the `Chrome-Search-Capabilities-Version` HTTP header.
@@ -808,6 +837,8 @@ extern const char kABASearchJourneysName[];
 extern const char kABASearchJourneysDescription[];
 extern const char kAllowSignedOutUserInDesktopAndroidName[];
 extern const char kAllowSignedOutUserInDesktopAndroidDescription[];
+extern const char kContextualTasksEntryPointsName[];
+extern const char kContextualTasksEntryPointsDescription[];
 
 }  // namespace flag_descriptions
 

@@ -16,6 +16,7 @@
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_chat_message_data_types.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_chat_message_handler.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_session_delegate.h"
+#import "ios/chrome/browser/intelligence/bwg/model/gemini_snackbar_data_types.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_tab_helper.h"
 #import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
 #import "ios/chrome/browser/intelligence/bwg/utils/gemini_live_utils.h"
@@ -26,6 +27,9 @@
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
 #import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
+#import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
+#import "ios/chrome/browser/shared/public/snackbar/snackbar_message.h"
+#import "ios/chrome/browser/shared/public/snackbar/snackbar_message_action.h"
 #import "ios/public/provider/chrome/browser/bwg/gemini_api.h"
 #import "ios/web/public/web_state.h"
 
@@ -150,6 +154,10 @@ IOSGeminiSessionCancellationReason HistogramEnumFromGeminiCancelType(
   // The refill date of the last logged Nano Banana quota exhaustion to avoid
   // duplicate logging.
   NSDate* _lastLoggedNanoBananaQuotaRefillDate;
+  // Message text of the last snackbar presented on behalf of the Gemini SDK,
+  // tracked so `dismissSnackbar` only dismisses that snackbar via
+  // `dismissSnackbarWithMessage:animated:`.
+  NSString* _lastSnackbarMessage;
 }
 
 - (instancetype)initWithWebStateList:(WebStateList*)webStateList
@@ -163,6 +171,42 @@ IOSGeminiSessionCancellationReason HistogramEnumFromGeminiCancelType(
     _lastProcessingStatus = ios::provider::GeminiClientMode::kUnknown;
   }
   return self;
+}
+
+#pragma mark - Public
+
+- (void)recordSessionDismissed {
+  // No-op if no session has appeared (e.g. container torn down before
+  // `UIDidAppearWithClientID:serverID:`) or if end-of-session metrics were
+  // already recorded (e.g. via `didRequestDismissal`).
+  if (_sessionStartTime.is_null()) {
+    return;
+  }
+
+  base::TimeDelta session_duration = base::TimeTicks::Now() - _sessionStartTime;
+  _sessionStartTime = base::TimeTicks();
+
+  IOSGeminiSessionType session_type = _hasSubmittedFirstPrompt
+                                          ? IOSGeminiSessionType::kWithPrompt
+                                          : IOSGeminiSessionType::kAbandoned;
+  RecordGeminiSessionLengthByType(session_duration, _isFirstSession,
+                                  session_type);
+  RecordGeminiSessionTime(session_duration);
+
+  // Record prompt counts for the session before resetting session state.
+  RecordSessionPromptCount(_totalPromptsInSession);
+  RecordSessionFirstPrompt(_hasSubmittedFirstPrompt);
+
+  _waitingForResponse = NO;
+  _lastPromptSentTime = base::TimeTicks();
+  _totalPromptsInSession = 0;
+  _hasSubmittedFirstPrompt = NO;
+  _hasReceivedFirstResponse = NO;
+  _lastProcessingStatus = ios::provider::GeminiClientMode::kUnknown;
+
+  if (_tracker && IsIOSDefaultBrowserContextualPromoEnabled()) {
+    LogDefaultBrowserPromoOpportunityForGemini(_tracker);
+  }
 }
 
 #pragma mark - GeminiSessionDelegate
@@ -505,6 +549,22 @@ IOSGeminiSessionCancellationReason HistogramEnumFromGeminiCancelType(
       inputPlateDidChangeNanoBananaAttachment:isSelected];
 }
 
+- (void)didPresentDiscoveryBannerWithType:
+            (ios::provider::GeminiDiscoveryBannerType)bannerType
+                           conversationID:(NSString*)conversationID {
+  [self.geminiViewStateDelegate
+      didPresentDiscoveryBannerWithType:bannerType
+                         conversationID:conversationID];
+}
+
+- (void)didDismissDiscoveryBannerWithType:
+            (ios::provider::GeminiDiscoveryBannerType)bannerType
+                           conversationID:(NSString*)conversationID {
+  [self.geminiViewStateDelegate
+      didDismissDiscoveryBannerWithType:bannerType
+                         conversationID:conversationID];
+}
+
 - (void)handleChatMessageRequest:(GeminiChatMessageRequest*)request
                       completion:(void (^)(GeminiChatMessageResponse* response))
                                      completion {
@@ -514,6 +574,36 @@ IOSGeminiSessionCancellationReason HistogramEnumFromGeminiCancelType(
     return;
   }
   [chatMessageHandler handleChatMessageRequest:request completion:completion];
+}
+
+- (void)showSnackbar:(GeminiSnackbar*)snackbar {
+  if (!IsIOSGeminiBottomSheetMigrationEnabled() || !self.snackbarHandler ||
+      !snackbar.message.length) {
+    return;
+  }
+
+  SnackbarMessage* message =
+      [[SnackbarMessage alloc] initWithTitle:snackbar.message];
+  if (snackbar.actionTitle.length > 0) {
+    SnackbarMessageAction* action = [[SnackbarMessageAction alloc] init];
+    action.title = snackbar.actionTitle;
+    action.handler = snackbar.actionHandler;
+    message.action = action;
+  }
+
+  [self.snackbarHandler showSnackbarMessage:message];
+  _lastSnackbarMessage = [snackbar.message copy];
+}
+
+- (void)dismissSnackbar {
+  if (!IsIOSGeminiBottomSheetMigrationEnabled() || !_lastSnackbarMessage) {
+    return;
+  }
+
+  NSString* messageToDismiss = _lastSnackbarMessage;
+  _lastSnackbarMessage = nil;
+  [self.snackbarHandler dismissSnackbarWithMessage:messageToDismiss
+                                          animated:YES];
 }
 
 #pragma mark - Private
@@ -564,37 +654,10 @@ IOSGeminiSessionCancellationReason HistogramEnumFromGeminiCancelType(
                                             _prefService);
 }
 
+// Dismisses the Gemini flow and records end-of-session metrics.
 - (void)dismissAndRecordMetrics {
   [_geminiHandler dismissGeminiFlowWithCompletion:nil];
-
-  // Record session duration.
-  if (!_sessionStartTime.is_null()) {
-    base::TimeDelta session_duration =
-        base::TimeTicks::Now() - _sessionStartTime;
-
-    // Determine session type.
-    IOSGeminiSessionType session_type;
-    if (_hasSubmittedFirstPrompt) {
-      session_type = IOSGeminiSessionType::kWithPrompt;
-    } else {
-      session_type = IOSGeminiSessionType::kAbandoned;
-    }
-
-    RecordGeminiSessionLengthByType(session_duration, _isFirstSession,
-                                    session_type);
-    RecordGeminiSessionTime(session_duration);
-    _sessionStartTime = base::TimeTicks();
-  }
-  // Reset latency tracking on session end.
-  _waitingForResponse = NO;
-  _lastPromptSentTime = base::TimeTicks();
-  // Record prompt counts for the session.
-  RecordSessionPromptCount(_totalPromptsInSession);
-  RecordSessionFirstPrompt(_hasSubmittedFirstPrompt);
-
-  if (_tracker && IsIOSDefaultBrowserContextualPromoEnabled()) {
-    LogDefaultBrowserPromoOpportunityForGemini(_tracker);
-  }
+  [self recordSessionDismissed];
 }
 
 // Records the quota reached metric if Nano Banana quota has been exhausted,

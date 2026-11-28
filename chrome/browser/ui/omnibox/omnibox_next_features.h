@@ -85,6 +85,8 @@ BASE_DECLARE_FEATURE(kWebUIOmniboxAimPopupDisableAnimation);
 BASE_DECLARE_FEATURE(kWebUIOmniboxFullPopupDoubleClick);
 BASE_DECLARE_FEATURE(kOmniboxEverywhere);
 BASE_DECLARE_FEATURE(kOmniboxEverywhereDeferStatusIcon);
+BASE_DECLARE_FEATURE(kOmniboxEverywherePreHandleMouseDrag);
+BASE_DECLARE_FEATURE(kOmniboxEverywhereDogfoodFeedback);
 BASE_DECLARE_FEATURE(kOmniboxEverywhereScreenshotNewWindow);
 extern const base::FeatureParam<int>
     kOmniboxEverywhereScreenshotNewWindowWidthParam;
@@ -125,7 +127,7 @@ extern const base::FeatureParam<bool> kShowComposeboxZps;
 extern const base::FeatureParam<bool> kShowContextMenu;
 // Controls showing most visited tiles in OmniboxEverywhere.
 extern const base::FeatureParam<bool> kOmniboxEverywhereMostVisitedParam;
-// Controls whether small Loomnibox (480px width) is enabled.
+// Controls whether small Loomnibox (408px width) is enabled.
 extern const base::FeatureParam<bool> kOmniboxEverywhereSmallLoomniboxParam;
 // Controls whether dynamic sizing is enabled for OmniboxEverywhere.
 extern const base::FeatureParam<bool> kOmniboxEverywhereDynamicSizingParam;

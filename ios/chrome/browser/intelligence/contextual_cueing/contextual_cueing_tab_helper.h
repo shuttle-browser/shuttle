@@ -23,6 +23,8 @@
 #import "components/page_content_annotations/core/page_content_annotation_type.h"
 #import "components/prefs/pref_change_registrar.h"
 #import "components/signin/public/identity_manager/identity_manager.h"
+#import "components/sync/service/sync_service.h"
+#import "components/sync/service/sync_service_observer.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_service.h"
 #import "ios/chrome/browser/intelligence/contextual_cueing/contextual_cueing_evaluator.h"
 #import "ios/chrome/browser/intelligence/page_classification/page_classification_service.h"
@@ -60,7 +62,8 @@ class ContextualCueingTabHelper
     : public web::WebStateObserver,
       public web::WebStateUserData<ContextualCueingTabHelper>,
       public GeminiService::Observer,
-      public signin::IdentityManager::Observer {
+      public signin::IdentityManager::Observer,
+      public syncer::SyncServiceObserver {
  public:
   struct BackgroundTabContext {
     GURL url;
@@ -191,6 +194,10 @@ class ContextualCueingTabHelper
   void OnIdentityManagerShutdown(
       signin::IdentityManager* identity_manager) override;
 
+  // syncer::SyncServiceObserver:
+  void OnStateChanged(syncer::SyncService* sync) override;
+  void OnSyncShutdown(syncer::SyncService* sync) override;
+
  private:
   friend class web::WebStateUserData<ContextualCueingTabHelper>;
   friend class ContextualCueingTabHelperTest;
@@ -273,8 +280,13 @@ class ContextualCueingTabHelper
   bool IsGeminiSuggestionsSettingEnabled() const;
 
   // Callback invoked when the Gemini suggestions setting, the Gemini consent,
-  // sign-in state, or policies change.
+  // sign-in state, History Sync state, or policies change.
   void OnSuggestionsPreferenceChanged();
+
+  // Pre-initializes `InProcessCategoryClassificationService` so the on-device
+  // model targets are registered and downloaded in the background as soon as
+  // the profile is eligible for contextual cues.
+  void MaybeWarmUpOnDeviceClassifier();
 
   // Returns the CapTrackerService for the associated profile, or nullptr.
   ContextualCueingCapTrackerService* GetCapTrackerService() const;
@@ -288,12 +300,12 @@ class ContextualCueingTabHelper
   void DismissFeatureEngagementPromo();
 
   // Snapshots `cue_` into `shown_cue_snapshot_` and logs it to Private Insights
-  // as SHOWN. No-op without a cue or a service to log to.
+  // as SHOWN. No-op without a cue.
   void LogCueShownToPrivateInsights();
 
   // Logs the presentation in `shown_cue_snapshot_` to Private Insights as
   // CLICKED and ends it, so that it logs at most one CLICKED. No-op without a
-  // presentation or a service to log to.
+  // presentation.
   void LogCueClickedToPrivateInsights();
 
   raw_ptr<web::WebState> web_state_ = nullptr;
@@ -306,6 +318,8 @@ class ContextualCueingTabHelper
   base::ScopedObservation<signin::IdentityManager,
                           signin::IdentityManager::Observer>
       identity_manager_observation_{this};
+  base::ScopedObservation<syncer::SyncService, syncer::SyncServiceObserver>
+      sync_service_observation_{this};
 
   // Runs `feature_engagement::Tracker::Dismissed` when the contextual cue chip
   // stops showing (or on tab helper destruction). Empty when not active.
@@ -328,18 +342,17 @@ class ContextualCueingTabHelper
   std::optional<ContextualCueUiType> cue_ui_type_;
   // Background tabs sent with the latest `ContextualCueingRequest`, which
   // `RecordCueShown()` logs to Private Insights as the `recent_pages` of the
-  // cue that request produced. Only kept while there is a service to log to,
-  // and cleared once the request yields no cue or its cue is invalidated.
+  // cue that request produced. Cleared once the request yields no cue or its
+  // cue is invalidated.
   std::vector<optimization_guide::proto::Tab> cue_request_background_tabs_;
-  // Snapshot of the current cue presentation, taken by `RecordCueShown()` when
-  // there is a Private Insights service to log to. CLICKED is built from it
-  // rather than from `cue_`, so it carries the `cue_id` and page context of
-  // SHOWN. It deliberately survives `InvalidateCue()` and `WasHidden()`: a chip
-  // tap starts Gemini before recording the click, and starting Gemini
-  // invalidates the cue (in a posted task) and could hide the tab. Cleared when
-  // the presentation ends: on click, on dismissal, on the next
-  // `RecordCueShown()`, on navigation to a new page, or when the user is no
-  // longer eligible for suggestions.
+  // Snapshot of the current cue presentation, taken by `RecordCueShown()`.
+  // CLICKED is built from it rather than from `cue_`, so it carries the
+  // `cue_id` and page context of SHOWN. It deliberately survives
+  // `InvalidateCue()` and `WasHidden()`: a chip tap starts Gemini before
+  // recording the click, and starting Gemini invalidates the cue (in a posted
+  // task) and could hide the tab. Cleared when the presentation ends: on click,
+  // on dismissal, on the next `RecordCueShown()`, on navigation to a new page,
+  // or when the user is no longer eligible for suggestions.
   std::unique_ptr<ContextualCueSnapshot> shown_cue_snapshot_;
   // Whether `cue_` has already been presented on a UI surface.
   bool has_presented_cue_ = false;
@@ -347,6 +360,9 @@ class ContextualCueingTabHelper
   // Whether Gemini (Helios) is invoked in the hosting window, as last reported
   // by `ContextualCueingBrowserAgent` through `SetGeminiInvoked()`.
   bool is_gemini_invoked_ = false;
+  // Last observed History Sync enabled state, used to ignore unrelated sync
+  // cycle updates in `OnStateChanged()`.
+  bool is_history_sync_enabled_ = false;
 
   std::unique_ptr<optimization_guide::ModelQualityLogEntry> log_entry_;
 

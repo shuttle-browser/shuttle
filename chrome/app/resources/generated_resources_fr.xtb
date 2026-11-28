@@ -495,7 +495,7 @@ Vérifiez vos mots de passe à tout moment dans le <ph name="GOOGLE_PASSWORD_MAN
 <translation id="1426154609634610063">Examiner les risques liés à l'utilisation de Gemini</translation>
 <translation id="1426410128494586442">Oui</translation>
 <translation id="142655739075382478"><ph name="APP_NAME" /> est bloqué</translation>
-<translation id="1428373049397869723">Vous pouvez ouvrir et modifier les fichiers compatibles avec cette appli depuis le Finder ou d'autres applis. Pour contrôler quels fichiers s'ouvrent dans cette appli par défaut, découvrez comment <ph name="BEGIN_LINK" />définir les applis par défaut sur votre appareil<ph name="END_LINK" />.</translation>
+<translation id="1428373049397869723">Vous pouvez ouvrir et modifier les fichiers compatibles avec cette application depuis le Finder ou d'autres applications. Pour contrôler quels fichiers s'ouvrent dans cette application par défaut, découvrez comment <ph name="BEGIN_LINK" />définir les applications par défaut sur votre appareil<ph name="END_LINK" />.</translation>
 <translation id="1428657116642077141">Vous avez enregistré une note concernant un mot de passe sur ce site. Pour l'afficher, sélectionnez "Gérer les mots de passe" dans la barre de recherche ou d'adresse.</translation>
 <translation id="1429300045468813835">Toutes les entrées ont été supprimées</translation>
 <translation id="1430915738399379752">Imprimer</translation>
@@ -750,7 +750,7 @@ Vérifiez vos mots de passe à tout moment dans le <ph name="GOOGLE_PASSWORD_MAN
 <translation id="1644574205037202324">Historique</translation>
 <translation id="1644852018355792105">Saisissez le mot de passe Bluetooth pour l'appareil <ph name="DEVICE" /></translation>
 <translation id="1645004815457365098">Source inconnue</translation>
-<translation id="1647408325348388858">Ouvrir et modifier <ph name="FILE_NAME" /> dans cette appli Web ?</translation>
+<translation id="1647408325348388858">Ouvrir et modifier <ph name="FILE_NAME" /> dans cette application Web ?</translation>
 <translation id="1648401604841225489">Déverrouiller vos clés d'accès</translation>
 <translation id="1648528859488547844">Utiliser le Wi‑Fi ou les réseaux mobiles pour déterminer la position</translation>
 <translation id="1650407365859096313">S'ouvre dans un nouvel onglet, l'autorisation est définie sur : <ph name="PERMISSION_STATE" /></translation>
@@ -1455,7 +1455,7 @@ Vous pouvez gérer les paramètres de ce compte en installant l'application Fami
 <translation id="225163402930830576">Actualiser les réseaux</translation>
 <translation id="2252017960592955005">Protection anti-regard (bêta)</translation>
 <translation id="2253318212986772520">Impossible de récupérer le PPD pour <ph name="PRINTER_NAME" />.</translation>
-<translation id="2253927598983295051">Choisissez ce qui doit être partagé avec <ph name="APP_NAME" /></translation>
+<translation id="2253927598983295051">Choisissez ce que vous partagez avec <ph name="APP_NAME" /></translation>
 <translation id="2255317897038918278">Enregistrement des informations de date Microsoft</translation>
 <translation id="2256049182613019001">Fermer le mode Lecture (<ph name="SHORTCUT" />)</translation>
 <translation id="2256115617011615191">Redémarrer maintenant</translation>
@@ -6295,6 +6295,7 @@ Assurez-vous de ne pas dévoiler d'informations sensibles.</translation>
 <translation id="6466936665940546351">Validez votre identité pour ajouter des mots de passe et les utiliser sur tous les appareils associés à votre compte Google</translation>
 <translation id="6467230443178397264">Scanner <ph name="FILE_NAME" /></translation>
 <translation id="6467304607960172345">Optimiser les vidéos en plein écran</translation>
+<translation id="6467327465309816244">Utilisez Gemini avec précaution et <ph name="BEGIN_LINK1" />de façon sécurisée<ph name="LINK_END1" />. Il peut faire des erreurs et produire des <ph name="BEGIN_LINK2" />résultats inattendus<ph name="LINK_END2" />, tels que des achats.</translation>
 <translation id="6467377768028664108">Votre <ph name="DEVICE_TYPE" /> pourra ensuite :</translation>
 <translation id="6468485451923838994">Polices</translation>
 <translation id="6468773105221177474"><ph name="FILE_COUNT" /> fichiers</translation>
@@ -7103,6 +7104,7 @@ Vous avez # autres mots de passe compromis. Le Gestionnaire de mots de passe Go
 <translation id="7152478047064750137">Cette extension ne nécessite aucune autorisation spéciale</translation>
 <translation id="7152923486458597248">Sélectionner le groupe</translation>
 <translation id="7154130902455071009">Utiliser l'adresse <ph name="START_PAGE" /> comme page de démarrage ?</translation>
+<translation id="7159383838726952486">Crée un quiz simple de 5 questions sur cette page</translation>
 <translation id="7159695867335480590">Lecture/Pause</translation>
 <translation id="7159953856712257647">Installée par défaut</translation>
 <translation id="7160182524506337403">Vous pouvez désormais afficher les notifications de votre téléphone</translation>

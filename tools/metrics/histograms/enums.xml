@@ -2478,6 +2478,8 @@ Called by update_net_error_codes.py.-->
   <int value="58" label="Create QR code for this page"/>
   <int value="59" label="Ask Gemini"/>
   <int value="60" label="Ask Gemini (Image)"/>
+  <int value="61" label="Ask Google about this page"/>
+  <int value="62" label="Ask Google about this image"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/android/java/src/org/chromium/chrome/browser/contextmenu/ChromeContextMenuPopulator.java:ContextMenuUma.Action) -->
@@ -3986,6 +3988,8 @@ shown properly on the user-facing crash UI.
   <int value="49" label="On-Device AI"/>
   <int value="50" label="Omnibox"/>
   <int value="51" label="Reading Mode"/>
+  <int value="52" label="Omnibox Everywhere"/>
+  <int value="53" label="Contextual Tasks"/>
 </enum>
 
 <!--LINT.ThenChange(//chrome/browser/feedback/public/feedback_source.h:FeedbackSource) -->
@@ -9792,6 +9796,7 @@ from previous Chrome versions.
   <int value="-1575375861" label="enable-captive-portal-random-url"/>
   <int value="-1575131701" label="AppServiceAsh:disabled"/>
   <int value="-1575043928" label="OriginKeyedProcessesByDefault:enabled"/>
+  <int value="-1574955365" label="OmniboxUrlBarAimNaturalTextIme:enabled"/>
   <int value="-1574799991" label="SkipServiceWorkerForInstallPromot:enabled"/>
   <int value="-1574315456" label="ArchiveTabService:disabled"/>
   <int value="-1573494098"
@@ -11487,6 +11492,7 @@ from previous Chrome versions.
   <int value="-1077716638" label="FirstRunDesktopRevamp:enabled"/>
   <int value="-1077534880" label="OmniboxDynamicMaxAutocomplete:enabled"/>
   <int value="-1077006912" label="ReadAnythingOmniboxIcon:disabled"/>
+  <int value="-1076994168" label="OmniboxUrlBarAimNaturalTextIme:disabled"/>
   <int value="-1076662984"
       label="AccessibilityManifestV3SwitchAccess:disabled"/>
   <int value="-1076661289"
@@ -13113,6 +13119,7 @@ from previous Chrome versions.
   <int value="-592148755" label="RoundedWindows:enabled"/>
   <int value="-591874964" label="LiteVideo:enabled"/>
   <int value="-591219096" label="SystemChinesePhysicalTyping:enabled"/>
+  <int value="-590107209" label="ContextualTasksEntryPoints:disabled"/>
   <int value="-589491568" label="DataSharingNonProductionEnvironment:disabled"/>
   <int value="-589096918" label="ash-enable-fullscreen-app-list"/>
   <int value="-588491904" label="glic-reset-mi-enabled-by-tier:disabled"/>
@@ -15536,6 +15543,7 @@ from previous Chrome versions.
   <int value="131188289" label="GlicActorUiMagicCursor:enabled"/>
   <int value="131533451" label="EdgeToEdgeAutomotive:disabled"/>
   <int value="131881947" label="D3DVsync:enabled"/>
+  <int value="132187246" label="ContextualTasksEntryPoints:enabled"/>
   <int value="132560299"
       label="OmniboxUIExperimentHideSteadyStateUrlScheme:disabled"/>
   <int value="132907995" label="DownloadProgressMessage:enabled"/>
@@ -21508,6 +21516,7 @@ from previous Chrome versions.
   <int value="1909961759" label="SurfaceSyncFullscreenKillswitch:enabled"/>
   <int value="1910240042" label="enable-experimental-fullscreen-exit-ui"/>
   <int value="1910562940" label="SharedHighlightingRefinedBlocklist:disabled"/>
+  <int value="1910841107" label="OmniboxEverywherePreHandleMouseDrag:enabled"/>
   <int value="1911002680" label="TFLiteLanguageDetectionEnabled:enabled"/>
   <int value="1911558169" label="AppToAppLinkCapturingWorkspaceApps:enabled"/>
   <int value="1911617153" label="SegmentationSurveyPage:enabled"/>
@@ -21595,6 +21604,7 @@ from previous Chrome versions.
   <int value="1935405622" label="AppServiceInstanceRegistry:disabled"/>
   <int value="1935448090"
       label="OmniboxContextualSearchOnFocusSuggestions:disabled"/>
+  <int value="1935760780" label="OmniboxEverywherePreHandleMouseDrag:disabled"/>
   <int value="1935968341" label="(Obsolete) LacrosExtensionPrinting:enabled"/>
   <int value="1936099143" label="RemotePlaybackBackend:enabled"/>
   <int value="1936308950" label="ExoConsumedByImeByFlag:disabled"/>

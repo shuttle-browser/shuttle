@@ -3652,6 +3652,12 @@ inline constexpr char kOmniboxDebounceKeyboardVisibilityDescription[] =
     "Enables debouncing of show and hide transitions for the soft keyboard in "
     "the Omnibox.";
 
+inline constexpr char kOmniboxUrlBarAimNaturalTextImeName[] =
+    "Omnibox UrlBar AI Mode Natural Text IME";
+inline constexpr char kOmniboxUrlBarAimNaturalTextImeDescription[] =
+    "Switches the UrlBar IME configuration between URL entry for conventional "
+    "requests and natural text composition for AI Mode requests.";
+
 inline constexpr char kOmniboxDiagnosticsName[] =
     "Omnibox Diagnostics (restart twice)";
 inline constexpr char kOmniboxDiagnosticsDescription[] =
@@ -7097,6 +7103,13 @@ inline constexpr char kLensOverlayVirtualFocusNavigationName[] =
 inline constexpr char kLensOverlayVirtualFocusNavigationDescription[] =
     "Enables virtual focus keyboard navigation within the Lens Overlay "
     "searchbox.";
+
+inline constexpr char kOmniboxEverywherePreHandleMouseDragName[] =
+    "Omnibox Everywhere PreHandleMouseEvent Drag";
+inline constexpr char kOmniboxEverywherePreHandleMouseDragDescription[] =
+    "When enabled, Omnibox Everywhere window dragging is handled before mouse "
+    "events reach the page, so clicks inside draggable areas still work. "
+    "Disable to restore the previous dragging behavior.";
 
 inline constexpr char kOmniboxEverywhereScreenshotNewWindowName[] =
     "Omnibox Everywhere Screenshot New Window";

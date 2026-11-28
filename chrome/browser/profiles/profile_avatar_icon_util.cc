@@ -1139,8 +1139,9 @@ SkBitmap GetWin2xAvatarIconAsSquare(const SkBitmap& source_bitmap) {
   if ((source_bitmap.width() != kIconScaleFactor * kOldAvatarIconWidth) ||
       (source_bitmap.height() != kIconScaleFactor * kOldAvatarIconHeight)) {
     // It's not an old avatar icon, the image should be square.
-    CHECK_EQ(source_bitmap.width(), source_bitmap.height(),
-             base::NotFatalUntil::M162);
+    // TODO(crbug.com/579578807): CHECK-exclusion: Convert to a CHECK once we
+    // are confident it won't be triggered.
+    DCHECK_EQ(source_bitmap.width(), source_bitmap.height());
     return source_bitmap;
   }
 
@@ -1178,7 +1179,9 @@ SkBitmap GetBadgedWinIconBitmapForAvatar(const SkBitmap& app_icon_bitmap,
       avatar_badge_width, avatar_badge_height);
 
   // Sanity check - avatars shouldn't be taller than they are wide.
-  CHECK_GE(sk_icon.width(), sk_icon.height(), base::NotFatalUntil::M162);
+  // TODO(crbug.com/587307947): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK_GE(sk_icon.width(), sk_icon.height());
 
   // Overlay the avatar on the icon, anchoring it to the bottom-right of the
   // icon on Win 10 and earlier, and the top right on Win 11. Win 11 moved the

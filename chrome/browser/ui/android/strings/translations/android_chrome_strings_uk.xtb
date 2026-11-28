@@ -917,6 +917,7 @@
 <translation id="4585793705637313973">Редагувати сторінку</translation>
 <translation id="4587589328781138893">Сайти</translation>
 <translation id="4587590257937792551">У Chrome з’явилася нова зручна панель інструментів унизу екрана. Повернутися до попереднього вигляду можна будь-коли в <ph name="BEGIN_LINK" />налаштуваннях<ph name="END_LINK" />.</translation>
+<translation id="4592634244097223647">Запитати Google про це зображення</translation>
 <translation id="4594952190837476234">Цю сторінку створено <ph name="CREATION_TIME" />. Вона може відрізнятися від онлайн-версії.</translation>
 <translation id="4595237294768457124">Відкрийте сторінку нової вкладки</translation>
 <translation id="4595276580892809760">Долучити зображення з галереї</translation>
@@ -1097,6 +1098,7 @@
 <translation id="5257142004843671642">Змінити розмір бічної панелі</translation>
 <translation id="5264813352784073502">останні 24 години</translation>
 <translation id="5267572070504076962">Увімкніть Безпечний перегляд, щоб покращити захист від небезпечних сайтів</translation>
+<translation id="526760395289305534">Розгорнути або згорнути вертикальні вкладки</translation>
 <translation id="5273031377282080577">Цим налаштуванням керує ваш адміністратор.</translation>
 <translation id="5284295735376057059">Властивості документа</translation>
 <translation id="5286907366254680517">Визначено</translation>
@@ -1515,7 +1517,7 @@
 <translation id="6858893072923394368">Додати сторінку…</translation>
 <translation id="6864459304226931083">Завантажити зображення</translation>
 <translation id="686490460830618322">Панель фільтра додатків</translation>
-<translation id="6865313869410766144">Дані автозаповнення форм</translation>
+<translation id="6865313869410766144">Дані для автозаповнення форм</translation>
 <translation id="6867400383614725881">Нова анонімна вкладка</translation>
 <translation id="686899695320434745">Адреси не шифруються за допомогою парольної фрази. Це дає змогу використовувати їх в інших сервісах Google.</translation>
 <translation id="6870625088374152862">Ви ввійшли в обліковий запис <ph name="USER_EMAIL_ADDRESS" /></translation>

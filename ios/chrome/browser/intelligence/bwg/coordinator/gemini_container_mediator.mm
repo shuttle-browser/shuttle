@@ -4,11 +4,19 @@
 
 #import "ios/chrome/browser/intelligence/bwg/coordinator/gemini_container_mediator.h"
 
+#import <algorithm>
 #import <memory>
 #import <optional>
+#import <utility>
 
+#import "base/cancelable_callback.h"
+#import "base/functional/bind.h"
+#import "base/functional/callback.h"
+#import "base/location.h"
 #import "base/memory/raw_ptr.h"
 #import "base/strings/sys_string_conversions.h"
+#import "base/time/time.h"
+#import "base/timer/timer.h"
 #import "components/actor/core/task_source_info.h"
 #import "components/feature_engagement/public/feature_constants.h"
 #import "components/feature_engagement/public/tracker.h"
@@ -19,6 +27,7 @@
 #import "components/signin/public/identity_manager/identity_manager.h"
 #import "components/signin/public/identity_manager/objc/identity_manager_observer_bridge.h"
 #import "ios/chrome/browser/assistant/coordinator/assistant_container_commands.h"
+#import "ios/chrome/browser/assistant/ui/assistant_container_detent.h"
 #import "ios/chrome/browser/assistant/ui/assistant_container_view_controller.h"
 #import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
 #import "ios/chrome/browser/fullscreen/public/fullscreen_metrics.h"
@@ -108,12 +117,26 @@ using ios::provider::GeminiViewState;
 
 namespace {
 
+// Maximum time to wait for full page context generation before presenting the
+// container when the invocation auto-submits its prompt.
+constexpr base::TimeDelta kAutoSubmitPageContextTimeout = base::Seconds(2);
+// Minimum zero-state medium detent height, as a ratio of the large detent
+// height. This is a Gemini zero-state requirement, independent of the
+// container's own default medium detent.
+constexpr CGFloat kMinZeroStateDetentHeightRatio = 0.5;
+
 // Returns whether a page context in computation `state` can be shared with
 // Gemini.
 bool IsPageContextComputationEligible(
     ios::provider::GeminiPageContextComputationState state) {
   return state == ios::provider::GeminiPageContextComputationState::kSuccess ||
          state == ios::provider::GeminiPageContextComputationState::kPending;
+}
+
+// Returns whether `startup_state` requests auto-submitting a non-empty prompt.
+bool IsAutoSubmitStartupState(GeminiStartupState* startup_state) {
+  return startup_state.shouldAutoSubmit &&
+         startup_state.prepopulatedPrompt.length > 0;
 }
 
 // Internal C++ observer for `WebStateList` active `WebState` changes.
@@ -227,6 +250,19 @@ class GeminiContainerMediatorTabHelperObserver
   // shared with Gemini (e.g. protected page). Updated on every page context
   // propagation, including partial ones on navigation and tab switches.
   BOOL _activePageContextIneligible;
+  // Pending container presentation waiting for full page context generation
+  // before auto-submitting its prompt.
+  base::CancelableRepeatingCallback<void(GeminiPageContext*)>
+      _pendingPresentation;
+  // Timer bounding how long `_pendingPresentation` waits for full page context.
+  base::OneShotTimer _pendingPresentationTimer;
+  // Full page context generated during `prepareForPresentation` to seed the
+  // initial UI state when `didPresentContainer` is called.
+  GeminiPageContext* _initialPageContext;
+  // Last large detent height reported by the assistant container, or a
+  // non-positive value until it is computed. This is used to calculate the
+  // medium detent height in zero state.
+  NSInteger _lastLargeDetentHeight;
 }
 
 - (instancetype)
@@ -321,7 +357,8 @@ class GeminiContainerMediatorTabHelperObserver
   BOOL pageContextDetached =
       ios::provider::GetCurrentPageContextAttachmentState() ==
       ios::provider::GeminiPageContextAttachmentState::kDetached;
-  if (!geminiTabHelper || pageContextDetached || _activePageContextIneligible ||
+  if (_stateManager.zeroStateSuggestionChipsSuppressed || !geminiTabHelper ||
+      pageContextDetached || _activePageContextIneligible ||
       ![self isPageContextEligibleForTabHelper:geminiTabHelper] ||
       ![self shouldShowSuggestionChipsForEntryPoint:startupState.entryPoint]) {
     [self setZeroStateSuggestions:@[]];
@@ -352,7 +389,33 @@ class GeminiContainerMediatorTabHelperObserver
          IsAppSwitcherAISummarizationEnabled();
 }
 
-- (void)connect {
+- (void)prepareForPresentation {
+  [self cancelPendingPresentation];
+
+  if (!IsAutoSubmitStartupState(self.startupState)) {
+    [self notifyReadyForPresentationWithPageContext:nil];
+    return;
+  }
+
+  GeminiTabHelper* tabHelper = [self activeTabHelper];
+  if (!tabHelper) {
+    // Cannot present if there is no active WebState or tab helper.
+    return;
+  }
+  [self attachWebStateListObserver];
+  __weak __typeof(self) weakSelf = self;
+  _pendingPresentation.Reset(base::BindRepeating(
+      [](__typeof(self) strongSelf, GeminiPageContext* pageContext) {
+        [strongSelf notifyReadyForPresentationWithPageContext:pageContext];
+      },
+      weakSelf));
+  _pendingPresentationTimer.Start(
+      FROM_HERE, kAutoSubmitPageContextTimeout,
+      base::BindOnce(_pendingPresentation.callback(), nil));
+  tabHelper->GeneratePageContext(_pendingPresentation.callback());
+}
+
+- (void)didPresentContainer {
   if (_actorService) {
     _actorService->AddTaskLifecycleObserver(self);
   }
@@ -360,7 +423,14 @@ class GeminiContainerMediatorTabHelperObserver
   [_lensOverlayStateNotifier addObserver:self];
   [self updateSharedTabsForActiveWebState];
   [self setupInitialUIState];
-  [self requestActivePageContextGeneration];
+  // Request full page context generation, which will update the container once
+  // it's available. Skipped when the container is invoked with an already
+  // generated `_initialPageContext`, since a regeneration right after the
+  // invocation would race the auto-submitted prompt.
+  if (!_initialPageContext) {
+    [self requestActivePageContextGeneration];
+  }
+  _initialPageContext = nil;
   [self onFloatyInvoked];
 }
 
@@ -372,6 +442,7 @@ class GeminiContainerMediatorTabHelperObserver
   if (IsIOSGeminiBottomSheetMigrationEnabled()) {
     [_sessionMetricsManager sessionDismissed];
   }
+  [_gatewayManager.sessionHandler recordSessionDismissed];
 
   feature_engagement::Tracker* tracker =
       _profile ? feature_engagement::TrackerFactory::GetForProfile(_profile)
@@ -400,6 +471,8 @@ class GeminiContainerMediatorTabHelperObserver
 }
 
 - (void)disconnect {
+  [self cancelPendingPresentation];
+  _initialPageContext = nil;
   [self onFloatyDismiss];
 
   if (_actorService) {
@@ -473,7 +546,9 @@ class GeminiContainerMediatorTabHelperObserver
     ios::provider::ShowAccountSnackbar();
   }
 
-  if (IsIOSGeminiBottomSheetMigrationEnabled()) {
+  if (!IsAutoSubmitStartupState(startupState) &&
+      IsIOSGeminiBottomSheetMigrationEnabled()) {
+    [self exitFullscreen];
     // Assumes it's minimized.
     [_containerHandler animateAssistantContainerToDetent:kMedium];
   }
@@ -545,9 +620,18 @@ class GeminiContainerMediatorTabHelperObserver
 
 - (void)assistantContainerDidUpdateDetentHeights:
     (AssistantContainerViewController*)container {
+  // The large detent height changes with the container size (e.g. rotation),
+  // so re-apply the no-suggestions minimum.
+  NSInteger largeDetentHeight = [container heightForDetent:kLarge];
+  if (largeDetentHeight != _lastLargeDetentHeight) {
+    _lastLargeDetentHeight = largeDetentHeight;
+    [self updateZeroStateMediumDetentHeight];
+  }
+
   if (_stateManager.currentUIState.actuating) {
     return;
   }
+
   NSInteger collapsedHeight = [container heightForDetent:kMinimized];
   NSInteger extendedHeight = [container heightForDetent:kMedium];
 
@@ -721,6 +805,33 @@ class GeminiContainerMediatorTabHelperObserver
   [self updateZeroStateMediumDetentHeight];
 }
 
+- (void)didPresentDiscoveryBannerWithType:
+            (ios::provider::GeminiDiscoveryBannerType)bannerType
+                           conversationID:(NSString*)conversationID {
+  if (bannerType !=
+      ios::provider::GeminiDiscoveryBannerType::kPersonalization) {
+    return;
+  }
+  [_stateManager handlePersonalizationNoticeVisibilityChanged:YES];
+  [self setZeroStateSuggestions:@[]];
+}
+
+- (void)didDismissDiscoveryBannerWithType:
+            (ios::provider::GeminiDiscoveryBannerType)bannerType
+                           conversationID:(NSString*)conversationID {
+  if (bannerType !=
+          ios::provider::GeminiDiscoveryBannerType::kPersonalization ||
+      !_stateManager.zeroStateSuggestionChipsSuppressed) {
+    return;
+  }
+  [_stateManager handlePersonalizationNoticeVisibilityChanged:NO];
+  // Outside of the zero state (e.g. when the notice is dismissed on query
+  // submission), suggestions are fetched again on the next zero state.
+  if (_stateManager.currentUIState.zeroStateVisible) {
+    [self fetchZeroStateSuggestions:_startupState];
+  }
+}
+
 - (void)didRequestToDetachTabWithID:(NSString*)tabID {
   if (_sharedTabsManager) {
     _sharedTabsManager->DetachTabWithID(tabID);
@@ -799,6 +910,10 @@ class GeminiContainerMediatorTabHelperObserver
   return identity.userGivenName;
 }
 
+- (void)zeroStateContentSizeDidChange {
+  [self updateZeroStateMediumDetentHeight];
+}
+
 #pragma mark - Private
 
 - (void)applyUserPrefsToPageContext:(GeminiPageContext*)geminiPageContext {
@@ -814,14 +929,6 @@ class GeminiContainerMediatorTabHelperObserver
     geminiPageContext.geminiPageContextAttachmentState =
         ios::provider::GeminiPageContextAttachmentState::kAttached;
   }
-}
-
-// Creates and returns the GeminiConfiguration for the active web state, using
-// its partial page context.
-- (GeminiConfiguration*)createGeminiConfigurationForActiveWebState:
-    (GeminiStartupState*)startupState {
-  return [self createGeminiConfigurationForActiveWebState:startupState
-                                              pageContext:nil];
 }
 
 - (GeminiConfiguration*)
@@ -900,6 +1007,8 @@ class GeminiContainerMediatorTabHelperObserver
 
 - (void)didChangeUIState:(GeminiContainerUIState)containerUIState {
   [self.consumer updateZeroStateVisibility:containerUIState.zeroStateVisible];
+  [self.consumer setHasPadding:(containerUIState.detent !=
+                                AssistantContainerDetent::kMinimized)];
   [self updateWorklogDisplayModeForUIState:containerUIState];
   [self.consumer setActuationActive:containerUIState.actuating];
 
@@ -1003,11 +1112,7 @@ class GeminiContainerMediatorTabHelperObserver
   }
   ++_zeroStateSuggestionsRequestID;
   [self.zeroStateConsumer setZeroStateSuggestions:suggestions];
-  if (suggestions && suggestions.count == 0) {
-    [self resetZeroStateMediumDetentHeight];
-  } else {
-    [self updateZeroStateMediumDetentHeight];
-  }
+  [self updateZeroStateMediumDetentHeight];
 }
 
 // Returns whether the page context of `tabHelper` can be attached: the user
@@ -1025,19 +1130,9 @@ class GeminiContainerMediatorTabHelperObserver
                                                  tabHelper->GetClientId())];
 }
 
-// Resets the medium detent height of the assistant container to its default
-// when in zero state. Used when suggestions are hidden since the remaining
-// content is too short for a content-sized detent.
-- (void)resetZeroStateMediumDetentHeight {
-  if (!_stateManager.currentUIState.zeroStateVisible ||
-      !IsIOSGeminiBottomSheetMigrationEnabled()) {
-    return;
-  }
-  [self.containerHandler setAssistantContainerMediumDetentHeight:std::nullopt];
-}
-
 // Updates the medium detent height of the assistant container to match the
-// consumer's content height when in zero state.
+// consumer's content height when in zero state. The minimum height is equal
+// to half of the full detent height
 - (void)updateZeroStateMediumDetentHeight {
   if (!_stateManager.currentUIState.zeroStateVisible ||
       !IsIOSGeminiBottomSheetMigrationEnabled()) {
@@ -1045,8 +1140,12 @@ class GeminiContainerMediatorTabHelperObserver
   }
   CGFloat contentHeight = [self.consumer contentHeight];
   if (contentHeight > 0) {
-    [self.containerHandler
-        setAssistantContainerMediumDetentHeight:ceil(contentHeight)];
+    // TODO(crbug.com/588419256): Make this calculation in the assistant
+    // container
+    NSInteger height =
+        ceil(std::max(contentHeight,
+                      _lastLargeDetentHeight * kMinZeroStateDetentHeightRatio));
+    [self.containerHandler setAssistantContainerMediumDetentHeight:height];
   }
 }
 
@@ -1073,10 +1172,31 @@ class GeminiContainerMediatorTabHelperObserver
   }
 }
 
+// Stores `pageContext` for initial UI setup, exits fullscreen, and notifies the
+// delegate that the mediator is ready for the container to be presented.
+- (void)notifyReadyForPresentationWithPageContext:
+    (GeminiPageContext*)pageContext {
+  // Stop the fallback timer if `GeneratePageContext` finished first, and
+  // invalidate `_pendingPresentation` so neither a late completion after
+  // timeout nor subsequent invocations of the repeating callback can trigger a
+  // duplicate presentation.
+  [self cancelPendingPresentation];
+  _initialPageContext = pageContext;
+  [self exitFullscreen];
+  [self.delegate geminiContainerMediatorReadyForPresentation:self];
+}
+
+// Cancels any pending auto-submit presentation.
+- (void)cancelPendingPresentation {
+  _pendingPresentationTimer.Stop();
+  _pendingPresentation.Cancel();
+}
+
 // Sets up the initial UI state for the container.
 - (void)setupInitialUIState {
   GeminiConfiguration* config =
-      [self createGeminiConfigurationForActiveWebState:_startupState];
+      [self createGeminiConfigurationForActiveWebState:_startupState
+                                           pageContext:_initialPageContext];
   if (!config) {
     return;
   }
@@ -1089,8 +1209,20 @@ class GeminiContainerMediatorTabHelperObserver
 
   [self.containerHandler setAssistantContainerLargestUndimmedDetent:
                              AssistantContainerDetent::kMinimized];
-  [_stateManager
-      setupInitialUIStateWithConversation:config.serverID.length > 0];
+  if (IsIOSGeminiBottomSheetMigrationEnabled()) {
+    BOOL isAutoSubmit = IsAutoSubmitStartupState(self.startupState);
+    [_sessionMetricsManager
+        setInitialDetent:isAutoSubmit ? kMinimized : kMedium];
+    if (isAutoSubmit) {
+      [_stateManager setupInitialUIStateForAutoSubmit];
+    } else {
+      [_stateManager
+          setupInitialUIStateWithConversation:config.serverID.length > 0];
+    }
+  } else {
+    [_stateManager
+        setupInitialUIStateWithConversation:config.serverID.length > 0];
+  }
 
   // In initial zero state the view shouldn't be focused for input.
   [self.consumer dismissKeyboard];
@@ -1205,6 +1337,13 @@ class GeminiContainerMediatorTabHelperObserver
 
 - (void)onActiveWebStateChanged:(web::WebState*)oldActive
                       newActive:(web::WebState*)newActive {
+  if (!_pendingPresentation.IsCancelled()) {
+    // Drop any pending presentation tied to `oldActive` so an auto-submitted
+    // prompt isn't sent against a newly activated tab.
+    [self cancelPendingPresentation];
+    [self.geminiHandler dismissGeminiFlowWithCompletion:nil];
+    return;
+  }
   if (oldActive && newActive && oldActive != newActive) {
     [_sessionMetricsManager activeTabSwitched];
   }
@@ -1274,17 +1413,22 @@ class GeminiContainerMediatorTabHelperObserver
   _webStateList = nullptr;
 }
 
-- (void)attachObservers {
+- (void)attachWebStateListObserver {
   if (!_webStateList || _webStateListObserver) {
     return;
-  }
-  if (!_tabHelperObserver) {
-    _tabHelperObserver =
-        std::make_unique<GeminiContainerMediatorTabHelperObserver>(self);
   }
   _webStateListObserver =
       std::make_unique<GeminiContainerMediatorWebStateListObserver>(self);
   _webStateList->AddObserver(_webStateListObserver.get());
+}
+
+- (void)attachObservers {
+  if (!_webStateList || _tabHelperObserver) {
+    return;
+  }
+  [self attachWebStateListObserver];
+  _tabHelperObserver =
+      std::make_unique<GeminiContainerMediatorTabHelperObserver>(self);
   if (GeminiTabHelper* activeTabHelper = [self activeTabHelper]) {
     activeTabHelper->AddObserver(_tabHelperObserver.get());
   }

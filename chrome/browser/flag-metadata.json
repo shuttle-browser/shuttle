@@ -2518,6 +2518,11 @@
     "expiry_milestone": 160
   },
   {
+    "name": "contextual-tasks-entry-points",
+    "owners": [ "ender@google.com", "chrome-contextual-tasks-eng@google.com" ],
+    "expiry_milestone": 165
+  },
+  {
     "name": "contextual-tasks-ephemeral-branded-entry-point",
     "owners": ["mercerd@google.com", "chrome-contextual-tasks-eng@google.com"],
     "expiry_milestone": 160
@@ -4121,6 +4126,11 @@
     "name": "enable-gamepad-multitouch",
     "owners": [ "mattreynolds@chromium.org", "deviceapi-team@google.com" ],
     "expiry_milestone": 175
+  },
+  {
+    "name": "enable-gemini-live-in-bottom-sheet",
+    "owners": [ "gayane@google.com", "bling-alchemy-eng@google.com" ],
+    "expiry_milestone": 170
   },
   {
     "name": "enable-gesture-user-education-back-swipe",
@@ -7643,6 +7653,11 @@
     "expiry_milestone": 145
   },
   {
+    "name": "omnibox-everywhere-prehandle-mouse-drag",
+    "owners": [ "alsan@google.com", "chrome-desktop-search@google.com" ],
+    "expiry_milestone": 164
+  },
+  {
     "name": "omnibox-everywhere-screenshot-new-window",
     "owners": [ "alsan@google.com", "julietlevesque@google.com", "chrome-desktop-search@google.com" ],
     "expiry_milestone": 160
@@ -7900,6 +7915,11 @@
     "name": "omnibox-ui-max-autocomplete-matches",
     "owners": [ "jdonnelly@chromium.org", "chrome-omnibox-team@google.com" ],
     "expiry_milestone": 120
+  },
+  {
+    "name": "omnibox-url-bar-aim-natural-text-ime",
+    "owners": [ "ender@google.com", "chrome-mobile-search@google.com" ],
+    "expiry_milestone": 160
   },
   {
     "name": "omnibox-url-suggestions-on-focus",

@@ -118,7 +118,9 @@ void PerProfileWorkerTaskTracker::OnVersionStartedRunning(
     // A matching OnVersionStoppedRunning() call is still expected for this
     // service worker.
     const bool inserted = ignored_service_worker_.insert(version_id).second;
-    CHECK(inserted, base::NotFatalUntil::M162);
+    // TODO(crbug.com/584407421): CHECK-exclusion: Convert to a CHECK once we
+    // are confident it won't be triggered.
+    DCHECK(inserted);
     return;
   }
 
@@ -150,7 +152,9 @@ void PerProfileWorkerTaskTracker::CreateWorkerTask(
       worker_id,
       std::make_unique<WorkerTask>(worker_process_host->GetProcess().Handle(),
                                    task_type, worker_process_host->GetID()));
-  CHECK(insertion_result.second, base::NotFatalUntil::M162);
+  // TODO(crbug.com/586996573): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(insertion_result.second);
   worker_task_provider_->OnWorkerTaskAdded(
       insertion_result.first->second.get());
 }

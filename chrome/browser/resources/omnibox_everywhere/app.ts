@@ -188,7 +188,7 @@ export class OmniboxEverywhereAppElement extends
   // Tracks whether the current pending context upload (screenshot capture or
   // native file chooser) was initiated while the user was in the Searchbox
   // (`!isComposeboxMode_`) rather than already inside the Composebox. If the
-  // user cancels the picker, this flag tells `onScreenshotCaptureCancelled` to
+  // user cancels the picker, this flag tells `onContextUploadCancelled` to
   // return the view back to the Searchbox instead of leaving an empty
   // Composebox open.
   private contextUploadOriginWasSearchbox_: boolean = false;
@@ -234,7 +234,7 @@ export class OmniboxEverywhereAppElement extends
   override willUpdate(changedProperties: PropertyValues<this>) {
     super.willUpdate(changedProperties);
     if (this.dynamicSizing_) {
-      // In persistent mode, rest in the small 480px state (4 MVT tiles) until
+      // In persistent mode, rest in the small 408px state (3 MVT tiles) until
       // the text input is focused; then stay expanded (5 tiles) until the
       // browser demotes the widget (`onDemoted_`). Transient window blurs
       // (e.g. native menus) intentionally do not shrink it.
@@ -296,22 +296,20 @@ export class OmniboxEverywhereAppElement extends
     // shrink before presenting the native UI), restore the Searchbox view and
     // focus its input; otherwise keep the existing Composebox open and restore
     // its suggestions.
-    // TODO(b/581982262): Rename `onScreenshotCaptureCancelled` (and its mojom
-    // method) to `onContextUploadCancelled` now that it is shared with the
-    // native file chooser.
-    const onScreenshotCaptureCancelled = async () => {
+    const onContextUploadCancelled = async () => {
       this.isPendingContextUpload_ = false;
       if (this.contextUploadOriginWasSearchbox_) {
         this.contextUploadOriginWasSearchbox_ = false;
-        // TODO(b/585172152): Preserve any query text typed in the searchbox
-        // when reverting a cancelled screenshot or file upload back to the
-        // searchbox.
+        const text = this.composebox?.input || '';
         this.setIsComposebox_(false);
         await this.updateComplete;
+        if (text) {
+          this.searchbox?.setInputText?.(text);
+        }
         this.searchbox?.focusInput?.();
         return;
       }
-      this.composebox?.onScreenshotCaptureCancelled();
+      this.composebox?.onContextUploadCancelled();
     };
 
     this.searchboxListenerIds_.push(
@@ -354,8 +352,8 @@ export class OmniboxEverywhereAppElement extends
             onContextMenuClosed),
         omniboxEverywhereCallbackRouter.onOverflowMenuClosed.addListener(
             () => this.searchbox?.onOverflowMenuClosed()),
-        omniboxEverywhereCallbackRouter.onScreenshotCaptureCancelled
-            .addListener(onScreenshotCaptureCancelled),
+        omniboxEverywhereCallbackRouter.onContextUploadCancelled
+            .addListener(onContextUploadCancelled),
         omniboxEverywhereCallbackRouter.focusInput.addListener(() => {
           // Expand even if the input can't take focus (e.g. under the FRE
           // intro modal).
@@ -526,7 +524,7 @@ export class OmniboxEverywhereAppElement extends
   }
 
   protected getMaxMostVisitedTiles_(): number {
-    return this.smallLoomnibox_ ? 4 : 5;
+    return this.smallLoomnibox_ ? 3 : 5;
   }
 
   protected onMostVisitedCloseClick_() {
@@ -704,6 +702,9 @@ export class OmniboxEverywhereAppElement extends
 
   private onDemoted_() {
     this.isExpanded_ = false;
+    if (this.showVoiceSearchOverlay_) {
+      this.onVoiceSearchOverlayClose_();
+    }
     // Clear active element focus on demotion so Blink's `FocusController`
     // does not auto-restore `<input>` focus when `web_contents()->Focus()`
     // runs on `WM_ACTIVATE(WA_CLICKACTIVE)` before `WM_LBUTTONDOWN`.
@@ -781,6 +782,12 @@ export class OmniboxEverywhereAppElement extends
   // browser subtracts all no-drag boxes, so don't nest `drag` in `no-drag`.
   private onMousedown_(e: MouseEvent) {
     const target = e.composedPath()[0];
+    // Text fields keep their default action, so clicking one focuses it.
+    if (target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)) {
+      return;
+    }
     if (e.button === 0 && target instanceof Element &&
         getComputedStyle(target).getPropertyValue('app-region') === 'drag') {
       e.preventDefault();
@@ -798,6 +805,9 @@ export class OmniboxEverywhereAppElement extends
   private async onVisibilitychange_() {
     if (document.visibilityState !== 'visible') {
       this.impressionRecordedForSession_ = false;
+      if (this.showVoiceSearchOverlay_) {
+        this.onVoiceSearchOverlayClose_();
+      }
       return;
     }
 
@@ -840,6 +850,7 @@ export class OmniboxEverywhereAppElement extends
     this.showVoiceSearchOverlay_ = false;
     this.hasVoiceSearchError_ = false;
     this.voiceSearchListening_ = false;
+    this.style.removeProperty('--transcript-lines');
   }
 
   protected onVoicePermissionChanged_(
@@ -901,6 +912,11 @@ export class OmniboxEverywhereAppElement extends
     this.voiceSearchListening_ = true;
     this.voiceSearchReceivedSpeech_ = false;
     this.voiceSearchTranscript_ = '';
+  }
+
+  protected onVoiceSearchTranscriptLinesChanged_(
+      e: CustomEvent<{value: number}>) {
+    this.style.setProperty('--transcript-lines', `${e.detail.value}`);
   }
 
   protected onVoiceSearchTranscriptUpdate_(e: CustomEvent<string>) {

@@ -24,9 +24,9 @@
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
 #include "components/contextual_tasks/public/contextual_tasks_service.h"
 #include "components/omnibox/browser/aim_eligibility_service.h"
-#include "components/prefs/pref_change_registrar.h"
 #include "components/sessions/core/session_id.h"
 #include "content/public/browser/web_contents_observer.h"
+#include "ui/base/interaction/element_identifier.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
 
 class BrowserWindowInterface;
@@ -54,6 +54,7 @@ class ContextualTasksEphemeralButtonController
       public PinnedToolbarActionsModel::Observer {
  public:
   DECLARE_USER_DATA(ContextualTasksEphemeralButtonController);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kRemoveForTaskMenuItem);
   explicit ContextualTasksEphemeralButtonController(
       BrowserWindowInterface* browser_window_interface);
   ~ContextualTasksEphemeralButtonController() override;
@@ -95,15 +96,6 @@ class ContextualTasksEphemeralButtonController
 
   // PinnedToolbarActionsModel::Observer override:
   void OnActionsChanged() override;
-
-  using ShouldUpdateVisibilityCallbackList =
-      base::RepeatingCallbackList<void(bool)>;
-  base::CallbackListSubscription RegisterShouldUpdateButtonVisibility(
-      ShouldUpdateVisibilityCallbackList::CallbackType callback);
-
-  using ShouldUpdateButtonPositionCallbackList = base::RepeatingClosureList;
-  base::CallbackListSubscription RegisterShouldUpdateButtonPosition(
-      ShouldUpdateButtonPositionCallbackList::CallbackType callback);
 
   enum class RemovalReason {
     kContextMenu,
@@ -150,12 +142,11 @@ class ContextualTasksEphemeralButtonController
   contextual_tasks::ContextualTasksService* GetContextualTasksService();
   std::optional<SessionID> GetCurrentTabSessionId();
   std::optional<base::Uuid> GetActiveTaskId();
-  bool HasPanelResults() const;
+  bool HasPanelResultsOrUnsubmittedInput() const;
   base::TimeTicks NowTicks() const;
   void SettlePendingOpenClick(OpenSidePanelSessionCounts& counts,
                               bool closed_by_user);
   void OnActiveTabChange(BrowserWindowInterface* browser_window_interface);
-  void OnSidePanelAlignmentChanged();
   void MaybeNotifyVisibilityShouldChange();
   void RecordTaskOpenClickCounts(const OpenSidePanelSessionCounts& counts);
   // Shows the ephemeral button toast if the button is still visible in its
@@ -210,7 +201,6 @@ class ContextualTasksEphemeralButtonController
   raw_ptr<BrowserWindowInterface> browser_window_interface_ = nullptr;
   raw_ptr<actions::ActionItem> close_side_panel_action_item_ = nullptr;
 
-  PrefChangeRegistrar pref_change_registrar_;
   base::CallbackListSubscription tab_change_subscription_;
   base::CallbackListSubscription tab_discard_subscription_;
   base::CallbackListSubscription aim_eligibility_service_subscription_;
@@ -223,8 +213,6 @@ class ContextualTasksEphemeralButtonController
   base::ScopedObservation<PinnedToolbarActionsModel,
                           PinnedToolbarActionsModel::Observer>
       pinned_toolbar_observation_{this};
-  ShouldUpdateVisibilityCallbackList should_update_visibility_callbacks_;
-  ShouldUpdateButtonPositionCallbackList should_update_position_callbacks_;
   base::WeakPtrFactory<ContextualTasksEphemeralButtonController>
       weak_ptr_factory_{this};
 };

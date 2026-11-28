@@ -11,6 +11,8 @@ import android.content.Intent;
 import org.chromium.base.IntentUtils;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.contextual_tasks.ContextualTasksUtils;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.settings.SettingsNavigationFactory;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabwindow.TabWindowInfo;
@@ -22,6 +24,7 @@ import org.chromium.components.omnibox.AutocompleteInput.SiteSearchData;
 import org.chromium.components.omnibox.action.OmniboxAction;
 import org.chromium.components.omnibox.action.OmniboxActionDelegate;
 import org.chromium.content_public.browser.LoadUrlParams;
+import org.chromium.content_public.browser.WebContents;
 import org.chromium.url.GURL;
 
 import java.util.function.Consumer;
@@ -152,10 +155,28 @@ public class OmniboxActionDelegateImpl implements OmniboxActionDelegate {
 
     @Override
     public void openLensOverlay() {
-        var tab = mTabSupplier.get();
-        if (tab != null) {
-            LensOverlayCoordinator.getOrCreateForTab(tab)
-                    .start(LensOverlayInvocationSource.OMNIBOX_PAGE_ACTION);
+        Tab tab = mTabSupplier.get();
+        if (tab == null) return;
+        if (ContextualTasksUtils.shouldShowAskGoogleEntryPoint(
+                tab, ChromeFeatureList.sContextualTasksEntryPointsOmnibox)) {
+            ContextualTasksUtils.openAskGoogleAboutThisPage(
+                    tab, LensOverlayInvocationSource.OMNIBOX_PAGE_ACTION);
+            return;
         }
+        LensOverlayCoordinator.getOrCreateForTab(tab)
+                .start(LensOverlayInvocationSource.OMNIBOX_PAGE_ACTION);
+    }
+
+    @Override
+    public void issueContextualSearchQuery(GURL url) {
+        Tab tab = mTabSupplier.get();
+        WebContents webContents = tab != null ? tab.getWebContents() : null;
+        if (webContents == null) {
+            loadPageInCurrentTab(url.getSpec());
+            return;
+        }
+        // Falls back to loading the suggestion URL in the tab when the contextual flow is
+        // unavailable (e.g. not on Desktop Android, or the feature param is disabled).
+        ContextualTasksUtils.issueOmniboxContextualQuery(webContents, url);
     }
 }

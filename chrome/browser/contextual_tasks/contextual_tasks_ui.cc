@@ -34,6 +34,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_utils.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_web_contents_user_data.h"
 #include "chrome/browser/contextual_tasks/entry_point_eligibility_manager.h"
 #include "chrome/browser/contextual_tasks/site_exclusion_detail.h"
 #include "chrome/browser/profiles/profile.h"
@@ -741,6 +742,8 @@ base::DictValue ContextualTasksUI::GetContextualTasksLoadTimeData(
            features::IsWebUIRoundedIconsEnabled() ? "webui-rounded-icons" : "");
 
   AddZeroStateStrings(dict, profile);
+  dict.Merge(contextual_tasks::ContextualTasksUIBase::
+                 GetDogfoodFeedbackLoadTimeData());
 
   return dict;
 }
@@ -1084,9 +1087,13 @@ void ContextualTasksUI::CreatePageHandler(
   }
 
   // Sync the initial auto-suggestion state.
-  if (composebox_handler_ && auto_suggestion_manager_->GetCurrentSuggestion()) {
-    composebox_handler_->UpdateSuggestedTabContext(
-        auto_suggestion_manager_->GetCurrentSuggestion());
+  if (composebox_handler_) {
+    if (auto_suggestion_manager_->GetCurrentSuggestion()) {
+      composebox_handler_->UpdateSuggestedTabContext(
+          auto_suggestion_manager_->GetCurrentSuggestion());
+    } else if (!IsShownInTab()) {
+      OnActiveTabContextStatusChanged();
+    }
   }
 }
 
@@ -1184,6 +1191,35 @@ const std::vector<int32_t>& ContextualTasksUI::GetRestoredTabIds() {
 void ContextualTasksUI::SetComposeboxHandler(
     contextual_tasks::ContextualTasksComposeboxHandlerInterface* handler) {
   composebox_handler_ = handler;
+  if (composebox_handler_ && web_ui() && web_ui()->GetWebContents()) {
+    if (auto* user_data = contextual_tasks::ContextualTasksWebContentsUserData::
+            FromWebContents(web_ui()->GetWebContents())) {
+      if (auto pending = user_data->TakePendingImageContext()) {
+        composebox_handler_->AddFileContextFromBytes(
+            std::move(pending->file_name), std::move(pending->mime_type),
+            std::move(pending->bytes));
+      }
+    }
+  }
+}
+
+void ContextualTasksUI::AddImageContextFromBytes(std::string file_name,
+                                                 std::string mime_type,
+                                                 std::string bytes) {
+  if (bytes.empty()) {
+    return;
+  }
+  if (composebox_handler_) {
+    composebox_handler_->AddFileContextFromBytes(
+        std::move(file_name), std::move(mime_type), std::move(bytes));
+    return;
+  }
+  if (web_ui() && web_ui()->GetWebContents()) {
+    contextual_tasks::ContextualTasksWebContentsUserData::
+        GetOrCreateForWebContents(web_ui()->GetWebContents())
+            ->SetPendingImageContext(std::move(file_name), std::move(mime_type),
+                                     std::move(bytes));
+  }
 }
 
 void ContextualTasksUI::SetComposeboxHandlerForTesting(  // IN-TEST
@@ -1452,6 +1488,13 @@ void ContextualTasksUI::AddInitialTaskStateToDataSource(
   source->AddBoolean("isZeroState",
                      ui_service_ && task_creation_url &&
                          IsZeroState(task_creation_url.value(), ui_service_));
+  // Without a creation URL, the zero state isn't known until the page resolves
+  // the task's URL after it loads. Tell the page so that it keeps the
+  // composebox hidden until then, rather than showing it in the wrong state. A
+  // task that is waiting for its URL is known to not be in the zero state.
+  source->AddBoolean("isZeroStateKnownOnInit",
+                     !ui_service_ || task_creation_url ||
+                         ui_service_->IsTaskWaitingForUrl(task_id));
   source->AddBoolean("isShownInTab", IsShownInTab());
   bool is_signed_in = ui_service_ &&
                       ui_service_->IsSignedInToBrowserWithValidCredentials() &&

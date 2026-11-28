@@ -12,6 +12,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/uuid.h"
+#include "components/lens/lens_overlay_invocation_source.h"
 #include "third_party/jni_zero/jni_zero.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
 #include "ui/base/unowned_user_data/user_data_factory.h"
@@ -21,6 +22,7 @@ class GURL;
 class Profile;
 
 namespace content {
+class RenderFrameHost;
 class WebContents;
 }  // namespace content
 
@@ -53,6 +55,32 @@ class ContextualTasksBridge {
   static void GetTaskTitleForTab(
       content::WebContents* web_contents,
       base::OnceCallback<void(std::string)> callback);
+
+  // Returns true if the "Ask Google" entry points should be shown for the
+  // given `web_contents`.
+  static bool ShouldShowAskGoogleEntryPoints(
+      content::WebContents* web_contents);
+
+  // Opens the Contextual Tasks side panel for the given `web_contents` if the
+  // "Ask Google" entry points are eligible for it.
+  static void OpenAskGoogleAboutThisPage(
+      content::WebContents* web_contents,
+      lens::LensOverlayInvocationSource invocation_source);
+
+  // Toggles the Contextual Tasks side panel for the given `web_contents`:
+  // closes the panel if it is currently open for a contextual task, otherwise
+  // opens it via `OpenAskGoogleAboutThisPage()`.
+  static void ToggleAskGoogleSidePanel(
+      content::WebContents* web_contents,
+      lens::LensOverlayInvocationSource invocation_source);
+
+  // Opens the Contextual Tasks side panel for the given `web_contents` and
+  // attaches the context menu image node from `render_frame_host` (alongside
+  // the active tab) as context in the composebox.
+  static void OpenAskGoogleAboutThisImage(
+      content::WebContents* web_contents,
+      content::RenderFrameHost* render_frame_host,
+      const std::string& image_title);
 
   void Destroy();
 

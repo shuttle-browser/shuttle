@@ -46,6 +46,8 @@ const char* GetSearchToClientMessageName(
       return "OpenLinkInSidePanelMode";
     case lens::SearchToClientMessage::kOnPageChanged:
       return "OnPageChanged";
+    case lens::SearchToClientMessage::kOnInputPlateStateChanged:
+      return "OnInputPlateStateChanged";
     case lens::SearchToClientMessage::EVENT_MESSAGE_NOT_SET:
       return "UnknownSearchToClientMessage";
   }
@@ -302,6 +304,9 @@ void ContextualTasksExtensionServiceWorkerHandler::GetLensCropPreview(
 }
 
 void ContextualTasksExtensionServiceWorkerHandler::RemoveLensCrop() {}
+
+// The Service Worker has no browser window to open the form in.
+void ContextualTasksExtensionServiceWorkerHandler::OpenDogfoodFeedback() {}
 
 content::RenderFrameHost* ContextualTasksExtensionServiceWorkerHandler::
     GetValidatedMainFrameForDocumentId(

@@ -15,7 +15,6 @@
 #include "base/numerics/checked_math.h"
 #include "base/run_loop.h"
 #include "base/trace_event/trace_event.h"
-#include "base/types/optional_util.h"
 #include "gpu/command_buffer/client/dawn_client_memory_transfer_service.h"
 #include "gpu/command_buffer/client/dawn_client_serializer.h"
 #include "gpu/command_buffer/client/gpu_control.h"
@@ -38,10 +37,8 @@ DawnWireServices::DawnWireServices(
     WebGPUImplementation* webgpu_implementation,
     WebGPUCmdHelper* helper,
     MappedMemoryManager* mapped_memory,
-    std::unique_ptr<TransferBuffer> transfer_buffer,
-    bool support_locking)
-    : lock_(support_locking ? std::make_optional<base::Lock>() : std::nullopt),
-      memory_transfer_service_(
+    std::unique_ptr<TransferBuffer> transfer_buffer)
+    : memory_transfer_service_(
           mapped_memory,
           base::FeatureList::IsEnabled(
               features::kWebGPUUseDedicatedTransferBuffer)),
@@ -72,12 +69,18 @@ WGPUInstance DawnWireServices::GetWGPUInstance() const {
 
 void DawnWireServices::Disconnect() {
   {
-    base::AutoLockMaybe lock(OptionalToPtr(lock_));
+    base::AutoLock lock(lock_);
+    if (disconnected_) {
+      return;
+    }
     disconnected_ = true;
   }
-  wire_client_.Disconnect();
+  // Disconnect command-buffer-backed services before `wire_client_` because
+  // `wire_client_.Disconnect()` synchronously invokes callbacks that may tear
+  // down `WebGPUImplementation` and `WebGPUCmdHelper`.
   serializer_.Disconnect();
   memory_transfer_service_.Disconnect();
+  wire_client_.Disconnect();
 }
 
 void DawnWireServices::HandleCommands(
@@ -86,7 +89,7 @@ void DawnWireServices::HandleCommands(
   TRACE_EVENT(TRACE_DISABLED_BY_DEFAULT("gpu.dawn"), "DawnReturnCommands",
               perfetto::TerminatingFlow::Global(trace_id));
 
-  base::AutoLockMaybe lock(OptionalToPtr(lock_));
+  base::AutoLock lock(lock_);
   if (disconnected_) {
     return;
   }
@@ -102,29 +105,29 @@ void DawnWireServices::ProcessEvents() {
 dawn::wire::ReservedBuffer DawnWireServices::ReserveBuffer(
     WGPUDevice device,
     const WGPUBufferDescriptor* desc) {
-  base::AutoLockMaybe lock(OptionalToPtr(lock_));
+  base::AutoLock lock(lock_);
   return wire_client_.ReserveBuffer(device, desc);
 }
 
 dawn::wire::ReservedTexture DawnWireServices::ReserveTexture(
     WGPUDevice device,
     const WGPUTextureDescriptor* desc) {
-  base::AutoLockMaybe lock(OptionalToPtr(lock_));
+  base::AutoLock lock(lock_);
   return wire_client_.ReserveTexture(device, desc);
 }
 
 void DawnWireServices::Commit() {
-  base::AutoLockMaybe lock(OptionalToPtr(lock_));
+  base::AutoLock lock(lock_);
   serializer_.Commit();
 }
 
 void DawnWireServices::SetAwaitingFlush(bool awaiting_flush) {
-  base::AutoLockMaybe lock(OptionalToPtr(lock_));
+  base::AutoLock lock(lock_);
   serializer_.SetAwaitingFlush(awaiting_flush);
 }
 
 bool DawnWireServices::EnsureAwaitingFlush() {
-  base::AutoLockMaybe lock(OptionalToPtr(lock_));
+  base::AutoLock lock(lock_);
   // If there is already a flush waiting, we don't need to flush.
   // We only want to ask for a flush on state transition from
   // false -> true.
@@ -138,7 +141,7 @@ bool DawnWireServices::EnsureAwaitingFlush() {
 }
 
 void DawnWireServices::FreeMappedResources(WebGPUCmdHelper* helper) {
-  base::AutoLockMaybe lock(OptionalToPtr(lock_));
+  base::AutoLock lock(lock_);
   memory_transfer_service_.FreeHandles(helper);
 }
 #endif
@@ -152,13 +155,13 @@ WebGPUImplementation::WebGPUImplementation(
     WebGPUCmdHelper* helper,
     TransferBufferInterface* transfer_buffer,
     GpuControl* gpu_control,
-    bool support_locking)
+    scoped_refptr<base::SequencedTaskRunner> main_task_runner)
     : ImplementationBase(helper, transfer_buffer, gpu_control),
       helper_(helper),
-      main_task_runner_(base::SequencedTaskRunner::GetCurrentDefault()) {}
+      main_task_runner_(std::move(main_task_runner)) {}
 
 WebGPUImplementation::~WebGPUImplementation() {
-  LoseContext();
+  lost_ = true;
 
   // Before destroying WebGPUImplementation, all mappable buffers
   // must be destroyed first. This means that all shared memory mappings are
@@ -168,6 +171,7 @@ WebGPUImplementation::~WebGPUImplementation() {
   // blocks that are no longer in use as free.
 #if BUILDFLAG(USE_DAWN)
   if (dawn_wire_) {
+    dawn_wire_->Disconnect();
     dawn_wire_->FreeMappedResources(helper_);
     dawn_wire_.reset();
   }
@@ -180,15 +184,6 @@ WebGPUImplementation::~WebGPUImplementation() {
   helper_->Finish();
 }
 
-void WebGPUImplementation::LoseContext() {
-  lost_ = true;
-#if BUILDFLAG(USE_DAWN)
-  if (dawn_wire_) {
-    dawn_wire_->Disconnect();
-  }
-#endif
-}
-
 gpu::ContextResult WebGPUImplementation::Initialize(
     const SharedMemoryLimits& limits) {
   TRACE_EVENT0("gpu", "WebGPUImplementation::Initialize");
@@ -197,6 +192,7 @@ gpu::ContextResult WebGPUImplementation::Initialize(
     return result;
   }
 
+#if BUILDFLAG(USE_DAWN)
   std::unique_ptr<TransferBuffer> transfer_buffer =
       std::make_unique<TransferBuffer>(helper_);
   if (!transfer_buffer->Initialize(
@@ -206,10 +202,8 @@ gpu::ContextResult WebGPUImplementation::Initialize(
     return gpu::ContextResult::kFatalFailure;
   }
 
-#if BUILDFLAG(USE_DAWN)
   dawn_wire_ = base::MakeRefCounted<DawnWireServices>(
-      this, helper_, mapped_memory_.get(), std::move(transfer_buffer),
-      main_task_runner_ != nullptr);
+      this, helper_, mapped_memory_.get(), std::move(transfer_buffer));
 #endif
 
   return gpu::ContextResult::kSuccess;
@@ -297,7 +291,17 @@ void WebGPUImplementation::SetGLError(GLenum error,
 
 // GpuControlClient implementation.
 void WebGPUImplementation::OnGpuControlLostContext() {
-  LoseContext();
+  lost_ = true;
+#if BUILDFLAG(USE_DAWN)
+  if (dawn_wire_) {
+    // Post `Disconnect` to `main_task_runner_` so Dawn callbacks (such as
+    // `device.lost`) run in a fresh call stack and cannot re-entrantly destroy
+    // `this`.
+    CHECK(main_task_runner_);
+    main_task_runner_->PostTask(
+        FROM_HERE, base::BindOnce(&DawnWireServices::Disconnect, dawn_wire_));
+  }
+#endif
 
   // This should never occur more than once.
   DCHECK(!lost_context_callback_run_);

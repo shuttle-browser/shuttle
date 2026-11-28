@@ -6291,6 +6291,7 @@
 <translation id="6466936665940546351">Құпия сөздерді қосу және оларды Google аккаунтыңыз қосылған барлық құрылғыда пайдалану үшін жеке басыңызды растаңыз.</translation>
 <translation id="6467230443178397264"><ph name="FILE_NAME" /> файлын сканерлеу</translation>
 <translation id="6467304607960172345">Толық экрандық бейнелерді оңтайландыру</translation>
+<translation id="6467327465309816244">Gemini-ды мұқият әрі <ph name="BEGIN_LINK1" />сақтықпен<ph name="LINK_END1" /> пайдаланыңыз. Ол қателесіп, сатып алу сияқты <ph name="BEGIN_LINK2" />күтпеген нәтижелер<ph name="LINK_END2" /> беруі мүмкін.</translation>
 <translation id="6467377768028664108">Мұндайда <ph name="DEVICE_TYPE" /> құрылғысы келесілерді орындай алады:</translation>
 <translation id="6468485451923838994">Қаріптер</translation>
 <translation id="6468773105221177474"><ph name="FILE_COUNT" /> файл</translation>
@@ -7096,6 +7097,7 @@
 <translation id="7152478047064750137">Бұл кеңейтім үшін арнайы рұқсаттар қажет емес</translation>
 <translation id="7152923486458597248">Топты ерекшелеу</translation>
 <translation id="7154130902455071009">Бастапқы бетті келесіге өзгерту: <ph name="START_PAGE" /></translation>
+<translation id="7159383838726952486">Осы беттегі ақпарат бойынша 5 сұрақтан тұратын қарапайым тест жаса.</translation>
 <translation id="7159695867335480590">Ойнату/кідірту</translation>
 <translation id="7159953856712257647">Әдепкісінше орнатылған.</translation>
 <translation id="7160182524506337403">Енді телефондағы хабарландыруларды көре аласыз</translation>

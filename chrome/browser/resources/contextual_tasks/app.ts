@@ -366,10 +366,13 @@ export class ContextualTasksAppElement extends ContextualTasksAppElementBase {
 
   protected accessor isErrorPageVisible_: boolean = false;
   // Whether no queries have been submitted in the current AIM thread. This
-  // can be undefined on initial load to prevent the composebox from flashing
-  // briefly before the zero state is rendered.
-  protected accessor isZeroState_: boolean =
-      loadTimeData.getBoolean('isZeroState');
+  // is undefined on initial load if the browser doesn't know the state yet, to
+  // prevent the composebox from flashing briefly before the zero state is
+  // rendered.
+  protected accessor isZeroState_: boolean|undefined =
+      loadTimeData.getBoolean('isZeroStateKnownOnInit') ?
+      loadTimeData.getBoolean('isZeroState') :
+      undefined;
   protected accessor enableNativeZeroStateSuggestions_: boolean =
       loadTimeData.getBoolean('enableNativeZeroStateSuggestions');
   protected accessor inNlm_: boolean = false;
@@ -577,9 +580,10 @@ export class ContextualTasksAppElement extends ContextualTasksAppElementBase {
         // If we just changed to zero state, that means
         // it is a new thread or new AIM page. Otherwise,
         // we are not in zero state anymore, or not in an AIM URL. In
-        // both thread/AIM cases for zero state, we clear input.
+        // both thread/AIM cases we clear input when entering zero state,
+        // but keep it (e.g. pre-staged image context) when already there.
         if (isZeroState) {
-          this.forceComposeboxFocus();
+          this.forceComposeboxFocus(/*clearInput=*/ !wasZeroState);
           // Reset the forced composebox bounds since the zero state position
           if (!this.shouldSetForceComposeboxBounds_()) {
             this.forcedComposeboxBounds_ = null;
@@ -700,7 +704,8 @@ export class ContextualTasksAppElement extends ContextualTasksAppElementBase {
         // and focus the composebox.
         if (this.isZeroState_ && this.isShownInTab_) {
           this.playZeroStateAnimations_();
-          this.forceComposeboxFocus();
+          this.forceComposeboxFocus(
+              /*clearInput=*/ this.isLoadingZeroStateFromResults_);
         }
       }
     });
@@ -778,10 +783,10 @@ export class ContextualTasksAppElement extends ContextualTasksAppElementBase {
     // it now!
     if (this.isZeroState_ && this.isDomContentLoaded_ && this.isShownInTab_) {
       this.playZeroStateAnimations_();
-      this.forceComposeboxFocus();
+      this.forceComposeboxFocus(/*clearInput=*/ false);
     } else if (this.isZeroState_ && !this.isShownInTab_) {
       this.playZeroStateAnimations_();
-      this.forceComposeboxFocus();
+      this.forceComposeboxFocus(/*clearInput=*/ false);
     }
 
     // The thread URL is considered pending (not loaded immediately in the
@@ -1409,8 +1414,12 @@ export class ContextualTasksAppElement extends ContextualTasksAppElementBase {
   }
 
   // Helper to focus the composebox, even if it is transitioning from hidden.
-  private forceComposeboxFocus() {
-    this.composebox_?.clearInputAndFocus();
+  private forceComposeboxFocus(clearInput: boolean = true) {
+    if (clearInput) {
+      this.composebox_?.clearInputAndFocus();
+    } else {
+      this.composebox_?.focus();
+    }
     this.updateComplete.then(() => {
       this.composebox_?.tryFocus();
     });

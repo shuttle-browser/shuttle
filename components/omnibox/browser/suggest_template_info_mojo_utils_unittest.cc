@@ -160,6 +160,74 @@ TEST(SuggestTemplateInfoMojoUtilsTest, PopulatesTypeIconFromSuggestTemplate) {
   }
 }
 
+TEST(SuggestTemplateInfoMojoUtilsTest, PopulatesActionIconFromSuggestTemplate) {
+  // Matches without a SuggestTemplateInfo have no action icon.
+  {
+    AutocompleteMatch match;
+    EXPECT_FALSE(CreateSuggestTemplateInfo(match)->action_icon.has_value());
+  }
+  // An unspecified action icon from the server is the same as none.
+  {
+    AutocompleteMatch match;
+    omnibox::SuggestTemplateInfo suggest_template;
+    suggest_template.set_action_icon(
+        omnibox::SuggestTemplateInfo::ACTION_ICON_TYPE_UNSPECIFIED);
+    match.suggest_template = suggest_template;
+    EXPECT_FALSE(CreateSuggestTemplateInfo(match)->action_icon.has_value());
+  }
+  // Each action icon from the server maps to the mojom value with the same
+  // meaning.
+  auto action_icon_for = [](omnibox::SuggestTemplateInfo::ActionIconType icon) {
+    AutocompleteMatch match;
+    omnibox::SuggestTemplateInfo suggest_template;
+    suggest_template.set_action_icon(icon);
+    match.suggest_template = suggest_template;
+    return CreateSuggestTemplateInfo(match)->action_icon;
+  };
+  EXPECT_EQ(action_icon_for(omnibox::SuggestTemplateInfo::QUERY_BUILDING),
+            mojom::ActionIconType::kQueryBuilding);
+  EXPECT_EQ(action_icon_for(omnibox::SuggestTemplateInfo::NAVIGATION_ARROW),
+            mojom::ActionIconType::kNavigationArrow);
+  EXPECT_EQ(action_icon_for(omnibox::SuggestTemplateInfo::BLUE_DOT),
+            mojom::ActionIconType::kBlueDot);
+}
+
+TEST(SuggestTemplateInfoMojoUtilsTest,
+     PopulatesTypeIconBadgeFromSuggestTemplate) {
+  // Matches without a SuggestTemplateInfo have no badge.
+  {
+    AutocompleteMatch match;
+    EXPECT_FALSE(CreateSuggestTemplateInfo(match)->type_icon_badge);
+  }
+  // An empty badge from the server is the same as none.
+  {
+    AutocompleteMatch match;
+    omnibox::SuggestTemplateInfo suggest_template;
+    suggest_template.mutable_type_icon_badge();
+    match.suggest_template = suggest_template;
+    EXPECT_FALSE(CreateSuggestTemplateInfo(match)->type_icon_badge);
+  }
+  // An unspecified badge type from the server is the same as none.
+  {
+    AutocompleteMatch match;
+    omnibox::SuggestTemplateInfo suggest_template;
+    suggest_template.mutable_type_icon_badge()->set_badge_type(
+        omnibox::SuggestTemplateInfo::TypeIconBadge::BADGE_TYPE_UNSPECIFIED);
+    match.suggest_template = suggest_template;
+    EXPECT_FALSE(CreateSuggestTemplateInfo(match)->type_icon_badge);
+  }
+  // The dot badge from the server is forwarded.
+  {
+    AutocompleteMatch match;
+    omnibox::SuggestTemplateInfo suggest_template;
+    suggest_template.mutable_type_icon_badge()->set_badge_type(
+        omnibox::SuggestTemplateInfo::TypeIconBadge::DOT);
+    match.suggest_template = suggest_template;
+    EXPECT_EQ(CreateSuggestTemplateInfo(match)->type_icon_badge,
+              mojom::BadgeType::kDot);
+  }
+}
+
 TEST(SuggestTemplateInfoMojoUtilsTest,
      PopulatesFuseboxActionFromSuggestTemplate) {
   // Matches without a FuseboxAction from the server have none.

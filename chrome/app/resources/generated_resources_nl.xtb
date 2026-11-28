@@ -495,7 +495,7 @@ Je kunt je wachtwoorden altijd checken in <ph name="GOOGLE_PASSWORD_MANAGER" />.
 <translation id="1426154609634610063">De risico's van het gebruik van Gemini checken</translation>
 <translation id="1426410128494586442">Ja</translation>
 <translation id="142655739075382478"><ph name="APP_NAME" /> is geblokkeerd</translation>
-<translation id="1428373049397869723">Je kunt ondersteunde bestanden openen en bewerken met deze app vanuit de Finder of andere apps. <ph name="BEGIN_LINK" />Bekijk hoe je standaard-apps instelt op je apparaat<ph name="END_LINK" /> om te bepalen welke bestanden standaard worden geopend in deze app.</translation>
+<translation id="1428373049397869723">Je kunt ondersteunde bestanden openen en bewerken met deze app vanuit Finder of andere apps. <ph name="BEGIN_LINK" />Ontdek hoe je standaard-apps instelt op je apparaat<ph name="END_LINK" /> om te bepalen welke bestanden standaard worden geopend in deze app.</translation>
 <translation id="1428657116642077141">Je hebt een notitie voor een wachtwoord op deze site opgeslagen. Als je de notitie wilt bekijken, selecteer je in de zoek- en adresbalk de optie Je wachtwoorden beheren.</translation>
 <translation id="1429300045468813835">Alles is gewist</translation>
 <translation id="1430915738399379752">Afdrukken</translation>
@@ -6290,6 +6290,7 @@ Je kunt instellingen beheren via het kaartmenu of meer opties bekijken in het ge
 <translation id="6466936665940546351">Laat verifiëren dat jij het bent om wachtwoorden toe te voegen en ze op alle apparaten met je Google-account te krijgen</translation>
 <translation id="6467230443178397264"><ph name="FILE_NAME" /> scannen</translation>
 <translation id="6467304607960172345">Video's op volledig scherm optimaliseren</translation>
+<translation id="6467327465309816244">Gebruik Gemini zorgvuldig en <ph name="BEGIN_LINK1" />veilig<ph name="LINK_END1" />. De functie kan fouten maken en <ph name="BEGIN_LINK2" />onverwachte resultaten<ph name="LINK_END2" /> opleveren, zoals aankopen.</translation>
 <translation id="6467377768028664108">Je <ph name="DEVICE_TYPE" /> kan dan het volgende doen:</translation>
 <translation id="6468485451923838994">Lettertypen</translation>
 <translation id="6468773105221177474"><ph name="FILE_COUNT" /> bestanden</translation>
@@ -6458,7 +6459,7 @@ Je hebt nog # gehackte wachtwoorden. Google Wachtwoordmanager raadt je aan deze 
 <translation id="661266467055912436">Verbetert de beveiliging voor jou en alle andere internetgebruikers.</translation>
 <translation id="6613231539539868591">Persistente gegevens</translation>
 <translation id="6613267708691765962">Scannen op malware...</translation>
-<translation id="6614219106064338118">Chat starten</translation>
+<translation id="6614219106064338118">Gesprek starten</translation>
 <translation id="6616000047939888167">Google Translate aanbieden voor websites en pdf's in andere talen</translation>
 <translation id="6618013221808317456">Niet toestaan dat sites JavaScript-optimalisatie gebruiken</translation>
 <translation id="6618154741503063152">Kan niet uploaden. Bijlagen zijn niet toegestaan.</translation>
@@ -7096,6 +7097,7 @@ Je kunt instellingen beheren via het kaartmenu of meer opties bekijken in het ge
 <translation id="7152478047064750137">De extensie vereist geen speciale rechten</translation>
 <translation id="7152923486458597248">Focus op groep plaatsen</translation>
 <translation id="7154130902455071009">Je homepage wijzigen in: <ph name="START_PAGE" /></translation>
+<translation id="7159383838726952486">Maak een eenvoudige quiz van 5 vragen over deze pagina</translation>
 <translation id="7159695867335480590">Afspelen/onderbreken</translation>
 <translation id="7159953856712257647">Standaard geïnstalleerd</translation>
 <translation id="7160182524506337403">Je kunt nu de meldingen van je telefoon bekijken</translation>

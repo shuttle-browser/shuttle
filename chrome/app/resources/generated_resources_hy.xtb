@@ -6290,6 +6290,7 @@
 <translation id="6466936665940546351">Հաստատեք ձեր ինքնությունը, որպեսզի կարողանաք գաղտնաբառեր ավելացնել և օգտագործել սարքերում, որտեղ մտել եք ձեր Google հաշիվ</translation>
 <translation id="6467230443178397264">Սկանավորել <ph name="FILE_NAME" /> ֆայլը</translation>
 <translation id="6467304607960172345">Լիաէկրան տեսանյութերի օպտիմալացում</translation>
+<translation id="6467327465309816244">Օգտվեք Gemini-ից զգուշությամբ և հիշեք <ph name="BEGIN_LINK1" />անվտանգության<ph name="LINK_END1" /> մասին։ Այն կարող է սխալներ թույլ տալ և <ph name="BEGIN_LINK2" />անսպասելի արդյունքներ<ph name="LINK_END2" /> գեներացնել, օրինակ՝ գնումներ կատարել։</translation>
 <translation id="6467377768028664108"><ph name="DEVICE_TYPE" /> սարքն այժմ կարող է՝</translation>
 <translation id="6468485451923838994">Տառատեսակներ</translation>
 <translation id="6468773105221177474"><ph name="FILE_COUNT" /> ֆայլ</translation>
@@ -7097,6 +7098,7 @@
 <translation id="7152478047064750137">Այս ընդլայնումը հատուկ թույլտվություն չի պահանջում</translation>
 <translation id="7152923486458597248">Ընտրել խումբը</translation>
 <translation id="7154130902455071009">Դարձնել <ph name="START_PAGE" />-ը սկզբնական էջը</translation>
+<translation id="7159383838726952486">Ստեղծիր 5 հարցից բաղկացած պարզ թեստ այս էջի վերաբերյալ</translation>
 <translation id="7159695867335480590">Նվագարկել/դադարեցնել</translation>
 <translation id="7159953856712257647">Տեղադրված է ըստ կանխադրման</translation>
 <translation id="7160182524506337403">Այժմ դուք կարող եք դիտել ձեր հեռախոսի ծանուցումները</translation>

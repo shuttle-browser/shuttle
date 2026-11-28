@@ -1977,6 +1977,71 @@ TEST_F(ChromeFileSystemAccessPermissionContextNoSymbolicLinkCheckTest,
   }
 }
 
+// Verifies that remote-desktop client-drive UNC paths (RDP/Horizon `\\tsclient`
+// and Citrix HDX `\\Client`) are blocked across handle types and triggers,
+// while multi-label remote FQDNs remain allowed.
+TEST_F(ChromeFileSystemAccessPermissionContextNoSymbolicLinkCheckTest,
+       ConfirmSensitiveEntryAccess_RemoteDesktopClientUNC) {
+  static constexpr const base::FilePath::CharType* kBlockedDirPaths[] = {
+      FILE_PATH_LITERAL("\\\\tsclient"),
+      FILE_PATH_LITERAL("\\\\tsclient\\C\\Users\\user"),
+      FILE_PATH_LITERAL("\\\\TSCLIENT\\C\\Users\\user"),
+      FILE_PATH_LITERAL("\\\\TsClient\\home\\user"),
+      FILE_PATH_LITERAL("\\\\tsclient.\\C\\Users\\user"),
+      FILE_PATH_LITERAL("//tsclient/home/user/.ssh"),
+      FILE_PATH_LITERAL("\\\\Client"),
+      FILE_PATH_LITERAL("\\\\Client\\C\\Users\\user"),
+      FILE_PATH_LITERAL("\\\\client\\home\\user"),
+      FILE_PATH_LITERAL("\\\\CLIENT\\C\\Users\\user"),
+      FILE_PATH_LITERAL("\\\\Client.\\C\\Users\\user"),
+      FILE_PATH_LITERAL("\\\\client.\\home\\user"),
+      FILE_PATH_LITERAL("//Client/C/Users/user/.ssh"),
+  };
+  for (const auto* path : kBlockedDirPaths) {
+    EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                  permission_context(), PathInfo(path), HandleType::kDirectory,
+                  AccessTrigger::kOpen),
+              SensitiveDirectoryResult::kAbort)
+        << "Expected blocked directory path: " << path;
+  }
+
+  static constexpr const base::FilePath::CharType* kBlockedFilePaths[] = {
+      FILE_PATH_LITERAL("\\\\tsclient\\C\\Users\\user\\.ssh\\id_rsa"),
+      FILE_PATH_LITERAL("\\\\tsclient\\home\\user\\.bashrc"),
+      FILE_PATH_LITERAL("\\\\TSCLIENT.\\home\\user\\.bashrc"),
+      FILE_PATH_LITERAL("//tsclient/home/user/.bashrc"),
+      FILE_PATH_LITERAL("\\\\Client\\C\\Users\\user\\.ssh\\id_rsa"),
+      FILE_PATH_LITERAL("\\\\client\\home\\user\\.bashrc"),
+      FILE_PATH_LITERAL("\\\\Client.\\home\\user\\.bashrc"),
+  };
+  for (const auto* path : kBlockedFilePaths) {
+    for (AccessTrigger trigger : {AccessTrigger::kOpen, AccessTrigger::kSave,
+                                  AccessTrigger::kProgrammaticRead,
+                                  AccessTrigger::kProgrammaticWrite}) {
+      EXPECT_EQ(
+          ConfirmSensitiveEntryAccessSync(permission_context(), PathInfo(path),
+                                          HandleType::kFile, trigger),
+          SensitiveDirectoryResult::kAbort)
+          << "Expected blocked file path: " << path;
+    }
+  }
+
+  // Multi-label FQDNs and distinct server names must remain allowed.
+  static constexpr const base::FilePath::CharType* kAllowedPaths[] = {
+      FILE_PATH_LITERAL("\\\\client.corp.domain.com\\share\\foo"),
+      FILE_PATH_LITERAL("\\\\tsclient.corp.domain.com\\share\\foo"),
+      FILE_PATH_LITERAL("\\\\tsclient-prod\\share\\foo"),
+      FILE_PATH_LITERAL("\\\\myclient\\share\\foo"),
+  };
+  for (const auto* path : kAllowedPaths) {
+    EXPECT_EQ(ConfirmSensitiveEntryAccessSync(
+                  permission_context(), PathInfo(path), HandleType::kDirectory,
+                  AccessTrigger::kOpen),
+              SensitiveDirectoryResult::kAllowed)
+        << "Expected allowed remote UNC path: " << path;
+  }
+}
+
 #endif  // BUILDFLAG(IS_WIN)
 
 // Testing that writes to */.git and non-allowlisted descendants are blocked,
@@ -6940,3 +7005,69 @@ TEST_F(ChromeFileSystemAccessPermissionContextTest,
   TestingBrowserProcess::GetGlobal()->SetSafeBrowsingService(nullptr);
 }
 #endif  // BUILDFLAG(SAFE_BROWSING_DOWNLOAD_PROTECTION)
+
+TEST_F(ChromeFileSystemAccessPermissionContextTest,
+       UserGuardContentSettingAllowDowngradedToAsk) {
+  SetContentSettingValueForOrigin(kTestOrigin,
+                                  ContentSettingsType::FILE_SYSTEM_READ_GUARD,
+                                  CONTENT_SETTING_ALLOW);
+  SetContentSettingValueForOrigin(kTestOrigin,
+                                  ContentSettingsType::FILE_SYSTEM_WRITE_GUARD,
+                                  CONTENT_SETTING_ALLOW);
+  EXPECT_TRUE(permission_context()->CanRequestObjectPermission(kTestOrigin));
+
+  auto read_grant = permission_context()->GetReadPermissionGrant(
+      kTestOrigin, kTestPathInfo, HandleType::kFile,
+      AccessTrigger::kLoadFromStorage);
+  EXPECT_EQ(read_grant->GetStatus(), PermissionStatus::ASK);
+
+  auto write_grant = permission_context()->GetWritePermissionGrant(
+      kTestOrigin, kTestPathInfo, HandleType::kFile,
+      AccessTrigger::kLoadFromStorage);
+  EXPECT_EQ(write_grant->GetStatus(), PermissionStatus::ASK);
+
+#if !BUILDFLAG(IS_ANDROID)
+  // Persisted grants on `kTestOrigin` remain visible via
+  // `ObjectPermissionContextBase` even when user `WRITE_GUARD` is `ALLOW`.
+  permission_context()->SetOriginHasExtendedPermissionForTesting(kTestOrigin);
+  {
+    auto saved_grant = permission_context()->GetWritePermissionGrant(
+        kTestOrigin, kTestPathInfo2, HandleType::kFile, AccessTrigger::kSave);
+    EXPECT_EQ(saved_grant->GetStatus(), PermissionStatus::GRANTED);
+  }
+  EXPECT_THAT(permission_context()->GetGrantedPaths(kTestOrigin),
+              testing::ElementsAre(kTestPathInfo2.path));
+#endif
+
+  // Blocking `WRITE_GUARD` still disables persisted-object requests.
+  SetContentSettingValueForOrigin(kTestOrigin2,
+                                  ContentSettingsType::FILE_SYSTEM_WRITE_GUARD,
+                                  CONTENT_SETTING_BLOCK);
+  EXPECT_FALSE(permission_context()->CanRequestObjectPermission(kTestOrigin2));
+
+  // Allowlist providers (`WebUIAllowlist` and `devtools://` scheme allowlist)
+  // retain `ALLOW` and disable persisted-object requests.
+  auto* allowlist = WebUIAllowlist::GetOrCreate(browser_context());
+  allowlist->RegisterAutoGrantedPermission(
+      kChromeOrigin, ContentSettingsType::FILE_SYSTEM_READ_GUARD);
+  allowlist->RegisterAutoGrantedPermission(
+      kChromeOrigin, ContentSettingsType::FILE_SYSTEM_WRITE_GUARD);
+  EXPECT_FALSE(permission_context()->CanRequestObjectPermission(kChromeOrigin));
+  auto webui_read = permission_context()->GetReadPermissionGrant(
+      kChromeOrigin, kTestPathInfo, HandleType::kFile,
+      AccessTrigger::kLoadFromStorage);
+  auto webui_write = permission_context()->GetWritePermissionGrant(
+      kChromeOrigin, kTestPathInfo, HandleType::kFile,
+      AccessTrigger::kLoadFromStorage);
+  EXPECT_EQ(webui_read->GetStatus(), PermissionStatus::GRANTED);
+  EXPECT_EQ(webui_write->GetStatus(), PermissionStatus::GRANTED);
+
+  const url::Origin kDevToolsOrigin =
+      url::Origin::Create(GURL("devtools://devtools"));
+  EXPECT_FALSE(
+      permission_context()->CanRequestObjectPermission(kDevToolsOrigin));
+  auto devtools_write = permission_context()->GetWritePermissionGrant(
+      kDevToolsOrigin, kTestPathInfo, HandleType::kFile,
+      AccessTrigger::kLoadFromStorage);
+  EXPECT_EQ(devtools_write->GetStatus(), PermissionStatus::GRANTED);
+}

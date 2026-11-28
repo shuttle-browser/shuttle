@@ -6293,6 +6293,7 @@ Postavkama računa možete upravljati tako da instalirate aplikaciju Family Link
 <translation id="6466936665940546351">Potvrdite svoj identitet da biste dodali zaporke i upotrebljavali ih na svim uređajima sa svojim Google računom</translation>
 <translation id="6467230443178397264">Skeniraj <ph name="FILE_NAME" /></translation>
 <translation id="6467304607960172345">Optimiziraj videozapise na cijelom zaslonu</translation>
+<translation id="6467327465309816244">Upotrebljavajte Gemini pažljivo i <ph name="BEGIN_LINK1" />sigurno<ph name="LINK_END1" />. Može pogriješiti i proizvesti <ph name="BEGIN_LINK2" />neočekivane rezultate<ph name="LINK_END2" /> kao što su kupnje.</translation>
 <translation id="6467377768028664108">Time uređaju <ph name="DEVICE_TYPE" /> omogućujete sljedeće:</translation>
 <translation id="6468485451923838994">Fontovi</translation>
 <translation id="6468773105221177474">Datoteka: <ph name="FILE_COUNT" /></translation>
@@ -7103,6 +7104,7 @@ Imate još # ugroženih zaporki. Google upravitelj zaporki preporučuje da odmah
 <translation id="7152478047064750137">To proširenje ne zahtijeva nikakva posebna dopuštenja</translation>
 <translation id="7152923486458597248">Fokus na grupu</translation>
 <translation id="7154130902455071009">promijeniti vašu početnu stranicu u: <ph name="START_PAGE" /></translation>
+<translation id="7159383838726952486">Izradi jednostavan test s pet pitanja o ovoj stranici</translation>
 <translation id="7159695867335480590">Reprodukcija/pauza</translation>
 <translation id="7159953856712257647">Instalirano prema zadanim postavkama</translation>
 <translation id="7160182524506337403">Sada možete pregledati obavijesti telefona</translation>

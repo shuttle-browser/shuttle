@@ -362,6 +362,7 @@ if (enable_webui_ntp && !is_android) {
       "//third_party/blink/public/common:headers",
       "//ui/accessibility",
       "//ui/base",
+      "//ui/base:ozone_buildflags",
       "//ui/base/clipboard",
       "//ui/base/emoji",
       "//ui/events:test_support",
@@ -378,6 +379,10 @@ if (enable_webui_ntp && !is_android) {
         "//chrome/browser/ui/views/bubble",
       ]
     }
+    if (is_mac) {
+      deps +=
+          [ "//chrome/browser/ui/views/omnibox:native_widget_mac_test_util" ]
+    }
     if (enable_dice_support && !is_mac) {
       deps += [
         "//chrome/browser/profiles:profile",
@@ -388,9 +393,13 @@ if (enable_webui_ntp && !is_android) {
     }
     if (use_aura) {
       deps += [
+        "//chrome/test/base:drag_and_drop_test_utils",
         "//ui/aura",
         "//ui/aura:test_support",
       ]
+    }
+    if (use_ozone) {
+      deps += [ "//ui/ozone" ]
     }
   }
 }

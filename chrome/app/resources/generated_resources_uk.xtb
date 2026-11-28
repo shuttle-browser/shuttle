@@ -1029,7 +1029,7 @@
 <translation id="1880618477732738742">Змінювати й надавати доступ до таких функцій, як геолокація, мікрофон, камера, файли cookie тощо, для всіх ваших вебсайтів і розширень, зокрема поточного.</translation>
 <translation id="1881577802939775675">{COUNT,plural, =1{Елемент}one{# елемент}few{# елементи}many{# елементів}other{# елемента}}</translation>
 <translation id="188177382966899059">Deep Search</translation>
-<translation id="1883018549404920116">Історія дій у Gemini</translation>
+<translation id="1883018549404920116">Історія Gemini</translation>
 <translation id="1884340228047885921">Поточне налаштування видимості: "Деякі контакти"</translation>
 <translation id="1884705339276589024">Змінити розмір диска Linux</translation>
 <translation id="1885066963699478692">Файли XML, які використовуються для налаштування правил.</translation>
@@ -1456,7 +1456,7 @@
 <translation id="2246104792527215550">Автоматично змінювати паролі</translation>
 <translation id="2246549592927364792">Отримувати описи зображень від Google?</translation>
 <translation id="2247738527273549923">Пристроєм керує ваша організація</translation>
-<translation id="2247960558975094922">Історія дій у Gemini</translation>
+<translation id="2247960558975094922">Історія Gemini</translation>
 <translation id="224835741840550119">Очистити пристрій</translation>
 <translation id="2249111429176737533">Відкрити як вікно з вкладками</translation>
 <translation id="2249605167705922988">напр., 1–5, 8, 11–13</translation>
@@ -6306,6 +6306,7 @@
 <translation id="6466936665940546351">Підтвердьте свою особу, щоб додавати паролі й використовувати їх на всіх пристроях, де ви ввійшли у свій обліковий запис Google</translation>
 <translation id="6467230443178397264">Сканувати файл "<ph name="FILE_NAME" />"</translation>
 <translation id="6467304607960172345">Оптимізувати відео на весь екран</translation>
+<translation id="6467327465309816244">Користуйтесь Gemini обережно й <ph name="BEGIN_LINK1" />безпечно<ph name="LINK_END1" />. ШІ може помилятися й приводити до <ph name="BEGIN_LINK2" />неочікуваних результатів<ph name="LINK_END2" />, наприклад оформлення покупок.</translation>
 <translation id="6467377768028664108">Пристрій <ph name="DEVICE_TYPE" /> надаватиме вам такі можливості:</translation>
 <translation id="6468485451923838994">Шрифти</translation>
 <translation id="6468773105221177474">Файлів: <ph name="FILE_COUNT" /></translation>
@@ -6788,7 +6789,7 @@
 <translation id="6863496016067551393">Усі розширення дозволено</translation>
 <translation id="686366188661646310">Видалити пароль?</translation>
 <translation id="6863925886424789941">Колізей</translation>
-<translation id="6865313869410766144">Дані автозаповнення форм</translation>
+<translation id="6865313869410766144">Дані для автозаповнення форм</translation>
 <translation id="6865708901122695652">Журнали подій WebRTC (<ph name="WEBRTC_EVENT_LOG_COUNT" />)</translation>
 <translation id="6867086642466184030">Зараз їх можна відкривати не лише в додатку <ph name="APP_NAME" />. Після зміни додатки <ph name="APP_NAME_2" />, <ph name="APP_NAME_3" />, <ph name="APP_NAME_4" /> та ще <ph name="NUMBER_OF_OTHER_APPS" /> більше не зможуть відкривати підтримувані посилання.</translation>
 <translation id="686831807558000905">Не входити</translation>
@@ -7118,6 +7119,7 @@
 <translation id="7152478047064750137">Для цього розширення не потрібні спеціальні дозволи</translation>
 <translation id="7152923486458597248">Виділити групу</translation>
 <translation id="7154130902455071009">Зробити <ph name="START_PAGE" /> домашньою сторінкою</translation>
+<translation id="7159383838726952486">Створи простий тест із 5 запитаннями щодо цієї сторінки</translation>
 <translation id="7159695867335480590">Відтворити або призупинити</translation>
 <translation id="7159953856712257647">Установлено за умовчанням</translation>
 <translation id="7160182524506337403">Тепер ви можете переглядати сповіщення з телефона</translation>
@@ -7534,7 +7536,7 @@
 <translation id="7502528909759062987">Призупинити трансляцію вкладки на пристрій "<ph name="DEVICE_NAME" />"</translation>
 <translation id="750275011730776314">Повернутися до Gemini</translation>
 <translation id="7502804472671406749">Ви можете прокручувати вкладки, які демонструються, і змінювати їх масштаб</translation>
-<translation id="750314150962284310">Фокусування на рядках</translation>
+<translation id="750314150962284310">Виділення рядка</translation>
 <translation id="7503191893372251637">Тип сертифіката Netscape</translation>
 <translation id="7503259455663961898">Змінити пароль</translation>
 <translation id="7503985202154027481">На ключі безпеки збережеться запис, що ви відвідували цей сайт.</translation>

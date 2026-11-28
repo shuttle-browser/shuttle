@@ -1001,7 +1001,7 @@
 <translation id="186612162884103683">"<ph name="EXTENSION" />" işaretli konumlardaki resimleri, video ve ses dosyalarını okuyabilir ve yazabilir.</translation>
 <translation id="1866589962721094893">Android uygulamalarına, bu Chromebook'taki USB cihazlarını kontrol etme imkanı sunar. Her USB cihaz taktığınızda izin istenir. Ayrı Android uygulamaları da ek izinler isteyecektir.</translation>
 <translation id="1869433484041798909">Yer işareti düğmesi</translation>
-<translation id="1871098866036088250">Chrome tarayıcıda aç</translation>
+<translation id="1871098866036088250">Chrome Tarayıcı'da aç</translation>
 <translation id="1871131409931646355">Tüm İndirme Geçmişi</translation>
 <translation id="187145082678092583">Daha az uygulama</translation>
 <translation id="1871615898038944731"><ph name="DEVICE_TYPE" /> cihazınız güncel</translation>
@@ -1811,7 +1811,7 @@ Cihazınızda Family Link uygulamasını yükleyerek bu hesabın ayarlarını y�
 <translation id="257088987046510401">Temalar</translation>
 <translation id="2573147659521059501"><ph name="NUM" /> sekme</translation>
 <translation id="2573276323521243649">Avatar seçme sayfasından geri dön</translation>
-<translation id="2574037773163798130">{NUM_TABS,plural, =1{Sekmeyi Gemini ile paylaş}other{# sekmeyi Gemini ile paylaş}}</translation>
+<translation id="2574037773163798130">{NUM_TABS,plural, =1{Sekmeyi Gemini ile Paylaş}other{# Sekmeyi Gemini ile Paylaş}}</translation>
 <translation id="2575247648642144396">Uzantı, mevcut sayfada işlem yapabildiğinde bu simge görünür. Simgeyi tıklayarak veya <ph name="EXTENSION_SHORTCUT" /> tuşuna basarak bu uzantıyı kullanın.</translation>
 <translation id="2575407791320728464">Geçersiz URL. Doğru biçimlendirildiğinden emin olun.</translation>
 <translation id="2575441894380764255">Araya giren veya yanıltıcı reklamlar göstermesine izin verilmeyenler</translation>
@@ -6296,6 +6296,7 @@ Hassas bilgileri vermediğinizden emin olun.</translation>
 <translation id="6466936665940546351">Google Hesabınızla şifre eklemek ve bu şifrelere tüm cihazlarınızdan erişmek için kimliğinizi doğrulayın</translation>
 <translation id="6467230443178397264"><ph name="FILE_NAME" /> dosyasını tara</translation>
 <translation id="6467304607960172345">Tam ekran videoları optimize et</translation>
+<translation id="6467327465309816244">Gemini'ı dikkatli ve <ph name="BEGIN_LINK1" />güvenli<ph name="LINK_END1" /> bir şekilde kullanın. Hata yapabilir ve satın alma işlemleri gibi <ph name="BEGIN_LINK2" />beklenmedik sonuçlar<ph name="LINK_END2" /> üretebilir.</translation>
 <translation id="6467377768028664108">Bağlantı kurduğunuzda <ph name="DEVICE_TYPE" /> cihazınızla şunları yapabilirsiniz:</translation>
 <translation id="6468485451923838994">Yazı tipleri</translation>
 <translation id="6468773105221177474"><ph name="FILE_COUNT" /> Dosya</translation>
@@ -7102,6 +7103,7 @@ Sızdırılmış # şifreniz daha var. Google Şifre Yöneticisi bu şifreleri h
 <translation id="7152478047064750137">Bu uzantı herhangi bir özel izin gerektirmiyor</translation>
 <translation id="7152923486458597248">Gruba odaklan</translation>
 <translation id="7154130902455071009">Başlangıç sayfanızı <ph name="START_PAGE" /> olarak değiştirme</translation>
+<translation id="7159383838726952486">Bu sayfayla ilgili 5 soruluk basit bir test oluştur</translation>
 <translation id="7159695867335480590">Oynat/duraklat</translation>
 <translation id="7159953856712257647">Varsayılan olarak yüklenir</translation>
 <translation id="7160182524506337403">Artık telefonunuzdaki bildirimleri görüntüleyebilirsiniz</translation>
@@ -7210,7 +7212,7 @@ Sızdırılmış # şifreniz daha var. Google Şifre Yöneticisi bu şifreleri h
 <translation id="7246230585855757313">Güvenlik anahtarınızı yeniden takıp tekrar deneyin</translation>
 <translation id="7248671827512403053">Uygulama</translation>
 <translation id="7249197363678284330">Bu ayarı adres çubuğundan değiştirin.</translation>
-<translation id="7249764475759804559">Bu uygulamayı, dosyaları açarken kullanılacak bir seçenek olarak ekleyin</translation>
+<translation id="7249764475759804559">Dosya açarken bu uygulamayı seçenekler arasına ekle</translation>
 <translation id="7250616558727237648">Dosya paylaştığınız cihaz yanıt vermedi. Lütfen tekrar deneyin.</translation>
 <translation id="7251635775446614726">Yöneticinizin mesajı: "<ph name="CUSTOM_MESSAGE" />"</translation>
 <translation id="725310308981256997">Bu sayfa hakkında soru sorulsun mu?</translation>

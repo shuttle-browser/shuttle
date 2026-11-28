@@ -215,8 +215,7 @@
     "internal": true,
     "channel": "stable",
     "extension_types": ["platform_app", "extension"],
-    "contexts": "all",
-    "matches": ["<all_urls>"]
+    "contexts": ["privileged_extension"]
   },
   "feedbackPrivate": [
     {
@@ -418,6 +417,7 @@
       "chrome://newtab-footer/*",
       "chrome://omnibox-popup.top-chrome/*",
       "chrome://oobe/*",
+      "chrome://organizer-panel.top-chrome/*",
       "chrome://os-settings/*",
       "chrome://password-manager/*",
       "chrome://personalization/*",

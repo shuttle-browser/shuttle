@@ -6291,6 +6291,7 @@
 <translation id="6466936665940546351">โปรดยืนยันว่าเป็นคุณเพื่อเพิ่มรหัสผ่านและรับรหัสผ่านในอุปกรณ์ทุกเครื่องด้วยบัญชี Google ของคุณ</translation>
 <translation id="6467230443178397264">สแกน <ph name="FILE_NAME" /></translation>
 <translation id="6467304607960172345">เพิ่มประสิทธิภาพวิดีโอเต็มหน้าจอ</translation>
+<translation id="6467327465309816244">โปรดใช้ Gemini อย่างรอบคอบและ<ph name="BEGIN_LINK1" />ปลอดภัย<ph name="LINK_END1" /> Gemini อาจทำผิดพลาดและสร้าง<ph name="BEGIN_LINK2" />ผลลัพธ์ที่ไม่คาดคิด<ph name="LINK_END2" /> เช่น การซื้อ</translation>
 <translation id="6467377768028664108">จากนั้น <ph name="DEVICE_TYPE" /> จะสามารถ</translation>
 <translation id="6468485451923838994">แบบอักษร</translation>
 <translation id="6468773105221177474"><ph name="FILE_COUNT" /> ไฟล์</translation>
@@ -7097,6 +7098,7 @@
 <translation id="7152478047064750137">ส่วนขยายนี้ไม่จำเป็นต้องมีสิทธิ์พิเศษ</translation>
 <translation id="7152923486458597248">โฟกัสที่กลุ่ม</translation>
 <translation id="7154130902455071009">เปลี่ยนหน้าเริ่มต้นของคุณเป็น: <ph name="START_PAGE" /></translation>
+<translation id="7159383838726952486">สร้างแบบทดสอบง่ายๆ 5 ข้อในหน้านี้</translation>
 <translation id="7159695867335480590">เล่น/หยุดชั่วคราว</translation>
 <translation id="7159953856712257647">ติดตั้งโดยค่าเริ่มต้นแล้ว</translation>
 <translation id="7160182524506337403">ตอนนี้คุณดูการแจ้งเตือนในโทรศัพท์ได้แล้ว</translation>

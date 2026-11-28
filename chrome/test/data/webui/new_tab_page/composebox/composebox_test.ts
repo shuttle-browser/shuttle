@@ -14,13 +14,12 @@ import type {ComposeboxFileCarouselElement} from 'chrome://resources/cr_componen
 import {WindowProxy as CrWindowProxy} from 'chrome://resources/cr_components/composebox/window_proxy.js';
 import type {SearchAnimatedGlowElement} from 'chrome://resources/cr_components/search/animated_glow.js';
 import {GlowMode} from 'chrome://resources/cr_components/search/constants.js';
-import {createAutocompleteResultForTesting, createSearchMatchForTesting} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
 import type {CrIconElement} from 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {SuggestInventory} from 'chrome://resources/mojo/components/omnibox/browser/fusebox_action.mojom-webui.js';
 import type {SelectedFileInfo} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import {assertDeepEquals, assertEquals, assertFalse, assertNear, assertNotEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
-import {MockInputState} from 'chrome://webui-test/cr_components/searchbox/searchbox_test_utils.js';
+import {createAutocompleteResult, createSearchMatch, MockInputState} from 'chrome://webui-test/cr_components/searchbox/searchbox_test_utils.js';
 import {TestMock} from 'chrome://webui-test/test_mock.js';
 import {eventToPromise, microtasksFinished} from 'chrome://webui-test/test_util.js';
 
@@ -327,9 +326,9 @@ suite('NewTabPageComposeboxTest', () => {
         createComposeboxElement(testProxy);
         await microtasksFinished();
 
-        const matches = [createSearchMatchForTesting()];
+        const matches = [createSearchMatch()];
         testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-            createAutocompleteResultForTesting({
+            createAutocompleteResult({
               queryId: testProxy.element.activeQueryId,
               matches,
               showAimActivityLink: true,
@@ -384,9 +383,9 @@ suite('NewTabPageComposeboxTest', () => {
         createComposeboxElement(testProxy);
         await microtasksFinished();
 
-        const matches = [createSearchMatchForTesting()];
+        const matches = [createSearchMatch()];
         testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-            createAutocompleteResultForTesting({
+            createAutocompleteResult({
               queryId: testProxy.element.activeQueryId,
               matches,
               showAimActivityLink: false,
@@ -470,10 +469,9 @@ suite('NewTabPageComposeboxTest', () => {
                       .shadowRoot.querySelector<HTMLTextAreaElement>('#input')!;
     input.value = 'test';
     input.dispatchEvent(new Event('input'));
-    const matches =
-        [createSearchMatchForTesting({allowedToBeDefaultMatch: true})];
+    const matches = [createSearchMatch({allowedToBeDefaultMatch: true})];
     testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-        createAutocompleteResultForTesting({
+        createAutocompleteResult({
           queryId: testProxy.element.activeQueryId,
           input: 'test',
           matches,
@@ -503,10 +501,9 @@ suite('NewTabPageComposeboxTest', () => {
                       .shadowRoot.querySelector<HTMLTextAreaElement>('#input')!;
     input.value = 'test';
     input.dispatchEvent(new Event('input'));
-    const matches =
-        [createSearchMatchForTesting({allowedToBeDefaultMatch: true})];
+    const matches = [createSearchMatch({allowedToBeDefaultMatch: true})];
     testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-        createAutocompleteResultForTesting({
+        createAutocompleteResult({
           queryId: testProxy.element.activeQueryId,
           input: 'test',
           matches: matches,
@@ -1436,12 +1433,12 @@ suite('NewTabPageComposeboxTest', () => {
 
     async function sendTwoMatches(queryId: number, sequenceId: number = 0) {
       testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-          createAutocompleteResultForTesting({
+          createAutocompleteResult({
             queryId,
             sequenceId,
             matches: [
-              createSearchMatchForTesting(),
-              createSearchMatchForTesting(),
+              createSearchMatch(),
+              createSearchMatch(),
             ],
           }));
       await testProxy.searchboxCallbackRouterRemote.$.flushForTesting();
@@ -1554,10 +1551,10 @@ suite('NewTabPageComposeboxTest', () => {
 
     async function showMatch(allowedToBeDefaultMatch: boolean) {
       testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-          createAutocompleteResultForTesting({
+          createAutocompleteResult({
             queryId: testProxy.element.activeQueryId,
             input: 'test',
-            matches: [createSearchMatchForTesting(
+            matches: [createSearchMatch(
                 {fillIntoEdit: 'test', allowedToBeDefaultMatch})],
           }));
       await testProxy.searchboxCallbackRouterRemote.$.flushForTesting();
@@ -1571,12 +1568,12 @@ suite('NewTabPageComposeboxTest', () => {
     async function showSuggestions() {
       testProxy.element.queryAutocomplete(/*clearMatches=*/ false);
       testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-          createAutocompleteResultForTesting({
+          createAutocompleteResult({
             queryId: testProxy.element.activeQueryId,
             input: testProxy.element.lastQueriedInput,
             matches: [
-              createSearchMatchForTesting(),
-              createSearchMatchForTesting(),
+              createSearchMatch(),
+              createSearchMatch(),
             ],
           }));
       await testProxy.searchboxCallbackRouterRemote.$.flushForTesting();
@@ -1752,9 +1749,9 @@ suite('NewTabPageComposeboxTest', () => {
           await typeInput('test');
           testProxy.element.queryAutocomplete(/*clearMatches=*/ false);
           testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-              createAutocompleteResultForTesting({
+              createAutocompleteResult({
                 queryId: testProxy.element.activeQueryId,
-                matches: [createSearchMatchForTesting(
+                matches: [createSearchMatch(
                     {allowedToBeDefaultMatch: true, fillIntoEdit: 'test'})],
               }));
           await testProxy.searchboxCallbackRouterRemote.$.flushForTesting();

@@ -114,10 +114,10 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
 
     set activeQueryId(queryId: number) {
       this.activeQueryId_ = queryId;
-      // An 'Enter' pressed before the active query's results arrived waits for
-      // them. Starting a new query, or abandoning the active one should abort
-      // the pending navigate.
-      this.lastIgnoredEnterEvent_ = null;
+      // An 'Enter' or 'Tab' pressed before the active query's results arrived
+      // waits for them. Starting a new query, or abandoning the active one
+      // should abort it.
+      this.pendingKeydownEvent_ = null;
     }
 
     lastQueriedInput: string|null = null;
@@ -182,7 +182,14 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
     // `control_key_state_`.
     controlKeyState: ControlKeyState = ControlKeyState.UP;
 
-    private lastIgnoredEnterEvent_: KeyboardEvent|null = null;
+    // A key press that needs the sync results for the latest input, pressed
+    // before they arrived. It's handled once they arrive. Only one key press
+    // waits at a time; later ones that would also wait are ignored.
+    private pendingKeydownEvent_: KeyboardEvent|null = null;
+    // Whether the latest query is for the suggestions shown on focus, rather
+    // than for typed input. 'Tab' doesn't wait for those results; see
+    // `shouldKeydownWaitForResults_()`.
+    private lastQueryWasOnFocus_: boolean = false;
     // The line of the match the backend was last asked to delete, while
     // waiting for the post-deletion result. Null if no match was selected at
     // the time. See `shouldPreserveSelectionOnMatchDeletion()`.
@@ -361,6 +368,7 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
         input: string, preventInlineAutocomplete: boolean, isOnFocus: boolean) {
       this.activeQueryId = this.nextQueryId_++;
       this.lastQueriedInput = input;
+      this.lastQueryWasOnFocus_ = isOnFocus;
       // The results of a new query are not the ones left by a deletion.
       this.pendingDeletionLine_ = null;
       this.narrateNextResultSelection_ = false;
@@ -399,6 +407,16 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       return false;
     }
 
+    /**
+     * Whether 'Tab' pressed in the input should wait for the sync results for
+     * the latest typed input before navigating. Waiting prevents the browser's
+     * default 'Tab' focus movement, so this is only enabled by embedders that
+     * handle all 'Tab' navigation in JS (see `OmniboxPopupSearchboxElement`).
+     */
+    shouldTabWaitForResults(): boolean {
+      return false;
+    }
+
     isBackgroundTabNavigation(_e: KeyboardEvent|MouseEvent): boolean {
       return false;
     }
@@ -433,17 +451,29 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       e.preventDefault();
     }
 
-    openCtrlEnterMatch(matchIndex: number) {
+    openCtrlEnterMatch(matchIndex: number, e: KeyboardEvent) {
       const match = matchIndex >= 0 && this.result?.matches ?
           this.result.matches[matchIndex] :
           null;
-      this.pageHandler().openPopupSelectionWithDisposition(
+      // Forward the modifiers so the browser computes the window open
+      // disposition.
+      this.pageHandler().openPopupSelection(
           this.result?.sequenceId ?? 0, {
             line: matchIndex,
             state: SelectionLineState.kCtrlEnter,
             actionIndex: 0,
           },
-          1);
+          {
+            altKey: e.altKey,
+            ctrlKey: e.ctrlKey,
+            metaKey: e.metaKey,
+            shiftKey: e.shiftKey,
+          });
+      if (this.isBackgroundTabNavigation(e)) {
+        // Keep the input as is when the navigation opens in a background tab,
+        // like `navigateToMatch()`.
+        return;
+      }
       if (match) {
         this.getInputElement().setInput({
           text: match.fillIntoEdit,
@@ -488,10 +518,18 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       // post-deletion result.
       const deletedLine = this.pendingDeletionLine_;
       this.pendingDeletionLine_ = null;
-      // Likewise, an 'Enter' pressed before this query's results arrived waits
-      // for its first results only, so it can't navigate on a later update.
-      const ignoredEnterEvent = this.lastIgnoredEnterEvent_;
-      this.lastIgnoredEnterEvent_ = null;
+      // Likewise, an 'Enter' or 'Tab' pressed before this query's results
+      // arrived waits for its first results only, so it can't act on a later
+      // update.
+      const pendingKeydownEvent = this.pendingKeydownEvent_;
+      this.pendingKeydownEvent_ = null;
+      // Freeze the results like `updateStateForKeydown()` would have if 'Tab'
+      // hadn't waited for them. Do this here, before any of the awaits below
+      // have a chance to introduce a delay during which unwanted results can
+      // sneak in.
+      if (pendingKeydownEvent?.key === 'Tab') {
+        this.activeQueryId = -1;
+      }
 
       this.result = result;
       const hasMatches = this.hasMatches();
@@ -517,8 +555,8 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
 
         // Navigate to the default up-to-date match if the user typed and
         // pressed 'Enter' too fast.
-        if (ignoredEnterEvent) {
-          this.navigateToMatch(0, ignoredEnterEvent);
+        if (pendingKeydownEvent?.key === 'Enter') {
+          this.navigateToMatch(0, pendingKeydownEvent);
         }
 
       } else {
@@ -546,6 +584,17 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
           this.getInputElement().setInput({
             inline: '',
           });
+        }
+      }
+
+      // Handle a 'Tab' that waited for these results, unless a newer result or
+      // query replaced them in the meantime.
+      if (pendingKeydownEvent?.key === 'Tab') {
+        await this.updateComplete;
+        // The user may have closed the popup or continued typing during the
+        // awaits above. Discard the pending tab press in that case.
+        if (this.result === result && this.activeQueryId === -1) {
+          await this.handleKeyNavigation(pendingKeydownEvent);
         }
       }
 
@@ -677,6 +726,15 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
         this.clearAutocompleteMatches();
       } else {
         this.dropdownIsVisible = false;
+        if (this.virtualFocusEnabled &&
+            this.selection.state !== SelectionLineState.kNormal &&
+            this.selection.state !== SelectionLineState.kKeywordMode) {
+          this.setSelection({
+            line: this.selection.line,
+            state: SelectionLineState.kNormal,
+            actionIndex: 0,
+          });
+        }
 
         // Stop autocomplete but leave (potentially stale) results and continue
         // listening for key presses. These stale results should never be shown.
@@ -696,29 +754,35 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
      */
     updateStateForKeydown(e: KeyboardEvent) {
       // On user interaction, freeze the current results to avoid result updates
-      // potentially erasing user changes like cursor position. Freezing on
-      // 'enter' would break the fast-enter navigations via
-      // `lastIgnoredEnterEvent_`. It'd cause the searchbox to discard the
-      // pending results the navigation is waiting for, causing the navigation
-      // to never occur. But this is a hack; comparing `e.key !=== 'Enter'` is
-      // only a semi-accurate heuristic for whether a navigation is about to
-      // occur. Pressing a modifier key by itself (e.g. the 'Shift' of
-      // 'Shift+Enter') doesn't change the input, so it doesn't freeze the
-      // results either; otherwise, fast modified-Enter navigations would use
-      // stale results.
-      if (e.key !== 'Enter' && !MODIFIER_KEYS.includes(e.key)) {
+      // potentially erasing user changes like cursor position. Exceptions:
+      // - Freezing on 'enter' would break the fast-enter navigations via
+      //   `pendingKeydownEvent_`. It'd cause the searchbox to discard the
+      //   pending results the navigation is waiting for, causing the navigation
+      //   to never occur. But this is a hack; comparing `e.key !== 'Enter'` is
+      //   only a semi-accurate heuristic for whether a navigation is about to
+      //   occur.
+      // - Pressing a modifier key by itself (e.g. the 'Shift' of 'Shift+Enter')
+      //   doesn't change the input, so it doesn't freeze the results either;
+      //   otherwise, fast modified-Enter navigations would use stale results.
+      // - A key press that waits for the sync results for the latest input
+      //   mustn't freeze them; otherwise the pending results it waits for would
+      //   be discarded and the key would wait indefinitely.
+      if (e.key !== 'Enter' && !MODIFIER_KEYS.includes(e.key) &&
+          !this.shouldKeydownWaitForResults_(e)) {
         this.activeQueryId = -1;
       }
       this.compositionCommitQueryId_ = null;
 
       // Pressing another key with Ctrl consumes it, so a following Enter
-      // doesn't trigger Ctrl+Enter.
+      // doesn't trigger Ctrl+Enter. Other modifier keys (e.g. the 'Shift' of
+      // 'Ctrl+Shift+Enter') don't consume it.
       if (this.shouldAppendDotComOnCtrlEnter()) {
         if (e.key === 'Control') {
           if (this.controlKeyState === ControlKeyState.UP) {
             this.controlKeyState = ControlKeyState.DOWN;
           }
-        } else if (e.ctrlKey && e.key !== 'Enter') {
+        } else if (
+            e.ctrlKey && e.key !== 'Enter' && !MODIFIER_KEYS.includes(e.key)) {
           if (this.controlKeyState === ControlKeyState.DOWN) {
             this.controlKeyState = ControlKeyState.DOWN_AND_CONSUMED;
           }
@@ -728,6 +792,15 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
 
     async onInputWrapperKeydown(e: KeyboardEvent) {
       this.updateStateForKeydown(e);
+      // Key presses that need the sync results for the latest input wait for
+      // them; see `pendingKeydownEvent_`.
+      if (this.shouldKeydownWaitForResults_(e)) {
+        e.preventDefault();
+        if (!this.pendingKeydownEvent_) {
+          this.pendingKeydownEvent_ = e;
+        }
+        return;
+      }
       const modifier =
           isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
       if (modifier && e.key === 'z') {
@@ -995,39 +1068,90 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
         return;
       }
 
-      const isPureCtrlEnter = this.shouldAppendDotComOnCtrlEnter() &&
-          !this.inKeywordMode && e.ctrlKey && !e.shiftKey && !e.altKey &&
-          !e.metaKey &&
-          this.controlKeyState !== ControlKeyState.DOWN_AND_CONSUMED;
+      // Ctrl+Enter only adds 'www.' and '.com' if Ctrl was pressed while the
+      // searchbox had focus and wasn't used for another key. E.g. not if Ctrl
+      // was held to focus the searchbox with Ctrl+L from the page, which the
+      // searchbox doesn't see. Other modifiers (Shift, Alt, Meta) don't prevent
+      // it; they only change the window open disposition.
+      const isCtrlEnter = this.shouldAppendDotComOnCtrlEnter() &&
+          !this.inKeywordMode && e.ctrlKey &&
+          this.controlKeyState === ControlKeyState.DOWN;
 
       e.preventDefault();
       if (this.handleVirtualFocusEnter(e)) {
         return;
       }
-      const resultsPending = this.activeQueryId !== -1 &&
-          this.result?.queryId !== this.activeQueryId;
-      if (isPureCtrlEnter) {
+      const resultsPending = this.areResultsPending_();
+      if (isCtrlEnter) {
         // Ctrl+Enter adds 'www.' and '.com' to the previewed match or the
         // input, but not to the default match. If new results are pending, the
         // preview is stale, so use the input.
         const usePreview = !resultsPending &&
             this.isMatchPreview_(this.selectedMatch, this.matchIndex);
-        this.openCtrlEnterMatch(usePreview ? this.matchIndex : -1);
+        this.openCtrlEnterMatch(usePreview ? this.matchIndex : -1, e);
       } else if (!resultsPending) {
         // If no new query's `results` are pending (though new async results for
         // the current query may be pending), navigate.
         if (this.selectedMatch) {
           this.navigateToMatch(this.matchIndex, e);
         }
-      } else {
+      } else if (!this.pendingKeydownEvent_) {
         // User typed and pressed 'Enter' too quickly. Ignore this for now
-        // because the matches are stale. Navigate to the default match (if
-        // one exists) once the up-to-date matches arrive. Unfreeze
-        // `activeQueryId` so pending query results are accepted. This must come
-        // first, since setting it clears `lastIgnoredEnterEvent_`.
+        // because the matches are stale. Navigate to the default match (if one
+        // exists) once the up-to-date matches arrive. Only queue events if
+        // there is no already queued event; we don't want a later
+        // <shift><enter> to replace the first <enter>. Unfreeze `activeQueryId`
+        // so pending query results are accepted. This must come first, since
+        // setting it clears `pendingKeydownEvent_`.
         this.activeQueryId = this.nextQueryId_ - 1;
-        this.lastIgnoredEnterEvent_ = e;
+        this.pendingKeydownEvent_ = e;
       }
+    }
+
+    /**
+     * Whether the sync results for the current input haven't arrived yet.
+     */
+    private areResultsPending_(): boolean {
+      return this.activeQueryId !== -1 &&
+          this.result?.queryId !== this.activeQueryId;
+    }
+
+    /**
+     * Whether `e` should wait for the sync results for the latest input; see
+     * `pendingKeydownEvent_`.
+     * - 'Tab' on typed input waits for results so it can select the first match
+     *   instead of immediately moving native DOM focus.
+     * - 'Enter' pressed while another key press is already waiting (e.g.
+     *   `ccs<tab><enter>` or `fast<enter><enter>`) is dropped to avoid acting
+     *   on stale results. (The initial fast 'Enter' is queued in
+     *   `handleEnterNavigation_()`).
+     */
+    private shouldKeydownWaitForResults_(e: KeyboardEvent): boolean {
+      // TODO(crbug.com/583059054): Route the initial fast 'Enter' through here
+      //   too, so 'Enter' and 'Tab' share one freeze exception (see
+      //   `updateStateForKeydown()`), one queue site (instead of also
+      //   `handleEnterNavigation_()`), and one replay branch in
+      //   `onAutocompleteResultChanged()`. It must still not wait when it
+      //   triggers a virtual focus action or a pure Ctrl+Enter.
+      if (!this.areResultsPending_() || e.isComposing) {
+        return false;
+      }
+      if (e.key === 'Tab') {
+        // Tab only waits for typed input. Don't wait for:
+        // - Modifier keys (Ctrl/Alt/Meta+Tab) which are browser/OS tab and
+        //   window switching shortcuts.
+        // - On-focus queries (zero-prefix suggestions), where Tab is intended
+        //   to navigate away from the omnibox into page/toolbar controls.
+        // - Tabs from nested controls (e.g. voice search), which
+        //   `handleKeyNavigation()` leaves to native focus navigation. Waiting
+        //   would prevent it, and the replayed event's empty `composedPath()`
+        //   would make `isVirtualFocusEventTarget_()` misreport it.
+        return this.shouldTabWaitForResults() && !e.ctrlKey && !e.altKey &&
+            !e.metaKey && !this.lastQueryWasOnFocus_ &&
+            this.isVirtualFocusEventTarget_(e);
+      }
+      return e.key === 'Enter' && !!this.pendingKeydownEvent_ &&
+          !(this.multiLineEnabled && e.shiftKey);
     }
 
     async handleKeyNavigation(e: KeyboardEvent) {
@@ -1452,7 +1576,7 @@ export interface SearchboxMixinInterface extends
   onMatchFocusin(e: CustomEvent<number>): void;
   onKeywordClick(e: Event): void;
   openContextMenu(): void;
-  openCtrlEnterMatch(matchIndex: number): void;
+  openCtrlEnterMatch(matchIndex: number, e: KeyboardEvent): void;
   onSearchboxInputTextUpdated(e: CustomEvent<{
     value: string,
     isComposing: boolean,
@@ -1466,6 +1590,7 @@ export interface SearchboxMixinInterface extends
   getTabId(): number|null;
   shouldAppendDotComOnCtrlEnter(): boolean;
   shouldPreserveSelectionOnMatchDeletion(): boolean;
+  shouldTabWaitForResults(): boolean;
   updateInputForSelection(nextSelection: OmniboxPopupSelection, key: string):
       void;
 }

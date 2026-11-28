@@ -294,6 +294,9 @@ bool IsLocalUNCServer(base::FilePath::StringViewType server) {
       FILE_PATH_LITERAL(".host"),
       FILE_PATH_LITERAL("vboxsvr"),
       FILE_PATH_LITERAL("vboxsrv"),
+      // Remote desktop client-drive redirectors (RDP/Horizon, Citrix HDX).
+      FILE_PATH_LITERAL("tsclient"),
+      FILE_PATH_LITERAL("client"),
   };
   for (const auto& candidate : kLocalServers) {
     if (base::FilePath::CompareEqualIgnoreCase(server, candidate)) {
@@ -304,8 +307,8 @@ bool IsLocalUNCServer(base::FilePath::StringViewType server) {
 }
 
 // Returns true if the path is a Universal Naming Convention (UNC) path pointing
-// to a local system path, device namespace, WSL loopback redirector, or
-// hypervisor host-share namespace.
+// to a local system path, device namespace, WSL loopback redirector,
+// hypervisor host-share namespace, or remote-session client drive redirector.
 bool MaybeIsLocalUNCPath(const base::FilePath& path) {
   if (!path.IsNetwork()) {
     return false;
@@ -1206,6 +1209,24 @@ bool PathInfosContains(const std::vector<content::PathInfo>& path_infos,
                              [&path](const content::PathInfo& path_info) {
                                return path_info.path == path;
                              });
+}
+
+// Chrome UI and enterprise policy only ever write `ASK` or `BLOCK` for the
+// File System Access guard settings; `ALLOW` is produced solely by allowlist
+// providers (WebUI / component extensions / DevTools). A user-sourced `ALLOW`
+// can therefore only come from an unvalidated `Preferences` file, so treat it
+// as `ASK`. See crbug.com/584014474.
+ContentSetting GetGuardContentSetting(const HostContentSettingsMap& map,
+                                      const url::Origin& origin,
+                                      ContentSettingsType type) {
+  content_settings::SettingInfo info;
+  ContentSetting setting =
+      map.GetContentSetting(origin.GetURL(), origin.GetURL(), type, &info);
+  if (setting == CONTENT_SETTING_ALLOW &&
+      info.source == content_settings::SettingSource::kUser) {
+    return CONTENT_SETTING_ASK;
+  }
+  return setting;
 }
 
 }  // namespace
@@ -2533,22 +2554,31 @@ std::u16string ChromeFileSystemAccessPermissionContext::GetObjectDisplayName(
   return optional_path->LossyDisplayName();
 }
 
+// `ObjectPermissionContextBase` reads the raw write guard from
+// `HostContentSettingsMap` to gate persisted-object lookups
+// (`GetGrantedObjects()`, `GrantObjectPermission()`, ...). Route it through
+// `GetWriteGuardContentSetting()` so the user-`ALLOW` -> `ASK` downgrade is
+// applied consistently there too.
+bool ChromeFileSystemAccessPermissionContext::CanRequestObjectPermission(
+    const url::Origin& origin) const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  return GetWriteGuardContentSetting(origin) == CONTENT_SETTING_ASK;
+}
+
 ContentSetting
 ChromeFileSystemAccessPermissionContext::GetReadGuardContentSetting(
     const url::Origin& origin) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return content_settings_->GetContentSetting(
-      origin.GetURL(), origin.GetURL(),
-      ContentSettingsType::FILE_SYSTEM_READ_GUARD);
+  return GetGuardContentSetting(*content_settings_, origin,
+                                ContentSettingsType::FILE_SYSTEM_READ_GUARD);
 }
 
 ContentSetting
 ChromeFileSystemAccessPermissionContext::GetWriteGuardContentSetting(
     const url::Origin& origin) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return content_settings_->GetContentSetting(
-      origin.GetURL(), origin.GetURL(),
-      ContentSettingsType::FILE_SYSTEM_WRITE_GUARD);
+  return GetGuardContentSetting(*content_settings_, origin,
+                                ContentSettingsType::FILE_SYSTEM_WRITE_GUARD);
 }
 
 std::vector<base::FilePath>

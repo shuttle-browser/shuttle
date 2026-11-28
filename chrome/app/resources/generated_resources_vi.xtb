@@ -6311,6 +6311,7 @@ Bạn có thể quản lý các tùy chọn cài đặt của tài khoản này 
 <translation id="6466936665940546351">Xác minh danh tính để thêm mật khẩu và sử dụng các mật khẩu đó trên mọi thiết bị mà bạn đã đăng nhập bằng Tài khoản Google của mình</translation>
 <translation id="6467230443178397264">Quét <ph name="FILE_NAME" /></translation>
 <translation id="6467304607960172345">Tối ưu hóa các video ở chế độ toàn màn hình</translation>
+<translation id="6467327465309816244">Hãy sử dụng Gemini theo cách thận trọng và <ph name="BEGIN_LINK1" />an toàn<ph name="LINK_END1" />. Gemini có thể mắc sai sót và đưa ra <ph name="BEGIN_LINK2" />kết quả không mong muốn<ph name="LINK_END2" />, chẳng hạn như giao dịch mua.</translation>
 <translation id="6467377768028664108">Khi đó, <ph name="DEVICE_TYPE" /> của bạn có thể:</translation>
 <translation id="6468485451923838994">Phông chữ</translation>
 <translation id="6468773105221177474"><ph name="FILE_COUNT" /> tệp</translation>
@@ -7117,6 +7118,7 @@ Bạn còn # mật khẩu bị lộ nữa. Trình quản lý mật khẩu của 
 <translation id="7152478047064750137">Tiện ích này không yêu cầu quyền đặc biệt</translation>
 <translation id="7152923486458597248">Lấy tiêu điểm ở nhóm</translation>
 <translation id="7154130902455071009">Thay đổi trang chủ của bạn thành: <ph name="START_PAGE" /></translation>
+<translation id="7159383838726952486">Tạo một bài kiểm tra đơn giản gồm 5 câu hỏi về trang này</translation>
 <translation id="7159695867335480590">Phát/tạm dừng</translation>
 <translation id="7159953856712257647">Được cài đặt theo mặc định</translation>
 <translation id="7160182524506337403">Giờ đây, bạn có thể xem thông báo có trên điện thoại của mình</translation>
@@ -7395,7 +7397,7 @@ Bạn còn # mật khẩu bị lộ nữa. Trình quản lý mật khẩu của 
 <translation id="7387107590792462040">Vui lòng đợi, quá trình cài đặt đang diễn ra</translation>
 <translation id="7387273928653486359">Chấp nhận được</translation>
 <translation id="7387951778417998929">Để dùng một công cụ tìm kiếm khác với công cụ mặc định, hãy nhập lối tắt của công cụ đó trong thanh địa chỉ rồi nhập phím tắt ưu tiên của bạn. Bạn cũng có thể thay đổi công cụ tìm kiếm mặc định tại đây.</translation>
-<translation id="7389615853658756494">Thay đổi mật khẩu trên trang web</translation>
+<translation id="7389615853658756494">Đổi mật khẩu trên trang web</translation>
 <translation id="7392118418926456391">Quét vi-rút không thành công</translation>
 <translation id="7392915005464253525">&amp;Mở lại cửa sổ đã đóng</translation>
 <translation id="739299645392306071">Tiêu điểm trung bình</translation>

@@ -3748,7 +3748,7 @@ Kontu honen ezarpenak kudeatzeko, instalatu Family Link aplikazioa zure gailuan.
 <translation id="4203769790323223880">Ukatu da kamera erabiltzeko baimena</translation>
 <translation id="4204415812590935863">Une honetan, ezin da sortu gairik.</translation>
 <translation id="4206144641569145248">Estralurtarra</translation>
-<translation id="4206323443866416204">Iritzi-txostena</translation>
+<translation id="4206323443866416204">Oharren txostena</translation>
 <translation id="4206585797409671301">Eskaerak erakusteko baimena du</translation>
 <translation id="4207638506590582629"><ph name="DEVICE_NAME" /> (<ph name="LAST_ACTIVE_TIME" />)</translation>
 <translation id="4207932031282227921">Baimena eskatu da. Erantzuteko, sakatu F6.</translation>
@@ -5091,7 +5091,7 @@ Kontu honen ezarpenak kudeatzeko, instalatu Family Link aplikazioa zure gailuan.
 <translation id="5388719243178419614">Ezin da kargatu. Ezin izan da prozesatu irudi-fitxategia.</translation>
 <translation id="5389224261615877010">Ostadarra</translation>
 <translation id="5389794555912875905">Erakutsi abisuak webgune ez-seguruetara joan aurretik (gomendatua)</translation>
-<translation id="5390112241331447203">Gehitu iritzi-txostenetan bidalitako system_logs.txt fitxategia.</translation>
+<translation id="5390112241331447203">Gehitu oharren txostenetan bidalitako system_logs.txt fitxategia.</translation>
 <translation id="5390367025924544771"><ph name="WEBSITE_ORIGIN" /> webguneak diru-zorro digitaleko informazio pertsonala erabili nahi du. Jarraitu webguneaz fidatzen bazara bakarrik. Webgune arriskutsuek engainatu egin zaitzakete zure legezko izena edo NAN zenbakia ezagutaratu dezazun.</translation>
 <translation id="5390677308841849479">Gorri iluna eta laranja</translation>
 <translation id="5392192690789334093">Jakinarazpenak bidal ditzakete</translation>
@@ -6290,6 +6290,7 @@ Kontu honen ezarpenak kudeatzeko, instalatu Family Link aplikazioa zure gailuan.
 <translation id="6466936665940546351">Egiaztatu zeu zarela pasahitzak gehitzeko eta horiek zure Google-ko kontuarekin saioa hasita daukaten gailu guztietan edukitzeko</translation>
 <translation id="6467230443178397264">Eskaneatu <ph name="FILE_NAME" /></translation>
 <translation id="6467304607960172345">Optimizatu pantaila osoko bideoak</translation>
+<translation id="6467327465309816244">Erabili Gemini kontu handiz eta <ph name="BEGIN_LINK1" />segurtasunez<ph name="LINK_END1" />. Baliteke akatsak egitea eta <ph name="BEGIN_LINK2" />ustekabeko emaitzak<ph name="LINK_END2" /> eragitea, hala nola erosketak.</translation>
 <translation id="6467377768028664108"><ph name="DEVICE_TYPE" /> gailuak hauek egin ahalko ditu:</translation>
 <translation id="6468485451923838994">Letrak</translation>
 <translation id="6468773105221177474"><ph name="FILE_COUNT" /> fitxategi</translation>
@@ -7095,6 +7096,7 @@ Arriskuan dauden # pasahitz gehiago dauzkazu. Google-ren Pasahitz-kudeatzailea z
 <translation id="7152478047064750137">Luzapen honek ez du baimen berezirik behar</translation>
 <translation id="7152923486458597248">Fokuratu taldea</translation>
 <translation id="7154130902455071009">Hasiera-orria aldatu, hau izan dadin: <ph name="START_PAGE" />.</translation>
+<translation id="7159383838726952486">Sortu 5 galderako galdeketa erraz bat orri honetan oinarrituta</translation>
 <translation id="7159695867335480590">Erreproduzitu/Pausatu</translation>
 <translation id="7159953856712257647">Modu lehenetsian instalatuta</translation>
 <translation id="7160182524506337403">Orain, telefonoko jakinarazpenak ikus ditzakezu</translation>

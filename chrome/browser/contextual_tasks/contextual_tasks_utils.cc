@@ -337,7 +337,7 @@ void RecordTabAddedMetric(
     contextual_search::ContextualSearchMetricsRecorder* metrics_recorder,
     bool is_tab_suggestion_chip,
     BrowserWindowInterface* browser_window_interface) {
-  if (!metrics_recorder || !tab) {
+  if (!metrics_recorder || !tab || !tab->GetContents()) {
     return;
   }
   if (!browser_window_interface) {
@@ -363,6 +363,9 @@ void RecordTabAddedMetric(
   auto all_tabs = tab_list->GetAllTabs();
   for (size_t i = 0; i < all_tabs.size(); i++) {
     tabs::TabInterface* tab_interface = all_tabs[i];
+    if (!tab_interface || !tab_interface->GetContents()) {
+      continue;
+    }
 
     const std::u16string& tab_title = tab_interface->GetContents()->GetTitle();
     if (tab_title == current_title) {
@@ -1003,6 +1006,28 @@ bool ShouldUseDarkModeForProfile(Profile* profile) {
 #else
   return false;
 #endif
+}
+
+GURL GetFeedbackPageUrl(BrowserWindowInterface* browser,
+                        content::WebContents* fallback_web_contents) {
+  GURL page_url = fallback_web_contents
+                      ? fallback_web_contents->GetLastCommittedURL()
+                      : GURL();
+  if (!browser) {
+    return page_url;
+  }
+  if (auto* tab_list = TabListInterface::From(browser)) {
+    if (auto* active_tab = tab_list->GetActiveTab()) {
+      if (active_tab->GetContents()) {
+        const GURL& committed_url =
+            active_tab->GetContents()->GetLastCommittedURL();
+        if (!committed_url.is_empty()) {
+          page_url = committed_url;
+        }
+      }
+    }
+  }
+  return page_url;
 }
 
 }  // namespace contextual_tasks

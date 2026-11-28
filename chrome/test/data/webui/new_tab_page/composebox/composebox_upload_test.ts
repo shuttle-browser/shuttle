@@ -8,13 +8,12 @@ import {ComposeboxFile, ContextualSearchInputStateDeletionType} from 'chrome://r
 import {ContextUploadErrorType, ContextUploadStatus, InputType, ToolMode} from 'chrome://resources/cr_components/composebox/composebox_query.mojom-webui.js';
 import type {ErrorScrimElement} from 'chrome://resources/cr_components/composebox/error_scrim.js';
 import type {ComposeboxFileCarouselElement} from 'chrome://resources/cr_components/composebox/file_carousel.js';
-import {createAutocompleteResultForTesting, createSearchMatchForTesting} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {PromiseResolver} from 'chrome://resources/js/promise_resolver.js';
 import {DriveDisclaimerStatus, TabAttachmentSource} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import {ToolMode as ComposeboxToolMode} from 'chrome://resources/mojo/components/omnibox/composebox/composebox_query.mojom-webui.js';
 import {assertDeepEquals, assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
-import {MockInputState} from 'chrome://webui-test/cr_components/searchbox/searchbox_test_utils.js';
+import {createAutocompleteResult, createSearchMatch, MockInputState} from 'chrome://webui-test/cr_components/searchbox/searchbox_test_utils.js';
 import {eventToPromise, microtasksFinished} from 'chrome://webui-test/test_util.js';
 
 import {assertStyle} from '../test_support.js';
@@ -124,11 +123,11 @@ suite('NewTabPageComposeboxUploadFileTest', () => {
         testProxy.searchboxHandler.getCallCount('queryAutocomplete'), 1);
 
     // Simulate existing autocomplete matches showing in the dropdown.
-    const matches = [createSearchMatchForTesting({
+    const matches = [createSearchMatch({
       allowedToBeDefaultMatch: false,
     })];
     testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-        createAutocompleteResultForTesting({
+        createAutocompleteResult({
           queryId: testProxy.element.activeQueryId,
           input: '',
           matches,
@@ -472,11 +471,11 @@ suite('NewTabPageComposeboxUploadFileTest', () => {
         await testSupport.uploadFileAndVerify(testProxy, id, file);
 
         // Simulate autocomplete returning zero-state matches during upload.
-        const matches = [createSearchMatchForTesting({
+        const matches = [createSearchMatch({
           allowedToBeDefaultMatch: false,
         })];
         testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-            createAutocompleteResultForTesting({
+            createAutocompleteResult({
               queryId: testProxy.element.activeQueryId,
               input: '',
               matches,
@@ -1494,9 +1493,9 @@ suite('NewTabPageComposeboxUploadToolModeTest', () => {
     assertEquals(
         testProxy.searchboxHandler.getCallCount('queryAutocomplete'), 1);
 
-    const matches = [createSearchMatchForTesting()];
+    const matches = [createSearchMatch()];
     testProxy.searchboxCallbackRouterRemote.autocompleteResultChanged(
-        createAutocompleteResultForTesting({
+        createAutocompleteResult({
           queryId: testProxy.element.activeQueryId,
           input: '',
           matches,

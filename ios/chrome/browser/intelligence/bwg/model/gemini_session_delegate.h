@@ -13,6 +13,7 @@
 
 @class GeminiChatMessageRequest;
 @class GeminiChatMessageResponse;
+@class GeminiSnackbar;
 
 // TODO(crbug.com/481711842): Replace this enum and its gemini_metrics.h
 // equivalent with an enum in gemini_constants.h
@@ -217,6 +218,19 @@ typedef NS_ENUM(NSInteger, GeminiCancelType) {
 // Called when the Nano Banana attachment selection in the input plate changes.
 - (void)inputPlateDidChangeNanoBananaAttachment:(BOOL)isSelected;
 
+// Called when a discovery banner of `bannerType` (e.g. the personalization
+// notice) is shown above the input plate for `conversationID`.
+- (void)didPresentDiscoveryBannerWithType:
+            (ios::provider::GeminiDiscoveryBannerType)bannerType
+                           conversationID:(NSString*)conversationID;
+
+// Called when a previously presented discovery banner of `bannerType` is fully
+// dismissed for `conversationID`, either because the user acknowledged it or
+// because the zero state was torn down (e.g. on query submission).
+- (void)didDismissDiscoveryBannerWithType:
+            (ios::provider::GeminiDiscoveryBannerType)bannerType
+                           conversationID:(NSString*)conversationID;
+
 #pragma mark - Chat Message Interception
 
 // Called on the main thread when the user submits a chat message, before it is
@@ -230,6 +244,14 @@ typedef NS_ENUM(NSInteger, GeminiCancelType) {
 - (void)handleChatMessageRequest:(GeminiChatMessageRequest*)request
                       completion:(void (^)(GeminiChatMessageResponse* response))
                                      completion;
+
+#pragma mark - Snackbars
+
+// Called when the Gemini SDK requests presenting a snackbar.
+- (void)showSnackbar:(GeminiSnackbar*)snackbar;
+
+// Called when the Gemini SDK requests dismissing any active snackbars.
+- (void)dismissSnackbar;
 
 @end
 

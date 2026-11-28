@@ -361,6 +361,7 @@
 <translation id="2015722694326466240">רוצה להציג את הסיסמאות? תחילה עליך להגדיר קוד גישה במכשיר.</translation>
 <translation id="201759455285471444">הרחבה של קבוצת הכרטיסיות.</translation>
 <translation id="2022431790688770637">‏ניהול ההצעות של Gemini</translation>
+<translation id="2023265063803387188">‏‫Gemini לא זמין במצב פרטי</translation>
 <translation id="2031515492007104071">הרמה הבאה</translation>
 <translation id="2044394949148788042">פתיחה של תצוגת הכרטיסיות</translation>
 <translation id="2044681667265133332">החשבון <ph name="USER_EMAIL" /> מנוהל על ידי <ph name="HOSTED_DOMAIN" />, שיכול להיות שיש לו גישה לחלק מהמידע. <ph name="BEGIN_LINK" />מידע נוסף<ph name="END_LINK" /></translation>
@@ -648,6 +649,7 @@
 <translation id="2941680850471407949">צפייה במקורות</translation>
 <translation id="2952278131021475699">‏חיפוש באמצעות המצלמה ב-Lens</translation>
 <translation id="2953821385349876107">‏בחירת חשבון Google אחר</translation>
+<translation id="2957817184363338604">‏השיחות שלך יישמרו בהיסטוריית הפעילות ב-Gemini. ההיסטוריה כוללת את האודיו, הסרטונים ושיתופי המסך מ-Gemini Live, הדברים ששיתפת עם Gemini (כמו פרומפטים, <ph name="BEGIN_LINK" />קבצים מצורפים<ph name="END_LINK" /> ו<ph name="BEGIN_LINK" />צילומי מסך<ph name="END_LINK" />), התשובות של Gemini, משימות וקריאות API לכלי, משוב, מידע מאתרים שביקרת בהם עם Gemini, נתוני שימוש במוצרים, המיקום הכללי של המכשיר, כתובת ה-IP, והכתובת בבית או בעבודה שרשומה בחשבון Google. ההיסטוריה יכולה לכלול גם נתונים מאפליקציות שקישרת ל-Gemini.</translation>
 <translation id="2962516096219646456">הצגת כל נתוני המילוי האוטומטי</translation>
 <translation id="2965594942405840553">לא תהיה לך אפשרות לבטל את המחיקה</translation>
 <translation id="2969979262385602596">לא ניתן היה להיכנס לחשבון. יש לנסות שוב מאוחר יותר.</translation>
@@ -1538,7 +1540,7 @@
 <translation id="5756200167514420691">כדי לגלוש באינטרנט עם יותר פרטיות, אפשר לפתוח כרטיסיות במצב פרטי</translation>
 <translation id="5756525336488841345">הסתרת הסימניות</translation>
 <translation id="5758631781033351321">רשימת הקריאה זמינה כאן</translation>
-<translation id="57586589942790530">מספר כרטיס לא חוקי</translation>
+<translation id="57586589942790530">מספר הכרטיס לא תקין</translation>
 <translation id="5758759241456233788">הפצה מקדימה של "מפות" מושבתת. אפשר להפעיל אותה שוב בהגדרות.</translation>
 <translation id="5759484603608560822">הסתרת ההורדות</translation>
 <translation id="5767099457279594162">הסיסמה לא שותפה</translation>

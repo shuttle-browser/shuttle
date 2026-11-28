@@ -7,10 +7,12 @@
 #include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/test/bind.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
 #include "base/unguessable_token.h"
+#include "base/uuid.h"
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/contextual_search/contextual_search_service_factory.h"
 #include "chrome/browser/contextual_search/contextual_search_web_contents_helper.h"
@@ -24,6 +26,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_side_panel_coordinator.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_toolbar.mojom.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_types.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_ui_base.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_delegate_desktop.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
@@ -33,6 +36,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_location_bar.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
+#include "chrome/browser/ui/location_bar/location_bar_override_data.h"
 #include "chrome/browser/ui/views/bubble_anchor_util_views.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/permissions/chip/chip_controller.h"
@@ -794,6 +798,61 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
   }));
 }
 
+namespace {
+
+// Returns whether the page was told the zero state at load time.
+bool IsZeroStateKnownOnLoad(content::WebContents* web_contents) {
+  return content::EvalJs(
+             web_contents,
+             "import('chrome://resources/js/load_time_data.js').then("
+             "    m => m.loadTimeData.getBoolean('isZeroStateKnownOnInit'))")
+      .ExtractBool();
+}
+
+}  // namespace
+
+// A task without a creation URL only resolves its URL after the page loads, so
+// the page must be told that the zero state isn't known yet.
+IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
+                       ZeroStateUnknownOnLoadWithoutCreationUrl) {
+  auto* tasks_service =
+      contextual_tasks::ContextualTasksServiceFactory::GetForProfile(
+          browser()->GetProfile());
+  auto* ui_service =
+      contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
+          browser()->GetProfile());
+  const base::Uuid task_id = tasks_service->CreateTask().GetTaskId();
+  ASSERT_FALSE(ui_service->GetCreationUrlForTask(task_id));
+
+  EXPECT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), ui_service->GetContextualTaskUrlForTask(task_id)));
+  content::WebContents* web_contents =
+      TabListInterface::From(browser())->GetActiveTab()->GetContents();
+
+  EXPECT_FALSE(IsZeroStateKnownOnLoad(web_contents));
+}
+
+// A task with a creation URL has a known zero state when the page loads.
+IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
+                       ZeroStateKnownOnLoadWithCreationUrl) {
+  auto* tasks_service =
+      contextual_tasks::ContextualTasksServiceFactory::GetForProfile(
+          browser()->GetProfile());
+  auto* ui_service =
+      contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
+          browser()->GetProfile());
+  const base::Uuid task_id = tasks_service->CreateTask().GetTaskId();
+  ui_service->SetInitialUrlForTask(
+      task_id, ui_service->GetDefaultAiPageUrlForTask(task_id));
+
+  EXPECT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), ui_service->GetContextualTaskUrlForTask(task_id)));
+  content::WebContents* web_contents =
+      TabListInterface::From(browser())->GetActiveTab()->GetContents();
+
+  EXPECT_TRUE(IsZeroStateKnownOnLoad(web_contents));
+}
+
 IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
                        InitSidePanelWithGhostLoader_WaitUntilPanelOpen) {
   auto* service =
@@ -913,7 +972,21 @@ class TestContextualTasksToolbarUIObserver
 
 }  // namespace
 
-IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
+class ContextualTasksPermissionChipBrowserTest : public InProcessBrowserTest {
+ public:
+  ContextualTasksPermissionChipBrowserTest() {
+    feature_list_.InitWithFeatures(
+        {contextual_tasks::kContextualTasks,
+         contextual_tasks::kContextualTasksForceEntryPointEligibility,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture},
+        {contextual_tasks::kContextualTasksRearchitecture});
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(ContextualTasksPermissionChipBrowserTest,
                        PermissionDashboardStatePushEndToEnd) {
   auto* service =
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
@@ -932,16 +1005,25 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
   ASSERT_TRUE(web_contents);
   EXPECT_TRUE(content::WaitForLoadStop(web_contents));
 
-  ContextualTasksUI* side_panel_ui = static_cast<ContextualTasksUI*>(
-      web_contents->GetWebUI()->GetController());
-  ASSERT_TRUE(side_panel_ui);
-
-  auto* permission_controller = panel_controller->permission_controller();
+  contextual_tasks::ContextualTasksPermissionController* permission_controller =
+      panel_controller->permission_controller();
   ASSERT_TRUE(permission_controller);
+  contextual_tasks::ContextualTasksLocationBar* location_bar =
+      permission_controller->GetLocationBarForTesting();
+  ASSERT_TRUE(location_bar);
+  content::WebContents* toolbar_contents =
+      location_bar->GetToolbarWebContents();
+  ASSERT_TRUE(toolbar_contents);
+  EXPECT_TRUE(content::WaitForLoadStop(toolbar_contents));
+
+  contextual_tasks::ContextualTasksUIBase* toolbar_ui =
+      contextual_tasks::ContextualTasksUIBase::FromWebContents(
+          toolbar_contents);
+  ASSERT_TRUE(toolbar_ui);
 
   mojo::Remote<contextual_tasks_toolbar::mojom::ContextualTasksToolbarUIService>
       toolbar_service;
-  side_panel_ui->BindInterface(toolbar_service.BindNewPipeAndPassReceiver());
+  toolbar_ui->BindInterface(toolbar_service.BindNewPipeAndPassReceiver());
 
   base::test::TestFuture<
       base::expected<contextual_tasks_toolbar::mojom::InitialStatePtr,
@@ -957,11 +1039,9 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
   TestContextualTasksToolbarUIObserver observer(
       std::move(initial_result.value()->update_stream));
 
-  auto* location_bar = permission_controller->GetLocationBarForTesting();
-  ASSERT_TRUE(location_bar);
-  auto* dashboard = location_bar->permission_dashboard();
+  WebUIPermissionDashboard* dashboard = location_bar->permission_dashboard();
   ASSERT_TRUE(dashboard);
-  auto* request_chip = dashboard->request_chip();
+  WebUIPermissionChip* request_chip = dashboard->request_chip();
   ASSERT_TRUE(request_chip);
 
   // Mutate the dashboard and chip multiple times synchronously. All synchronous
@@ -1007,7 +1087,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
 // The permission chips live in the side panel's toolbar WebUI, not in the
 // browser window's views hierarchy, so the location bar must report the
 // toolbar document's element context for chip anchors to be found.
-IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
+IN_PROC_BROWSER_TEST_F(ContextualTasksPermissionChipBrowserTest,
                        LocationBarElementContextIsToolbarDocumentContext) {
   auto* service =
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
@@ -1021,9 +1101,11 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
   EXPECT_TRUE(base::test::RunUntil(
       [&]() { return panel_controller->IsPanelOpenForContextualTask(); }));
 
-  auto* permission_controller = panel_controller->permission_controller();
+  contextual_tasks::ContextualTasksPermissionController* permission_controller =
+      panel_controller->permission_controller();
   ASSERT_TRUE(permission_controller);
-  auto* location_bar = permission_controller->GetLocationBarForTesting();
+  contextual_tasks::ContextualTasksLocationBar* location_bar =
+      permission_controller->GetLocationBarForTesting();
   ASSERT_TRUE(location_bar);
 
   content::WebContents* toolbar_contents =
@@ -1062,7 +1144,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
   EXPECT_EQ(chip.GetAnchor().GetIfElement(), &toolbar_element);
 }
 
-IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
+IN_PROC_BROWSER_TEST_F(ContextualTasksPermissionChipBrowserTest,
                        PermissionPromptAnchorsAndRoutesToSidePanelLocationBar) {
   auto* service =
       contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
@@ -1083,9 +1165,11 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
   EXPECT_TRUE(content_settings::PageSpecificContentSettings::GetForFrame(
       panel_contents->GetPrimaryMainFrame()));
 
-  auto* permission_controller = panel_controller->permission_controller();
+  contextual_tasks::ContextualTasksPermissionController* permission_controller =
+      panel_controller->permission_controller();
   ASSERT_TRUE(permission_controller);
-  auto* location_bar = permission_controller->GetLocationBarForTesting();
+  contextual_tasks::ContextualTasksLocationBar* location_bar =
+      permission_controller->GetLocationBarForTesting();
   ASSERT_TRUE(location_bar);
 
   content::WebContents* toolbar_contents =
@@ -1206,7 +1290,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
 // omnibox. In the side panel, they still show the request chip, which the
 // prompt bubble then opens from and notifies `PermissionPromptObserver` on
 // show/hide (see `PermissionPromptAnchorsAndRoutesToSidePanelLocationBar`).
-IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
+IN_PROC_BROWSER_TEST_F(ContextualTasksPermissionChipBrowserTest,
                        PermissionRequestWithoutUserGestureShowsRequestChip) {
   class TestPermissionPromptObserver
       : public PermissionPromptObserver::Observer {
@@ -1299,6 +1383,72 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
   EXPECT_FALSE(test_observer.is_showing_history[1]);
 
   prompt_observer->RemoveObserver(&test_observer);
+}
+
+// When `kContextualTasksSidePanelRearchitecture` is disabled,
+// `ContextualTasksPermissionController` is a no-op: it does not create a
+// `ContextualTasksLocationBar` or attach `LocationBarOverrideData`, so side
+// panel permission prompts anchor to the main browser window's omnibox as
+// before.
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksNoMockBrowserTest,
+    PermissionPromptAnchorsToOmniboxWhenRearchitectureDisabled) {
+  base::HistogramTester histogram_tester;
+
+  contextual_tasks::ContextualTasksUiService* service =
+      contextual_tasks::ContextualTasksUiServiceFactory::GetForBrowserContext(
+          browser()->GetProfile());
+  tabs::TabInterface* tab = TabListInterface::From(browser())->GetActiveTab();
+  service->InitSidePanelWithGhostLoader(browser(), tab, nullptr);
+
+  contextual_tasks::ContextualTasksPanelController* panel_controller =
+      contextual_tasks::ContextualTasksPanelController::From(browser());
+  ASSERT_TRUE(panel_controller);
+  EXPECT_TRUE(base::test::RunUntil(
+      [&]() { return panel_controller->IsPanelOpenForContextualTask(); }));
+
+  content::WebContents* panel_contents =
+      panel_controller->GetActiveWebContents();
+  ASSERT_TRUE(panel_contents);
+  EXPECT_TRUE(content::WaitForLoadStop(panel_contents));
+
+  EXPECT_EQ(
+      panel_controller->permission_controller()->GetLocationBarForTesting(),
+      nullptr);
+  EXPECT_EQ(
+      location_bar::LocationBarOverrideData::FromWebContents(panel_contents),
+      nullptr);
+  EXPECT_EQ(location_bar::GetLocationBarForWebContents(panel_contents),
+            nullptr);
+  EXPECT_FALSE(bubble_anchor_util::GetPermissionPromptBubbleAnchorConfiguration(
+                   panel_contents)
+                   .anchor.IsNull());
+
+  permissions::PermissionRequestManager* prm =
+      permissions::PermissionRequestManager::FromWebContents(panel_contents);
+  ASSERT_TRUE(prm);
+  test::PermissionRequestManagerTestApi test_api(prm);
+  permissions::PermissionRequestObserver observer(panel_contents);
+  test_api.AddSimpleRequest(panel_contents->GetPrimaryMainFrame(),
+                            permissions::RequestType::kMicStream,
+                            /*user_gesture=*/false);
+  observer.Wait();
+  ASSERT_TRUE(observer.request_shown());
+
+  EXPECT_EQ(prm->current_request_prompt_disposition_for_testing(),
+            permissions::PermissionPromptDisposition::ANCHORED_BUBBLE);
+  ChipController* main_omnibox_chip_controller =
+      BrowserView::GetBrowserViewForBrowser(browser())
+          ->GetLocationBar()
+          ->GetChipController();
+  EXPECT_FALSE(main_omnibox_chip_controller->IsPermissionPromptChipVisible());
+  EXPECT_NE(test_api.GetPromptWindow(), nullptr);
+  histogram_tester.ExpectTotalCount("ContextualTasks.PermissionChip.Impression",
+                                    0);
+
+  prm->Accept(/*prompt_options=*/std::monostate());
+  EXPECT_TRUE(
+      base::test::RunUntil([prm] { return !prm->IsRequestInProgress(); }));
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 

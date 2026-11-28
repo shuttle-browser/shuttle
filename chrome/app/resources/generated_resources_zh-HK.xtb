@@ -6303,6 +6303,7 @@
 <translation id="6466936665940546351">驗證你的身分，以新增密碼並在所有已登入你 Google 帳戶的裝置上取用</translation>
 <translation id="6467230443178397264">掃瞄 <ph name="FILE_NAME" /></translation>
 <translation id="6467304607960172345">優化全螢幕影片</translation>
+<translation id="6467327465309816244">使用 Gemini 時必須謹慎<ph name="BEGIN_LINK1" />安全<ph name="LINK_END1" />。Gemini 可能會出錯，並產生<ph name="BEGIN_LINK2" />非預期的結果<ph name="LINK_END2" /> (例如購物)。</translation>
 <translation id="6467377768028664108">您的 <ph name="DEVICE_TYPE" /> 將可以：</translation>
 <translation id="6468485451923838994">字型</translation>
 <translation id="6468773105221177474"><ph name="FILE_COUNT" /> 個檔案</translation>
@@ -7109,6 +7110,7 @@
 <translation id="7152478047064750137">這個擴充程式不需要任何特殊權限</translation>
 <translation id="7152923486458597248">聚焦群組</translation>
 <translation id="7154130902455071009">將您的起始網頁變更為：<ph name="START_PAGE" /></translation>
+<translation id="7159383838726952486">根據此頁內容設計 5 條題目，製成簡單的測驗</translation>
 <translation id="7159695867335480590">播放/暫停</translation>
 <translation id="7159953856712257647">預設已安裝</translation>
 <translation id="7160182524506337403">您現可查看手機的通知</translation>
@@ -7400,7 +7402,7 @@
 <translation id="7396845648024431313"><ph name="APP_NAME" /> 會隨著系統一併啟動，即使在所有 <ph name="PRODUCT_NAME" /> 視窗都關閉後，仍會在背景繼續執行。</translation>
 <translation id="7399045143794278225">自訂同步處理功能</translation>
 <translation id="7399616692258236448">系統會自動封鎖所有網站的位置要求 (你允許的網站除外)</translation>
-<translation id="7399746352569282594">閂分割檢視畫面：<ph name="FIRST_TAB_TITLE" />、<ph name="SECOND_TAB_TITLE" /></translation>
+<translation id="7399746352569282594">關閉分割檢視畫面：<ph name="FIRST_TAB_TITLE" />、<ph name="SECOND_TAB_TITLE" /></translation>
 <translation id="7399802613464275309">安全檢查</translation>
 <translation id="7400059772197434086">已被封鎖，無法在以下位置使用你的資料：</translation>
 <translation id="7400418766976504921">網址</translation>
@@ -8039,7 +8041,7 @@
 <translation id="7953955868932471628">管理快速鍵</translation>
 <translation id="7955105108888461311">要求存取權</translation>
 <translation id="7955177647836564772">如果 Smart Lock 已開啟，且手機已解鎖，您將不需要輸入密碼或 PIN</translation>
-<translation id="7955672267519272700">閂「<ph name="TAB_TITLE" />」</translation>
+<translation id="7955672267519272700">關閉「<ph name="TAB_TITLE" />」</translation>
 <translation id="7956373551960864128">已儲存的打印機</translation>
 <translation id="7956918070009672177">裝置上沒有<ph name="LANGUAGE" />語音。請連接互聯網，然後再試一次。</translation>
 <translation id="7957074856830851026">查看裝置資料，例如序號或資產 ID</translation>

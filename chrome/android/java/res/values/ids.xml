@@ -88,6 +88,7 @@ found in the LICENSE file.
     <!-- Context Menu Ids -->
     <!-- Page Group -->
     <!-- go/keep-sorted start -->
+    <item type="id" name="contextmenu_ask_google_about_page" />
     <item type="id" name="contextmenu_back" />
     <item type="id" name="contextmenu_create_qr_code" />
     <item type="id" name="contextmenu_forward" />
@@ -129,6 +130,7 @@ found in the LICENSE file.
     <!--Image Group -->
     <!-- go/keep-sorted start -->
     <item type="id" name="contextmenu_ask_gemini_image" />
+    <item type="id" name="contextmenu_ask_google_about_image" />
     <item type="id" name="contextmenu_copy_image" />
     <item type="id" name="contextmenu_direct_share_image" />
     <item type="id" name="contextmenu_load_original_image" />
@@ -203,6 +205,7 @@ found in the LICENSE file.
     <item type="id" name="ai_pdf_menu_id" />
     <item type="id" name="ai_web_menu_id" />
     <item type="id" name="all_bookmarks_menu_id" />
+    <item type="id" name="ask_google_about_page_menu_id" />
     <item type="id" name="auto_dark_web_contents_check_id" />
     <item type="id" name="auto_dark_web_contents_id" />
     <item type="id" name="back_menu_id" />

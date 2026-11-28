@@ -252,19 +252,20 @@ EntrypointSource ConvertContextualSearchSourceToEntrypointSource(
   }
 }
 
-#if !BUILDFLAG(IS_ANDROID)
 bool ShouldResetZeroStateForAskGoogleEntryPoint(
     const GURL& url,
     ContextualTasksUiService* service,
     omnibox::ChromeAimEntryPoint entry_point) {
   const bool is_omnibox_action =
-      base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxAskGAboutThisPage) &&
+      (base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxAskGAboutThisPage) ||
+       contextual_tasks::IsContextualTasksEntryPointsEnabled()) &&
       entry_point ==
           omnibox::ChromeAimEntryPoint::DESKTOP_CHROME_COBROWSE_OMNIBOX_ACTION;
 
   const bool is_updated_entry_point =
-      contextual_tasks::AreContextualTasksUpdatedEntryPointsEnabled(
-          service->profile()) &&
+      (contextual_tasks::AreContextualTasksUpdatedEntryPointsEnabled(
+           service->profile()) ||
+       contextual_tasks::IsContextualTasksEntryPointsEnabled()) &&
       (entry_point == omnibox::ChromeAimEntryPoint::
                           DESKTOP_CHROME_PAGE_CONTEXT_MENU_ASK_GOOGLE ||
        entry_point ==
@@ -275,14 +276,6 @@ bool ShouldResetZeroStateForAskGoogleEntryPoint(
   return (is_omnibox_action || is_updated_entry_point) &&
          ContextualTasksUI::IsZeroState(url, service);
 }
-#else
-bool ShouldResetZeroStateForAskGoogleEntryPoint(
-    const GURL& url,
-    ContextualTasksUiService* service,
-    omnibox::ChromeAimEntryPoint entry_point) {
-  return false;
-}
-#endif
 
 void LoadUrlInSidePanel(content::WebContents* web_contents, const GURL& url) {
   GURL new_url = ContextualTasksUiService::AddRequiredSidePanelUrlChanges(
@@ -3186,6 +3179,16 @@ ContextualTasksUiService::GetInitialEntryPointForTask(
 void ContextualTasksUiService::OpenFeedbackUi(BrowserWindowInterface* browser,
                                               const GURL& page_url) {
   delegate_->OpenFeedbackUi(browser, page_url);
+}
+
+void ContextualTasksUiService::OpenDogfoodFeedbackUi(
+    BrowserWindowInterface* browser,
+    const GURL& page_url) {
+  // Renderers only hide the dogfood feedback UI, so check the gate here too.
+  if (!browser || !IsContextualTasksDogfoodFeedbackEnabled()) {
+    return;
+  }
+  delegate_->OpenDogfoodFeedbackUi(browser, page_url);
 }
 
 void ContextualTasksUiService::ShowUndoSnackbar(

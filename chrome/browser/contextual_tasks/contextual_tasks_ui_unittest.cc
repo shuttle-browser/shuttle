@@ -30,6 +30,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_utils.h"
 #include "chrome/browser/contextual_tasks/list_accounts_response.pb.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_web_contents_user_data.h"
 #include "chrome/browser/contextual_tasks/mock_contextual_tasks_page.h"
 #include "chrome/browser/contextual_tasks/mock_contextual_tasks_panel_controller.h"
 #include "chrome/browser/contextual_tasks/mock_contextual_tasks_ui_service.h"
@@ -42,7 +43,6 @@
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/contextual_tasks/contextual_tasks_web_contents_user_data.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"  // nogncheck
 #include "chrome/browser/ui/actions/chrome_actions.h"    // nogncheck
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"  // nogncheck
@@ -147,6 +147,10 @@ class MockContextualTasksComposeboxHandler
               GetSelectedTabIds,
               (),
               (const, override));
+  MOCK_METHOD(void,
+              AddFileContextFromBytes,
+              (std::string, std::string, std::string),
+              (override));
 };
 
 class MockTaskInfoDelegate : public TaskInfoDelegate {
@@ -1527,6 +1531,57 @@ TEST_F(ContextualTasksUiTest, SetComposeboxHandler) {
 
   // Reset the handler in the controller before it goes out of scope to avoid
   // dangling pointer.
+  controller.SetComposeboxHandler(nullptr);
+}
+
+TEST_F(ContextualTasksUiTest, AddImageContextFromBytes_Immediate) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  auto handler = std::make_unique<MockContextualTasksComposeboxHandler>();
+  auto* handler_ptr = handler.get();
+  controller.SetComposeboxHandler(handler_ptr);
+
+  EXPECT_CALL(*handler_ptr,
+              AddFileContextFromBytes("image.png", "image/png", "bytes"))
+      .Times(1);
+  controller.AddImageContextFromBytes("image.png", "image/png", "bytes");
+
+  EXPECT_EQ(ContextualTasksWebContentsUserData::FromWebContents(
+                embedded_web_contents_.get()),
+            nullptr);
+
+  controller.SetComposeboxHandler(nullptr);
+}
+
+TEST_F(ContextualTasksUiTest, AddImageContextFromBytes_Queued) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUI controller(&web_ui);
+
+  auto handler = std::make_unique<MockContextualTasksComposeboxHandler>();
+  auto* handler_ptr = handler.get();
+  EXPECT_CALL(*handler_ptr,
+              AddFileContextFromBytes(testing::_, testing::_, testing::_))
+      .Times(0);
+
+  controller.AddImageContextFromBytes("image.png", "image/png", "bytes");
+  testing::Mock::VerifyAndClearExpectations(handler_ptr);
+
+  EXPECT_CALL(*handler_ptr,
+              AddFileContextFromBytes("image.png", "image/png", "bytes"))
+      .Times(1);
+  controller.SetComposeboxHandler(handler_ptr);
+  testing::Mock::VerifyAndClearExpectations(handler_ptr);
+
+  // Drained once; subsequent handler attachment must not replay it.
+  EXPECT_CALL(*handler_ptr,
+              AddFileContextFromBytes(testing::_, testing::_, testing::_))
+      .Times(0);
+  controller.SetComposeboxHandler(nullptr);
+  controller.SetComposeboxHandler(handler_ptr);
+
   controller.SetComposeboxHandler(nullptr);
 }
 
@@ -3710,6 +3765,19 @@ TEST_F(ContextualTasksUiTest, OpenFeedbackUi_NoBrowser_SafeNoOp) {
   base_ui->OpenFeedbackUi();
 }
 
+TEST_F(ContextualTasksUiTest, OpenDogfoodFeedback_NoBrowser_SafeNoOp) {
+  content::TestWebUI web_ui;
+  web_ui.set_web_contents(embedded_web_contents_.get());
+  ContextualTasksUIConfig config;
+  std::unique_ptr<content::WebUIController> controller =
+      config.CreateWebUIController(&web_ui, GURL("chrome://contextual-tasks"));
+  ASSERT_TRUE(controller);
+  auto* base_ui = static_cast<ContextualTasksUIBase*>(controller.get());
+  ASSERT_NE(base_ui, nullptr);
+
+  base_ui->OpenDogfoodFeedback();
+}
+
 TEST_F(ContextualTasksUiTest, MoveTaskUiToNewTab_NoBrowser_SafeNoOp) {
   content::TestWebUI web_ui;
   web_ui.set_web_contents(embedded_web_contents_.get());
@@ -5811,6 +5879,61 @@ TEST_F(ContextualTasksUiTest,
   EXPECT_EQ(last_full_name, "");
   EXPECT_EQ(last_email, "");
   EXPECT_EQ(last_account_count, 0u);
+}
+
+TEST_F(ContextualTasksUiTest,
+       GetDogfoodFeedbackLoadTimeData_DisabledByDefault) {
+  base::DictValue dict =
+      ContextualTasksUIBase::GetDogfoodFeedbackLoadTimeData();
+  EXPECT_EQ(dict.FindBool("contextualTasksDogfoodFeedbackEnabled"), false);
+  const std::string* attribute =
+      dict.FindString("contextualTasksDogfoodFeedbackAttribute");
+  ASSERT_TRUE(attribute);
+  EXPECT_EQ(*attribute, "");
+  ASSERT_NE(dict.FindString("dogfoodFeedbackTooltip"), nullptr);
+  EXPECT_EQ(*dict.FindString("dogfoodFeedbackTooltip"),
+            "Submit Contextual Tasks Dogfood Feedback");
+}
+
+TEST_F(ContextualTasksUiTest, GetDogfoodFeedbackLoadTimeData_ParamEnabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeatureWithParameters(
+      kContextualTasks, {{"ContextualTasks_DogfoodFeedback", "true"}});
+
+  base::DictValue dict =
+      ContextualTasksUIBase::GetDogfoodFeedbackLoadTimeData();
+  const std::string* attribute =
+      dict.FindString("contextualTasksDogfoodFeedbackAttribute");
+  ASSERT_TRUE(attribute);
+  // The dogfood feedback form can only be opened on desktop.
+#if BUILDFLAG(IS_ANDROID)
+  EXPECT_EQ(dict.FindBool("contextualTasksDogfoodFeedbackEnabled"), false);
+  EXPECT_EQ(*attribute, "");
+#else
+  EXPECT_EQ(dict.FindBool("contextualTasksDogfoodFeedbackEnabled"), true);
+  EXPECT_EQ(*attribute, "dogfood-feedback-enabled");
+#endif
+}
+
+TEST_F(ContextualTasksUiTest,
+       GetContextualTasksLoadTimeData_IncludesDogfoodFeedback) {
+  // Read by the top toolbar in both WebUI hosts.
+  base::DictValue toolbar_dict =
+      ContextualTasksUIBase::GetContextualTasksLoadTimeData(profile_);
+  EXPECT_TRUE(toolbar_dict.FindBool("contextualTasksDogfoodFeedbackEnabled")
+                  .has_value());
+  EXPECT_NE(toolbar_dict.FindString("dogfoodFeedbackTooltip"), nullptr);
+
+  // Also served to the extension, whose tab_picker.html and tab_picker.js use
+  // these keys in template replacements.
+  base::DictValue extension_dict =
+      ContextualTasksUI::GetContextualTasksLoadTimeData(profile_);
+  EXPECT_TRUE(extension_dict.FindBool("contextualTasksDogfoodFeedbackEnabled")
+                  .has_value());
+  EXPECT_NE(extension_dict.FindString("dogfoodFeedbackTooltip"), nullptr);
+  EXPECT_NE(
+      extension_dict.FindString("contextualTasksDogfoodFeedbackAttribute"),
+      nullptr);
 }
 
 #if !BUILDFLAG(IS_ANDROID)

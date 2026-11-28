@@ -99,7 +99,7 @@
   --color-searchbox-foreground: var(--color-sys-on-surface);
   --color-searchbox-lens-voice-icon-background: var(
       --color-omnibox-results-icon);
-  --color-searchbox-placeholder: var(--color-sys-on-surface-subtle);
+  --color-searchbox-placeholder: var(--color-sys-state-disabled);
   --color-searchbox-results-action-chip: var(
       --color-omnibox-results-button-border);
   --color-searchbox-results-action-chip-focus-outline: var(
@@ -278,4 +278,11 @@ help-bubble {
 :host([is-context-menu-open]) #contextEntrypoint::part(entrypoint-button) {
   --cr-hover-background-color: var(--cr-icon-button-hover-background-color);
   background-color: var(--cr-icon-button-hover-background-color);
+}
+
+/* Keep file drag-and-drop overlay in light mode even in dark theme for parity
+ * with the browser omnibox. */
+search-animated-glow[animation-state='dragging'] {
+  --color-search-animated-glow-background: rgba(255, 255, 255, 1);
+  --cr-composebox-background-color: initial;
 }

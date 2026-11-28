@@ -4592,6 +4592,13 @@ const FeatureEntry::FeatureVariation kContextualTaskContextVariations[] = {
     {" - Smart Tab Sharing: Toggle Off After Submit",
      kSmartTabSharingToggleOffAfterSubmit, nullptr}};
 
+const FeatureEntry::FeatureParam kContextualTasksDogfoodFeedback[] = {
+    {"ContextualTasks_DogfoodFeedback", "true"}};
+
+const FeatureEntry::FeatureVariation kContextualTasksVariations[] = {
+    {"- with Dogfood Feedback", kContextualTasksDogfoodFeedback, nullptr},
+};
+
 const FeatureEntry::FeatureParam kEphemeralBrandedEntryPointEnabled[] = {
     {"ContextualTasksEntryPoint", "toolbar-ephemeral-branded"}};
 const FeatureEntry::FeatureParam kEphemeralBrandedEntryPointWithRightDock[] = {
@@ -4776,6 +4783,26 @@ const FeatureEntry::FeatureVariation
         {"with omnibox routing",
          kContextualTasksUpdatedEntryPointsOmniboxRouting, nullptr},
         {"with submenu", kContextualTasksUpdatedEntryPointsSubmenu, nullptr}};
+
+const FeatureEntry::FeatureParam
+    kContextualTasksEntryPointsWithOmniboxContextualSuggestions[] = {
+        {"omnibox_contextual_suggestions", "true"}};
+const FeatureEntry::FeatureParam
+    kContextualTasksEntryPointsWithForcedToolbarButton[] = {
+        {"force_toolbar_button", "true"}};
+const FeatureEntry::FeatureParam
+    kContextualTasksEntryPointsWithForcedToolbarAndOmniboxSuggestions[] = {
+        {"force_toolbar_button", "true"},
+        {"omnibox_contextual_suggestions", "true"}};
+
+const FeatureEntry::FeatureVariation kContextualTasksEntryPointsVariations[] = {
+    {"with omnibox contextual suggestions",
+     kContextualTasksEntryPointsWithOmniboxContextualSuggestions, nullptr},
+    {"with forced toolbar button",
+     kContextualTasksEntryPointsWithForcedToolbarButton, nullptr},
+    {"with forced toolbar button and omnibox contextual suggestions",
+     kContextualTasksEntryPointsWithForcedToolbarAndOmniboxSuggestions,
+     nullptr}};
 
 #if BUILDFLAG(IS_ANDROID)
 const FeatureEntry::FeatureParam kAnimatedProgressBar30FpsCap[] = {
@@ -5107,6 +5134,13 @@ const FeatureEntry::FeatureVariation kToolbarGlowUpVariations[] = {
     {"no reload animation", kToolbarGlowUpNoReload, nullptr},
     {"no reload, back, or forward animations",
      kToolbarGlowUpNoReloadBackForward, nullptr}};
+
+const FeatureEntry::FeatureParam
+    kMenuSimplificationGlicSearchAboveSaveAndPrint[] = {
+        {"MenuSimplificationGlicSearchAboveSaveAndPrint", "true"}};
+const FeatureEntry::FeatureVariation kMenuSimplificationVariations[] = {
+    {"glic section above save", kMenuSimplificationGlicSearchAboveSaveAndPrint,
+     nullptr}};
 
 #if !BUILDFLAG(IS_ANDROID)
 const FeatureEntry::FeatureParam kDictationEvalModeParam[] = {
@@ -7054,6 +7088,11 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kOmniboxDebounceKeyboardVisibilityDescription,
      kOsAndroid,
      FEATURE_VALUE_TYPE(omnibox::kOmniboxDebounceKeyboardVisibility)},
+
+    {"omnibox-url-bar-aim-natural-text-ime",
+     flag_descriptions::kOmniboxUrlBarAimNaturalTextImeName,
+     flag_descriptions::kOmniboxUrlBarAimNaturalTextImeDescription, kOsAndroid,
+     FEATURE_VALUE_TYPE(omnibox::kOmniboxUrlBarAimNaturalTextIme)},
 
     {"omnibox-fusebox-async-inflation",
      flag_descriptions::kOmniboxFuseboxAsyncInflationName,
@@ -9709,6 +9748,12 @@ const FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kOmniboxLoomDescription, kOsDesktop,
      MULTI_VALUE_TYPE(kOmniboxLoomChoices)},
 
+    {"omnibox-everywhere-prehandle-mouse-drag",
+     flag_descriptions::kOmniboxEverywherePreHandleMouseDragName,
+     flag_descriptions::kOmniboxEverywherePreHandleMouseDragDescription,
+     kOsWin | kOsMac,
+     FEATURE_VALUE_TYPE(omnibox::kOmniboxEverywherePreHandleMouseDrag)},
+
     {"omnibox-everywhere-screenshot-new-window",
      flag_descriptions::kOmniboxEverywhereScreenshotNewWindowName,
      flag_descriptions::kOmniboxEverywhereScreenshotNewWindowDescription,
@@ -9966,7 +10011,9 @@ const FeatureEntry kFeatureEntries[] = {
 
     {"menu-simplification", flag_descriptions::kMenuSimplificationName,
      flag_descriptions::kMenuSimplificationDescription, kOsDesktop,
-     FEATURE_VALUE_TYPE(features::kMenuSimplification)},
+     FEATURE_WITH_PARAMS_VALUE_TYPE(features::kMenuSimplification,
+                                    kMenuSimplificationVariations,
+                                    "MenuSimplification")},
 
     {"webui-refresh-2026", flag_descriptions::kWebuiRefresh2026Name,
      flag_descriptions::kWebuiRefresh2026Description, kOsDesktop,
@@ -12158,7 +12205,9 @@ const FeatureEntry kFeatureEntries[] = {
      contextual_tasks::flag_descriptions::kContextualTasksName,
      contextual_tasks::flag_descriptions::kContextualTasksDescription,
      kOsDesktop | kOsAndroid,
-     FEATURE_VALUE_TYPE(contextual_tasks::kContextualTasks)},
+     FEATURE_WITH_PARAMS_VALUE_TYPE(contextual_tasks::kContextualTasks,
+                                    kContextualTasksVariations,
+                                    "ContextualTasks")},
 
     {"contextual-tasks-ephemeral-branded-entry-point",
      contextual_tasks::flag_descriptions::
@@ -12328,6 +12377,16 @@ const FeatureEntry kFeatureEntries[] = {
          kAllowSignedOutUserInDesktopAndroidDescription,
      kOsAndroid,
      FEATURE_VALUE_TYPE(contextual_tasks::kAllowSignedOutUserInDesktopAndroid)},
+
+    {"contextual-tasks-entry-points",
+     contextual_tasks::flag_descriptions::kContextualTasksEntryPointsName,
+     contextual_tasks::flag_descriptions::
+         kContextualTasksEntryPointsDescription,
+     kOsAndroid,
+     FEATURE_WITH_PARAMS_VALUE_TYPE(
+         contextual_tasks::kContextualTasksEntryPoints,
+         kContextualTasksEntryPointsVariations,
+         "ContextualTasksEntryPoints")},
 
     {"omnibox-debug-logs", omnibox::flag_descriptions::kOmniboxDebugLogsName,
      omnibox::flag_descriptions::kOmniboxDebugLogsDescription, kOsDesktop,

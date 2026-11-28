@@ -138,6 +138,14 @@ BASE_FEATURE(kOmniboxEverywhere, DISABLED);
 // context menu during `Profile` initialization until browser startup is
 // complete.
 BASE_FEATURE(kOmniboxEverywhereDeferStatusIcon, ENABLED);
+// Kill switch. If enabled, Omnibox Everywhere drags its window from
+// WebContentsDelegate::PreHandleMouseEvent() on all platforms. If disabled,
+// it falls back to the legacy Aura pre-target handler and macOS HTCAPTION.
+BASE_FEATURE(kOmniboxEverywherePreHandleMouseDrag, ENABLED);
+// If enabled, shows the Send Feedback item in OmniboxEverywhere menus for
+// dogfooders/teamfooders (targeted via g/loomnibox-dogfood and
+// g/loomnibox-teamfood).
+BASE_FEATURE(kOmniboxEverywhereDogfoodFeedback, DISABLED);
 // If enabled, submitting a query with screenshots attached in Omnibox
 // Everywhere opens the result in a new browser window aligned with the
 // Omnibox Everywhere popup.
@@ -170,7 +178,7 @@ const base::FeatureParam<bool> kOmniboxEverywhereProfilePickerParam{
 // Controls showing most visited tiles in OmniboxEverywhere.
 const base::FeatureParam<bool> kOmniboxEverywhereMostVisitedParam{
     &kOmniboxEverywhere, "MostVisited", true};
-// Controls whether small Loomnibox (480px width) is enabled.
+// Controls whether small Loomnibox (408px width) is enabled.
 const base::FeatureParam<bool> kOmniboxEverywhereSmallLoomniboxParam{
     &kOmniboxEverywhere, "smallLoomnibox", false};
 // Controls whether dynamic sizing is enabled for OmniboxEverywhere.

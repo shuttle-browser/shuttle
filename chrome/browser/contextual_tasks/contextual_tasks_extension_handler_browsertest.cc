@@ -21,6 +21,7 @@
 #include "base/test/test_future.h"
 #include "base/values.h"
 #include "chrome/browser/contextual_search/contextual_search_web_contents_helper.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_eligibility_manager.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_extension_bridge.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_panel_controller.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_service_factory.h"
@@ -28,7 +29,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_web_contents_user_data.h"
 #include "chrome/browser/contextual_tasks/mock_contextual_tasks_page.h"
-#include "chrome/browser/page_content_annotations/page_content_extraction_service_factory.h"
+#include "chrome/browser/contextual_tasks/mock_contextual_tasks_ui_service.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -60,7 +61,6 @@
 #include "components/optimization_guide/content/browser/page_context_eligibility.h"
 #include "components/optimization_guide/content/browser/page_context_eligibility_api.h"
 #include "components/optimization_guide/content/browser/page_context_eligibility_observer.h"
-#include "components/page_content_annotations/content/page_content_extraction_service.h"
 #include "components/permissions/request_type.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/sessions/core/session_id.h"
@@ -8587,6 +8587,7 @@ IN_PROC_BROWSER_TEST_F(
   const GURL eligible_url_2 = embedded_test_server()->GetURL("/eligible-2");
   const GURL active_ineligible_url =
       embedded_test_server()->GetURL("/ineligible-active");
+  base::HistogramTester histogram_tester;
 
   // Open an ineligible tab in the background, two eligible tabs, and a final
   // ineligible foreground tab so both active and background ineligible tabs are
@@ -8635,20 +8636,12 @@ IN_PROC_BROWSER_TEST_F(
   EXPECT_EQ(tabs[1]->url, eligible_url_1);
   EXPECT_FALSE(tabs[1]->recent_tab);
 
-  // Verify eligibility and `FetchRecentTabs()` did not pull
-  // AnnotatedPageContent.
-  auto* extraction_service =
-      page_content_annotations::PageContentExtractionServiceFactory::
-          GetForProfile(browser()->GetProfile());
-  ASSERT_NE(extraction_service, nullptr);
-  EXPECT_FALSE(extraction_service
-                   ->GetServerUploadEligibilityForPage(
-                       bg_ineligible_tab->GetContents()->GetPrimaryPage())
-                   .has_value());
-  EXPECT_FALSE(extraction_service
-                   ->GetServerUploadEligibilityForPage(
-                       fg_ineligible_tab->GetContents()->GetPrimaryPage())
-                   .has_value());
+  // Verify eligibility and `FetchRecentTabs()` did not request
+  // AnnotatedPageContent. Automatic on-load extraction can populate the
+  // extraction cache for any tab at any time, so check for on-demand
+  // extraction requests.
+  histogram_tester.ExpectTotalCount(
+      "OptimizationGuide.PageContentExtraction.OnDemand.EnabledReason", 0);
 }
 
 IN_PROC_BROWSER_TEST_F(
@@ -8657,6 +8650,7 @@ IN_PROC_BROWSER_TEST_F(
   const GURL restricted_url =
       embedded_test_server()->GetURL("/conditional-restricted");
   const GURL public_url = embedded_test_server()->GetURL("/conditional-public");
+  base::HistogramTester histogram_tester;
 
   // Open a `<meta>`-tag-restricted page directly in a background tab to verify
   // background load resolves initial `<meta>` eligibility without pulling APC.
@@ -8672,16 +8666,12 @@ IN_PROC_BROWSER_TEST_F(
 
   EXPECT_TRUE(FetchRecentTabs().empty());
 
-  // Verify `<meta>` tag eligibility and `FetchRecentTabs()` did not trigger
-  // AnnotatedPageContent extraction.
-  auto* extraction_service =
-      page_content_annotations::PageContentExtractionServiceFactory::
-          GetForProfile(browser()->GetProfile());
-  ASSERT_NE(extraction_service, nullptr);
-  EXPECT_FALSE(extraction_service
-                   ->GetServerUploadEligibilityForPage(
-                       restricted_tab->GetContents()->GetPrimaryPage())
-                   .has_value());
+  // Verify `<meta>` tag eligibility and `FetchRecentTabs()` did not request
+  // AnnotatedPageContent. Automatic on-load extraction can populate the
+  // extraction cache for any tab at any time, so check for on-demand
+  // extraction requests.
+  histogram_tester.ExpectTotalCount(
+      "OptimizationGuide.PageContentExtraction.OnDemand.EnabledReason", 0);
 
   // Open a conditionally-eligible foreground tab whose `<meta>` tag permits
   // sharing.
@@ -8825,6 +8815,93 @@ IN_PROC_BROWSER_TEST_F(
   std::vector<searchbox::mojom::TabInfoPtr> tabs = FetchRecentTabs();
   ASSERT_EQ(tabs.size(), 1u);
   EXPECT_EQ(tabs[0]->url, unknown_url);
+}
+
+class ContextualTasksExtensionHandlerDogfoodFeedbackBrowserTest
+    : public ContextualTasksExtensionHandlerBrowserTest {
+ public:
+  void SetUpBrowserContextKeyedServices(
+      content::BrowserContext* context) override {
+    ContextualTasksExtensionHandlerBrowserTest::
+        SetUpBrowserContextKeyedServices(context);
+    ContextualTasksUiServiceFactory::GetInstance()->SetTestingFactory(
+        context, base::BindRepeating([](content::BrowserContext* context)
+                                         -> std::unique_ptr<KeyedService> {
+          Profile* profile = Profile::FromBrowserContext(context);
+          return std::make_unique<
+              testing::NiceMock<MockContextualTasksUiService>>(
+              profile, ContextualTasksServiceFactory::GetForProfile(profile),
+              /*identity_manager=*/nullptr,
+              /*aim_eligibility_service=*/nullptr,
+              /*eligibility_manager=*/nullptr,
+              /*cookie_synchronizer=*/nullptr);
+        }));
+  }
+
+ protected:
+  testing::NiceMock<MockContextualTasksUiService>* mock_ui_service() {
+    return static_cast<testing::NiceMock<MockContextualTasksUiService>*>(
+        ContextualTasksUiServiceFactory::GetForBrowserContext(
+            browser()->GetProfile()));
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksExtensionHandlerDogfoodFeedbackBrowserTest,
+    OpenDogfoodFeedback_PassesActiveTabUrl) {
+  ASSERT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
+      browser(), GURL(chrome::kChromeUIChromeURLsURL),
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+      ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
+
+  ASSERT_NE(mock_ui_service(), nullptr);
+  EXPECT_CALL(
+      *mock_ui_service(),
+      OpenDogfoodFeedbackUi(browser(), GURL(chrome::kChromeUIChromeURLsURL)))
+      .Times(1);
+
+  handler_->OpenDogfoodFeedback();
+}
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksExtensionHandlerDogfoodFeedbackBrowserTest,
+    OpenDogfoodFeedback_UncommittedActiveTabPreservesFallbackUrl) {
+  auto uncommitted_contents = content::WebContents::Create(
+      content::WebContents::CreateParams(browser()->GetProfile()));
+  ASSERT_TRUE(uncommitted_contents->GetLastCommittedURL().is_empty());
+  browser()->tab_strip_model()->AppendWebContents(
+      std::move(uncommitted_contents), /*foreground=*/true);
+  ASSERT_TRUE(TabListInterface::From(browser())
+                  ->GetActiveTab()
+                  ->GetContents()
+                  ->GetLastCommittedURL()
+                  .is_empty());
+
+  ASSERT_NE(mock_ui_service(), nullptr);
+  EXPECT_CALL(
+      *mock_ui_service(),
+      OpenDogfoodFeedbackUi(browser(), GURL(chrome::kChromeUIVersionURL)))
+      .Times(1);
+
+  handler_->OpenDogfoodFeedback();
+}
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksExtensionHandlerDogfoodFeedbackBrowserTest,
+    OpenDogfoodFeedback_UnattachedFromBrowser_SafeNoOp) {
+  auto unattached_contents = content::WebContents::Create(
+      content::WebContents::CreateParams(browser()->GetProfile()));
+  content::RenderFrameHost* rfh = unattached_contents->GetPrimaryMainFrame();
+  ASSERT_NE(rfh, nullptr);
+  ContextualTasksExtensionHandler::CreateForCurrentDocument(rfh);
+  auto* unattached_handler =
+      ContextualTasksExtensionHandler::GetForCurrentDocument(rfh);
+  ASSERT_NE(unattached_handler, nullptr);
+
+  ASSERT_NE(mock_ui_service(), nullptr);
+  EXPECT_CALL(*mock_ui_service(), OpenDogfoodFeedbackUi(_, _)).Times(0);
+
+  unattached_handler->OpenDogfoodFeedback();
 }
 
 }  // namespace contextual_tasks

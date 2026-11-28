@@ -3867,7 +3867,7 @@
 <translation id="4298660926525614540">Називи преносивих меморија</translation>
 <translation id="4299022904780065004">Нови &amp;прозор без архивирања</translation>
 <translation id="4300272766492248925">Отвори апликацију</translation>
-<translation id="4301231341924904092">Промени то за мене</translation>
+<translation id="4301231341924904092">Промени је за мене</translation>
 <translation id="4301671483919369635">Ова страница може да мења датотеке</translation>
 <translation id="4301697210743228350">{COUNT,plural, =1{# контакт није доступан. Да бисте користили функцију <ph name="FEATURE_NAME" /> са њим, у контакте додајте имејл адресе повезане са његовим Google налогом.}one{# контакт није доступан. Да бисте користили функцију <ph name="FEATURE_NAME" /> са њима, у контакте додајте имејл адресе повезане са њиховим Google налозима.}few{# контакта нису доступна. Да бисте користили функцију <ph name="FEATURE_NAME" /> са њима, у контакте додајте имејл адресе повезане са њиховим Google налозима.}other{# контаката није доступно. Да бисте користили функцију <ph name="FEATURE_NAME" /> са њима, у контакте додајте имејл адресе повезане са њиховим Google налозима.}}</translation>
 <translation id="4303079906735388947">Подесите нови PIN за безбедносни кључ</translation>
@@ -6297,6 +6297,7 @@
 <translation id="6466936665940546351">Потврдите идентитет да бисте додавали лозинке и користили их на свим уређајима помоћу Google налога</translation>
 <translation id="6467230443178397264">Скенирајте <ph name="FILE_NAME" /></translation>
 <translation id="6467304607960172345">Оптимизујте видео снимке преко целог екрана</translation>
+<translation id="6467327465309816244">Користите Gemini пажљиво и <ph name="BEGIN_LINK1" />безбедно<ph name="LINK_END1" />. Може да погреши и прикаже <ph name="BEGIN_LINK2" />неочекиване резултате<ph name="LINK_END2" />, попут куповина.</translation>
 <translation id="6467377768028664108"><ph name="DEVICE_TYPE" /> онда може:</translation>
 <translation id="6468485451923838994">Фонтови</translation>
 <translation id="6468773105221177474">Фајлова: <ph name="FILE_COUNT" /></translation>
@@ -7107,6 +7108,7 @@
 <translation id="7152478047064750137">Овај додатак не захтева никакве специјалне дозволе</translation>
 <translation id="7152923486458597248">Фокус на групу</translation>
 <translation id="7154130902455071009">Промените почетну страницу у: <ph name="START_PAGE" /></translation>
+<translation id="7159383838726952486">Направи једноставан тест знања са 5 питања на овој страници</translation>
 <translation id="7159695867335480590">Пусти/паузирај</translation>
 <translation id="7159953856712257647">Подразумевано инсталирано</translation>
 <translation id="7160182524506337403">Сада можете да прегледате обавештења на телефону</translation>
@@ -7525,7 +7527,7 @@
 <translation id="7502804472671406749">Дељене картице могу да се скролују и зумирају</translation>
 <translation id="750314150962284310">Фокус на ред</translation>
 <translation id="7503191893372251637">Тип Netscape сертификата</translation>
-<translation id="7503259455663961898">Промени то за мене</translation>
+<translation id="7503259455663961898">Промени је за мене</translation>
 <translation id="7503985202154027481">Посета овом сајту ће бити забележена на безбедносном кључу.</translation>
 <translation id="7504145862399276792">Звук ове картице је искључен</translation>
 <translation id="750509436279396091">Отвори фолдер Преузимања</translation>

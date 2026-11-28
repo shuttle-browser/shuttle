@@ -361,6 +361,7 @@
 <translation id="2015722694326466240">Um die Passwörter zu sehen, musst du zuerst einen Sicherheitscode auf deinem Gerät einrichten.</translation>
 <translation id="201759455285471444">Tabgruppe maximieren.</translation>
 <translation id="2022431790688770637">Gemini-Vorschläge verwalten</translation>
+<translation id="2023265063803387188">Gemini ist im Inkognitomodus nicht verfügbar</translation>
 <translation id="2031515492007104071">Level Up</translation>
 <translation id="2044394949148788042">Tabraster öffnen</translation>
 <translation id="2044681667265133332">Das Konto <ph name="USER_EMAIL" /> wird von <ph name="HOSTED_DOMAIN" /> verwaltet – bestimmte Informationen sind für diese Domain sichtbar. <ph name="BEGIN_LINK" />Weitere Informationen<ph name="END_LINK" /></translation>
@@ -648,6 +649,7 @@
 <translation id="2941680850471407949">Quellen anzeigen</translation>
 <translation id="2952278131021475699">Lens-Kamerasuche</translation>
 <translation id="2953821385349876107">Anderes Google-Konto auswählen</translation>
+<translation id="2957817184363338604">Deine Chats werden in deinem Gemini-Verlauf gespeichert. Der Verlauf umfasst deine Audioinhalte, Gemini Live-Videos und -Bildschirmfreigaben, deine mit Gemini geteilten Inhalte (z. B. Prompts, <ph name="BEGIN_LINK" />Anhänge<ph name="END_LINK" /> und <ph name="BEGIN_LINK" />Bildschirminhalte<ph name="END_LINK" />), die Antworten von Gemini, Aufgaben und Toolaufrufe, Feedback, Informationen von Websites, die du mit Gemini besuchst, Daten zur Produktnutzung, den ungefähren Standort deines Geräts, deine IP‑Adresse und die Privat- oder Arbeitsadresse in deinem Google-Konto. Dazu können auch Daten aus Apps gehören, die du mit Gemini verbindest.</translation>
 <translation id="2962516096219646456">Alle Autofill-Daten ansehen</translation>
 <translation id="2965594942405840553">Diese Aktion kann nicht rückgängig gemacht werden</translation>
 <translation id="2969979262385602596">Anmeldefehler, bitte später erneut versuchen</translation>
@@ -1212,6 +1214,7 @@
 <translation id="479628432297359449">Download beenden?</translation>
 <translation id="4796496140132859135">Tabgruppe. Minimiert.</translation>
 <translation id="4800912004582762296">Klickt</translation>
+<translation id="4800930308997591052">Wechsle zu <ph name="EMAIL" />, um Tabs nahtlos zwischen deinen Geräten zu teilen und deine Passwörter, Lesezeichen und andere Daten aus deinem Google-Konto abzurufen.</translation>
 <translation id="4802185666270672526">„Desktopwebsite anfordern“ ausblenden</translation>
 <translation id="4803185665210547709">Von deiner Organisation verwaltet.
 <ph name="BEGIN_LINK" />Weitere Informationen<ph name="END_LINK" /></translation>
@@ -1519,7 +1522,7 @@ Handoff muss auch im Abschnitt „Allgemein“ deiner Einstellungen aktiviert se
 <translation id="57094364128775171">Starkes Passwort vorschlagen…</translation>
 <translation id="5718049162805123412">Du solltest dieses Passwort bzw. diese Passwörter jetzt ändern</translation>
 <translation id="5721040778297053709">Positioniere die Kreditkarte in diesem Bereich</translation>
-<translation id="572328651809341494">Zuletzt geöffnete Tabs</translation>
+<translation id="572328651809341494">Letzte Tabs</translation>
 <translation id="5724941645893276623">Füge einen neuen Tab hinzu, um privat im Web zu surfen</translation>
 <translation id="5728072125198221967">Verknüpfte Google-Dienste</translation>
 <translation id="5728700505257787410">Beim Anmelden in deinem Konto ist ein Fehler aufgetreten.</translation>
@@ -2034,6 +2037,7 @@ Wenn du auf deinem Computer fortfahren möchtest, wechsle zu <ph name="OTHER_EMA
 <translation id="728025568708172005">Tour starten</translation>
 <translation id="7280980607183752256">Datei kann nicht importiert werden</translation>
 <translation id="7282197670900591579">Zitronengelbes Design</translation>
+<translation id="7283937415134849498">Damit Gemini dich individuell unterstützen kann, werden einige deiner Daten (z. B. Teile deiner Chats, dein Standort und andere relevante Informationen) an andere Google-Dienste wie Google Maps und Google Flüge weitergegeben. Diese Informationen können zur Verbesserung dieser Dienste verwendet werden, auch wenn du deinen Gemini-Verlauf später löschst. Weitere Informationen findest du im <ph name="BEGIN_LINK" />Privacy Hub für Gemini-Apps<ph name="END_LINK" />.</translation>
 <translation id="7293429513719260019">Sprache auswählen</translation>
 <translation id="72961285530871072">Dadurch wird dein Level-Up-Fortschritt endgültig gelöscht und die Daten zur Nutzung der Level-Up-Funktion werden für dein Profil nicht mehr an Google gesendet.
 
@@ -2146,6 +2150,7 @@ Du kannst „Level Up“ jederzeit wieder aktivieren.</translation>
 <translation id="7618220760967055820">Festlegen, welcher Button in der Symbolleiste angezeigt wird</translation>
 <translation id="7620522820075868385">Abbrechen</translation>
 <translation id="762078666799342162">Du kannst deine früheren Downloads in der App <ph name="BEGIN_LINK" />Dateien<ph name="END_LINK" /> ansehen</translation>
+<translation id="7636034359405891151">Auf dem Computer dort weitermachen, wo du aufgehört hast</translation>
 <translation id="7638584964844754484">Falsche Passphrase</translation>
 <translation id="7639276194483401980">{COUNT,plural, =0{Gehackte Passwörter}=1{{COUNT} gehacktes Passwort}other{{COUNT} gehackte Passwörter}}</translation>
 <translation id="7640669552036055091">Tabs von Android</translation>
@@ -2648,6 +2653,7 @@ Du kannst „Level Up“ jederzeit wieder aktivieren.</translation>
 <translation id="91023216973987714">Zahlungsmethoden</translation>
 <translation id="9106655997975673326">Von „<ph name="SOURCE_DEVICE" />“</translation>
 <translation id="9107664647686727385">Auf kompromittierte Passwörter prüfen</translation>
+<translation id="9115035712231910133">Angehängtes Bild {title}</translation>
 <translation id="9119764377203471454">Anhänge können nicht hinzugefügt werden</translation>
 <translation id="9124387962554796433">Mithilfe deines Verlaufs kann Google die Google Suche und andere Google-Dienste personalisieren.</translation>
 <translation id="9124978074365039456">Kaufe ein, übersetze und finde mit deiner Kamera und Fotogalerie heraus, was du gerade siehst</translation>

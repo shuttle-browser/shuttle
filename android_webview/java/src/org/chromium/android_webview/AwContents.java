@@ -104,6 +104,7 @@ import org.chromium.components.autofill.AutofillSelectionMenuItemHelper;
 import org.chromium.components.content_capture.OnscreenContentProvider;
 import org.chromium.components.embedder_support.application.ClassLoaderContextWrapperFactory;
 import org.chromium.components.embedder_support.util.TouchEventFilter;
+import org.chromium.components.embedder_support.util.UrlUtilities;
 import org.chromium.components.embedder_support.util.WebResourceResponseInfo;
 import org.chromium.components.navigation_interception.InterceptNavigationDelegate;
 import org.chromium.components.origin_matcher.OriginMatcher;
@@ -443,6 +444,7 @@ public class AwContents implements SmartClipProvider {
     private final AwWebContentsDelegateAdapter mWebContentsDelegate;
     private AwActionModeCallback mAwActionModeCallback;
     private @Nullable Consumer<GoogleAccountsEvent> mGoogleAccountsCallback;
+    private String mGoogleAccountsGaiaId = "";
     private final ShouldInterceptRequestMediator mShouldInterceptRequestMediator;
     private final AwContentsIoThreadClient mIoThreadClient;
     private final InterceptNavigationDelegateImpl mInterceptNavigationDelegate;
@@ -1825,6 +1827,13 @@ public class AwContents implements SmartClipProvider {
         mSettings.setWebContents(mWebContents);
         mAwDarkMode.setWebContents(mWebContents);
 
+        if (mGoogleAccountsCallback != null
+                && AwFeatureMap.isEnabled(AwFeatures.WEBVIEW_PRESERVE_GOOGLE_ACCOUNT_MIRRORING)) {
+            AwContentsJni.get()
+                    .setGoogleAccountMirroringEnabled(
+                            mNativeAwContents, true, mGoogleAccountsGaiaId);
+        }
+
         if (SafeModeController.getInstance()
                 .isActionEnabled(SafeModeActionIds.DISABLE_ANDROID_AUTOFILL)) {
             Log.i(TAG, "Android autofill is disabled by SafeMode");
@@ -2598,6 +2607,15 @@ public class AwContents implements SmartClipProvider {
             throw headerException;
         }
 
+        if (params.referrer != null) {
+            GURL referrerUrl = new GURL(params.referrer);
+            // Only http(s) URLs can be sent as a referrer.
+            if (!referrerUrl.isValid() || !UrlUtilities.isHttpOrHttps(referrerUrl)) {
+                throw new IllegalArgumentException(
+                        "Referrer must be a valid http or https URL: " + params.referrer);
+            }
+        }
+
         if (AwFeatureMap.isEnabled(AwFeatures.WEBVIEW_NAVIGATE_DRAIN_PREFETCH)) {
             // Drain any pending prefetch requests from the queue.
             // TODO (crbug.com/363939616) Clean this up once prefetch infra supports bg thread.
@@ -2614,6 +2632,10 @@ public class AwContents implements SmartClipProvider {
         // crbug.com/40051073
         loadUrlParams.setRemoveExtraHeadersOnCrossOriginRedirect(true);
         loadUrlParams.setOverrideUserAgent(UserAgentOverrideOption.TRUE);
+        if (params.referrer != null) {
+            // Like loadUrl, use the default referrer policy (strict-origin-when-cross-origin).
+            loadUrlParams.setReferrer(new Referrer(params.referrer, ReferrerPolicy.DEFAULT));
+        }
 
         NavigationResult result = mNavigationController.loadUrl(loadUrlParams);
         NavigationHandle handle = result.getNavigationHandle();
@@ -3527,8 +3549,10 @@ public class AwContents implements SmartClipProvider {
         if (TRACE) Log.i(TAG, "%s configureGoogleAccountMirroring", this);
         if (isDestroyed(WARN)) return;
         mGoogleAccountsCallback = callback;
+        mGoogleAccountsGaiaId = gaiaId != null ? gaiaId : "";
         AwContentsJni.get()
-                .setGoogleAccountMirroringEnabled(mNativeAwContents, callback != null, gaiaId);
+                .setGoogleAccountMirroringEnabled(
+                        mNativeAwContents, callback != null, mGoogleAccountsGaiaId);
     }
 
     @CalledByNative

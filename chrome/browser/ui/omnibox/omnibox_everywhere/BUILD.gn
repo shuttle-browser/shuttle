@@ -49,6 +49,7 @@ source_set("omnibox_everywhere") {
     "omnibox_everywhere_icon.h",
     "omnibox_everywhere_region_select_overlay.h",
     "omnibox_everywhere_ui_manager.h",
+    "omnibox_everywhere_window_drag_controller.h",
   ]
   public_deps = [
     ":icon",
@@ -63,6 +64,7 @@ source_set("omnibox_everywhere") {
     "//components/feature_engagement/public",
     "//components/prefs",
     "//components/user_education/common",
+    "//third_party/blink/public/common:headers",
     "//ui/base/accelerators/global_accelerator_listener",
     "//ui/gfx",
     "//ui/views",
@@ -81,11 +83,14 @@ source_set("impl") {
     "omnibox_everywhere_context_menu_controller.cc",
     "omnibox_everywhere_controller.cc",
     "omnibox_everywhere_feature_promo_controller.cc",
+    "omnibox_everywhere_feedback.cc",
+    "omnibox_everywhere_feedback.h",
     "omnibox_everywhere_fre_controller.cc",
     "omnibox_everywhere_region_select_overlay.cc",
     "omnibox_everywhere_ui_manager.cc",
     "omnibox_everywhere_widget_delegate.cc",
     "omnibox_everywhere_widget_delegate.h",
+    "omnibox_everywhere_window_drag_controller.cc",
   ]
   if (is_mac) {
     sources += [ "mac_window_util.mm" ]
@@ -103,6 +108,7 @@ source_set("impl") {
     "//chrome/browser/autocomplete:aim_eligibility_service",
     "//chrome/browser/background/omnibox_everywhere",
     "//chrome/browser/feature_engagement",
+    "//chrome/browser/feedback",
     "//chrome/browser/media/webrtc",
     "//chrome/browser/new_tab_page/prefs",
     "//chrome/browser/profiles:profile_manager",
@@ -116,6 +122,7 @@ source_set("impl") {
     "//chrome/browser/ui/webui:webui_util",
     "//chrome/browser/ui/webui/omnibox_everywhere",
     "//chrome/browser/ui/webui/omnibox_popup",
+    "//chrome/browser/ui/webui/omnibox_popup:dogfood_feedback",
     "//chrome/browser/user_education",
     "//components/input",
     "//components/keep_alive_registry",
@@ -125,6 +132,7 @@ source_set("impl") {
     "//components/search_engines",
     "//components/url_formatter",
     "//components/vector_icons",
+    "//third_party/blink/public/common:headers",
     "//ui/base",
     "//ui/base/accelerators/global_accelerator_listener",
     "//ui/base/clipboard",
@@ -138,7 +146,11 @@ source_set("impl") {
     "//ui/strings:ui_strings",
     "//ui/views",
     "//ui/views/controls/webview",
+    "//url",
   ]
+  if (is_mac) {
+    deps += [ "//components/remote_cocoa/app_shim" ]
+  }
   if (use_aura) {
     sources += [
       "omnibox_everywhere_event_handler_aura.cc",
@@ -174,6 +186,7 @@ if (is_mac || is_win) {
       "omnibox_everywhere_region_select_overlay_unittest.cc",
       "omnibox_everywhere_ui_manager_unittest.cc",
       "omnibox_everywhere_widget_delegate_unittest.cc",
+      "omnibox_everywhere_window_drag_controller_unittest.cc",
     ]
     if (use_aura) {
       sources += [ "omnibox_everywhere_event_handler_aura_unittest.cc" ]
@@ -213,6 +226,7 @@ if (is_mac || is_win) {
       "//content/test:test_support",
       "//skia",
       "//testing/gtest",
+      "//third_party/blink/public/common:headers",
       "//ui/base/emoji",
       "//ui/base/mojom:ui_base_types",
       "//ui/color",
@@ -251,14 +265,20 @@ if (is_mac || is_win) {
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/profiles",
+      "//chrome/browser/ui/startup",
       "//chrome/browser/ui/webui/cr_components/searchbox",
       "//chrome/browser/ui/webui/omnibox_everywhere",
       "//chrome/test:test_support",
       "//chrome/test:test_support_ui",
       "//components/keyed_service/core",
+      "//components/policy:generated",
+      "//components/policy/core/browser",
+      "//components/policy/core/common:test_support",
       "//content/test:test_support",
       "//media",
       "//services/network/public/cpp",
+      "//testing/gmock",
       "//testing/gtest",
       "//ui/base:ozone_buildflags",
       "//ui/views",

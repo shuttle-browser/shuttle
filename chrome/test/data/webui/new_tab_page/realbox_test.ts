@@ -10,13 +10,12 @@ import {ContextType} from 'chrome://resources/cr_components/composebox/common.js
 import type {ComposeboxState, DriveUpload, FileUpload, TabUpload} from 'chrome://resources/cr_components/composebox/common.js';
 import type {ContextualEntrypointAndMenuElement} from 'chrome://resources/cr_components/composebox/contextual_entrypoint_and_menu.js';
 import type {SearchAnimatedGlowElement} from 'chrome://resources/cr_components/search/animated_glow.js';
-import {createAutocompleteResultForTesting, createSearchMatchForTesting} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {PageMetricsCallbackRouter} from 'chrome://resources/js/metrics_reporter.mojom-webui.js';
 import {DriveDisclaimerStatus} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import {InputType, ModelMode, ToolMode} from 'chrome://resources/mojo/components/omnibox/composebox/composebox_query.mojom-webui.js';
 import {assertDeepEquals, assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
-import {assertStyle, MockInputState} from 'chrome://webui-test/cr_components/searchbox/searchbox_test_utils.js';
+import {assertStyle, createAutocompleteResult, createSearchMatch, MockInputState} from 'chrome://webui-test/cr_components/searchbox/searchbox_test_utils.js';
 import {TestSearchboxBrowserProxy} from 'chrome://webui-test/cr_components/searchbox/test_searchbox_browser_proxy.js';
 import type {MetricsTracker} from 'chrome://webui-test/metrics_test_support.js';
 import {fakeMetricsPrivate} from 'chrome://webui-test/metrics_test_support.js';
@@ -651,13 +650,13 @@ suite('NewTabPageRealboxNextTest', () => {
     realbox.$.input.inputElement.dispatchEvent(new InputEvent('input'));
     await microtasksFinished();
 
-    const matches = [createSearchMatchForTesting({
+    const matches = [createSearchMatch({
       allowedToBeDefaultMatch: true,
       inlineAutocompletion: 'gle',
     })];
 
     testProxy.callbackRouterRemote.autocompleteResultChanged(
-        createAutocompleteResultForTesting({
+        createAutocompleteResult({
           queryId: realbox.activeQueryId,
           input: realbox.$.input.inputElement.value.trimStart(),
           matches: matches,
@@ -693,7 +692,7 @@ suite('NewTabPageRealboxNextTest', () => {
     await microtasksFinished();
 
     testProxy.callbackRouterRemote.autocompleteResultChanged(
-        createAutocompleteResultForTesting({
+        createAutocompleteResult({
           queryId: realbox.activeQueryId,
           input: realbox.$.input.inputElement.value.trimStart(),
           matches: matches,
@@ -957,13 +956,13 @@ suite('NewTabPageRealboxNextTest', () => {
         inputEl.shadowRoot.querySelector('#input')!.dispatchEvent(
             new InputEvent('input'));
 
-        const matches = [createSearchMatchForTesting({
+        const matches = [createSearchMatch({
           allowedToBeDefaultMatch: true,
           isSearchType: false,
         })];
 
         testProxy.callbackRouterRemote.autocompleteResultChanged(
-            createAutocompleteResultForTesting({
+            createAutocompleteResult({
               input: 'https://example.com',
               matches: matches,
             }));
@@ -1003,13 +1002,13 @@ suite('NewTabPageRealboxNextTest', () => {
         inputEl.shadowRoot.querySelector('#input')!.dispatchEvent(
             new InputEvent('input'));
 
-        const matches = [createSearchMatchForTesting({
+        const matches = [createSearchMatch({
           allowedToBeDefaultMatch: true,
           isSearchType: false,
         })];
 
         testProxy.callbackRouterRemote.autocompleteResultChanged(
-            createAutocompleteResultForTesting({
+            createAutocompleteResult({
               input: 'https://example.com',
               matches: matches,
             }));
@@ -1061,11 +1060,11 @@ suite('NewTabPageRealboxNextTest', () => {
         assertTrue(!!composeButton);
 
         // Simulate autocomplete result with a URL suggestion as default match.
-        const urlMatch = createSearchMatchForTesting({
+        const urlMatch = createSearchMatch({
           isSearchType: false,
           allowedToBeDefaultMatch: true,
         });
-        realbox.result = createAutocompleteResultForTesting({
+        realbox.result = createAutocompleteResult({
           matches: [urlMatch],
         });
         await microtasksFinished();
@@ -1076,11 +1075,11 @@ suite('NewTabPageRealboxNextTest', () => {
         assertFalse(!!composeButton);
 
         // Simulate autocomplete result with a Search suggestion as default match.
-        const searchMatch = createSearchMatchForTesting({
+        const searchMatch = createSearchMatch({
           isSearchType: true,
           allowedToBeDefaultMatch: true,
         });
-        realbox.result = createAutocompleteResultForTesting({
+        realbox.result = createAutocompleteResult({
           matches: [searchMatch],
         });
         await microtasksFinished();
@@ -1103,11 +1102,11 @@ suite('NewTabPageRealboxNextTest', () => {
         await microtasksFinished();
 
         // Simulate ZPS result: first match is a URL but not allowed to be default.
-        const urlMatch = createSearchMatchForTesting({
+        const urlMatch = createSearchMatch({
           isSearchType: false,
           allowedToBeDefaultMatch: false,
         });
-        realbox.result = createAutocompleteResultForTesting({
+        realbox.result = createAutocompleteResult({
           matches: [urlMatch],
         });
         await microtasksFinished();

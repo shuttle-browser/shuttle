@@ -192,6 +192,9 @@ export class OmniboxEverywhereComposeboxElement extends
 
   override connectedCallback() {
     super.connectedCallback();
+    this.toggleAttribute(
+        'draggable-empty-input',
+        getLoadTimeBoolean('draggableEmptyInput', false));
     if (!this.isPendingContextUpload) {
       this.playGlowAnimation();
       this.refreshTabSuggestions(/*forceRefresh=*/ true);
@@ -336,7 +339,7 @@ export class OmniboxEverywhereComposeboxElement extends
     super.onInputInput(e);
   }
 
-  onScreenshotCaptureCancelled() {
+  onContextUploadCancelled() {
     this.isPendingContextUpload = false;
     this.refreshTabSuggestions(/*forceRefresh=*/ true);
     this.queryAutocomplete(/* clearMatches= */ true);

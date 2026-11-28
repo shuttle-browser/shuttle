@@ -751,7 +751,7 @@
 <translation id="1644574205037202324">방문 기록</translation>
 <translation id="1644852018355792105">기기(<ph name="DEVICE" />) 블루투스 암호 입력</translation>
 <translation id="1645004815457365098">알 수 없는 소스</translation>
-<translation id="1647408325348388858">이 웹 앱에서 <ph name="FILE_NAME" /> 파일을 열고 수정하시겠습니까?</translation>
+<translation id="1647408325348388858">이 웹 앱에서 <ph name="FILE_NAME" /> 파일을 열고 수정하시겠어요?</translation>
 <translation id="1648401604841225489">패스키 잠금 해제</translation>
 <translation id="1648528859488547844">위치 파악에 Wi‑Fi 또는 모바일 네트워크 사용</translation>
 <translation id="1650407365859096313">새 탭에서 열기, 권한: <ph name="PERMISSION_STATE" /></translation>
@@ -6309,6 +6309,7 @@
 <translation id="6466936665940546351">비밀번호를 추가하고 Google 계정으로 모든 기기에서 사용하려면 본인 인증을 진행하세요.</translation>
 <translation id="6467230443178397264"><ph name="FILE_NAME" /> 스캔</translation>
 <translation id="6467304607960172345">전체 화면 동영상 최적화</translation>
+<translation id="6467327465309816244">Gemini를 신중하고 <ph name="BEGIN_LINK1" />안전하게<ph name="LINK_END1" /> 사용하세요. 실수를 저지르거나 구매와 같은 <ph name="BEGIN_LINK2" />예상치 못한 결과<ph name="LINK_END2" />를 초래할 수 있습니다.</translation>
 <translation id="6467377768028664108"><ph name="DEVICE_TYPE" />에서 다음을 할 수 있게 됩니다</translation>
 <translation id="6468485451923838994">글꼴</translation>
 <translation id="6468773105221177474">파일 <ph name="FILE_COUNT" />개</translation>
@@ -7115,6 +7116,7 @@
 <translation id="7152478047064750137">이 확장 프로그램에는 특별한 권한이 필요하지 않습니다</translation>
 <translation id="7152923486458597248">그룹으로 포커스 이동</translation>
 <translation id="7154130902455071009">다음으로 시작 페이지 변경: <ph name="START_PAGE" /></translation>
+<translation id="7159383838726952486">이 페이지에 대한 간단한 5개의 질문 퀴즈를 만들어 줘</translation>
 <translation id="7159695867335480590">재생/일시중지</translation>
 <translation id="7159953856712257647">기본적으로 설치됨</translation>
 <translation id="7160182524506337403">이제 휴대전화의 알림을 확인할 수 있습니다.</translation>

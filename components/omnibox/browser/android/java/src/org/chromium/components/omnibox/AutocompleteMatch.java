@@ -25,6 +25,8 @@ import org.chromium.components.omnibox.AutocompleteProto.AutocompleteMatchProto;
 import org.chromium.components.omnibox.AutocompleteProto.MatchClassificationProto;
 import org.chromium.components.omnibox.GroupsProto.GroupId;
 import org.chromium.components.omnibox.SuggestTemplateInfoProto.SuggestTemplateInfo;
+import org.chromium.components.omnibox.SuggestTemplateInfoProtoIntDef.ActionIconType;
+import org.chromium.components.omnibox.SuggestTemplateInfoProtoIntDef.BadgeType;
 import org.chromium.components.omnibox.TypesProto.SuggestSubtype;
 import org.chromium.components.omnibox.action.OmniboxAction;
 import org.chromium.components.omnibox.action.OmniboxActionId;
@@ -526,6 +528,20 @@ public class AutocompleteMatch {
             return mSuggestTemplate.getWrapPrimaryText();
         }
         return isSearchSuggestion();
+    }
+
+    /** Returns the right-hand action icon type for this suggestion. */
+    public @ActionIconType int getActionIconType() {
+        return mSuggestTemplate != null
+                ? mSuggestTemplate.getActionIcon().getNumber()
+                : ActionIconType.ACTION_ICON_TYPE_UNSPECIFIED;
+    }
+
+    /** Returns the type of the badge drawn on the icon of this suggestion. */
+    public @BadgeType int getTypeIconBadgeType() {
+        return mSuggestTemplate != null
+                ? mSuggestTemplate.getTypeIconBadge().getBadgeType().getNumber()
+                : BadgeType.BADGE_TYPE_UNSPECIFIED;
     }
 
     /**

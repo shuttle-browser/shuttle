@@ -145,7 +145,7 @@ class OmniboxPopupFullPresenter : public OmniboxPopupPresenterBase,
   // activation (Escape handling, macOS key window restoration). The browser or
   // popup widget deactivating schedules `BlurIfBrowserOrPopupInactive()`.
   // Either activating while `refocus_on_activation_` is set schedules
-  // `RefocusAfterActivation()`.
+  // `RequestFocusIfOmniboxFocused()`.
   void OnWidgetActivationChanged(views::Widget* widget, bool active) override;
   // Keeps the popup over the location bar when the browser widget moves or
   // resizes. The popup is its own top-level window, which doesn't always move
@@ -160,6 +160,13 @@ class OmniboxPopupFullPresenter : public OmniboxPopupPresenterBase,
   // `OnModalDialogClosed()`.
   void OnWidgetWindowModalVisibilityChanged(views::Widget* widget,
                                             bool visible) override;
+  // Gives the popup focus when it appears on screen while the omnibox is
+  // focused. On macOS, a popup opened in a window that isn't on the active
+  // Space only appears once that Space becomes active, which is too late for
+  // the focus request made when the popup opened.
+  void OnWidgetVisibilityOnScreenChanged(views::Widget* widget,
+                                         bool visible) override;
+
   void StopForwardingEvents();
 
   // Tells this window's popup view that the adopted page's handler is ready,
@@ -184,6 +191,9 @@ class OmniboxPopupFullPresenter : public OmniboxPopupPresenterBase,
                                views::View* starting_view,
                                bool visible) override;
   void OnViewBoundsChanged(views::View* observed_view) override;
+  void OnViewHierarchyChanged(
+      views::View* observed_view,
+      const views::ViewHierarchyChangedDetails& details) override;
   void OnViewIsDeleting(views::View* observed_view) override;
 
   // ui::EventObserver:
@@ -204,10 +214,10 @@ class OmniboxPopupFullPresenter : public OmniboxPopupPresenterBase,
   // activation, also closes the popup, even if a draft would keep it open, and
   // even if the omnibox was already blurred. See `OnModalDialogShown()`.
   void BlurForWindowDeactivation();
-  // Hands focus to the popup if the omnibox is still focused with the popup
-  // open. Runs after the browser window or popup is activated while
-  // `refocus_on_activation_` is set.
-  void RefocusAfterActivation();
+  // Gives the popup focus if the omnibox is still focused with the popup open.
+  // Runs after the browser window or popup is activated while
+  // `refocus_on_activation_` is set, and when the popup appears on screen.
+  void RequestFocusIfOmniboxFocused();
 
 #if BUILDFLAG(IS_CHROMEOS)
   // Returns whether the system emoji picker is shown, e.g. after picking Emoji
@@ -225,6 +235,11 @@ class OmniboxPopupFullPresenter : public OmniboxPopupPresenterBase,
   // or the organizer tray covers, which also sends events there to the view
   // beneath.
   void UpdatePopupOcclusion();
+
+  // Returns whether the top container is parented to the browser view, where
+  // the vertical tab strip and the organizer tray draw above it. False in
+  // immersive fullscreen, and if there is no browser view.
+  bool IsTopContainerInBrowserView();
 
   // Called when a modal dialog, e.g. a native file dialog, is shown over the
   // browser window or the popup, and when it closes. While it's shown, the
@@ -253,17 +268,6 @@ class OmniboxPopupFullPresenter : public OmniboxPopupPresenterBase,
   // Returns the text shown in the omnibox: the user's text while editing, and
   // otherwise the full URL if `show_full_url`, or the permanent display text.
   std::u16string GetOmniboxText(bool show_full_url);
-
-  // Returns the browser window's widget. In macOS immersive fullscreen this is
-  // not the location bar's widget, which is then a non-activatable overlay.
-  views::Widget* GetBrowserWidget();
-
-  // Returns whether the browser widget or this popup's widget is active. This
-  // is true while the omnibox is focused, since the popup then holds
-  // activation, and false once another window, such as a bubble anchored to
-  // the browser window, takes activation. Returns false if there is no browser
-  // widget.
-  bool IsBrowserOrPopupActive();
 
   // Returns whether a focus request may activate the popup. This is
   // `IsBrowserOrPopupActive()`, plus, on Mac, a child widget such as a bubble
@@ -298,7 +302,7 @@ class OmniboxPopupFullPresenter : public OmniboxPopupPresenterBase,
       occluding_view_observations_{this};
 #if BUILDFLAG(IS_CHROMEOS)
   // Observed while shown: the immersive reveal moves the top container
-  // without resizing the location bar.
+  // without resizing the location bar, and immersive fullscreen reparents it.
   base::ScopedObservation<views::View, views::ViewObserver>
       top_container_observation_{this};
 #endif
