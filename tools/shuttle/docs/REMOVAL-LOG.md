@@ -1356,5 +1356,13 @@ The Linux/X11 `check-popup-agent-label.mjs` probe checks native chrome on neutra
   - F4 (P3): the agent suffix no longer bypasses the platform title rules (Mac: no " - Shuttle").
   - Also: the chip's accessible name is localized (`IDS_SHUTTLE_AGENT_CHIP_ACCESSIBLE_NAME`, outside the title-case
     blocks), and `RefreshGroups` skips browsers without a window yet.
+  - Toby (2026-11-28, hand test on Mac): the chip sits at the right edge of the location bar (outermost trailing
+    decoration, at most 160 px, never collapsed), so the origin and security indicator keep the leading edge.
   - Noted, not changed: `SupportsWindowFeatureImpl` finds its browser by scanning all windows (only for popup/app
     windows and the location bar); popup leases, like all leases, don't survive a browser restart.
+
+## Fork commit 69 (2026-11-28): chrome://agents toolbar spacing
+
+Nothing removed. Toby (2026-11-28): on smaller windows "New agent" touched the sort select (the centered search and
+sort fill the toolbar up to the buttons). `#create` gets 12 px and the compact `#createCompact` 8 px leading margin;
+measured headless at 540-1100 px widths: the gap is 12 px (8 px with the compact icon) at every width.
